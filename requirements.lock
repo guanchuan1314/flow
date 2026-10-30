@@ -1,0 +1,63 @@
+# Pinned versions of every package in the project's tested virtualenv (incl. dev/test tools and the
+# Windows-only MT5Manager), for reproducible installs:
+#   python -m pip install -r requirements.lock && python -m pip install --no-deps -e .
+# Regenerate after upgrading: pip freeze --exclude-editable > requirements.lock (then restore this header).
+# pyproject.toml keeps the compatible ranges; this file is what was tested.
+alembic==1.20.0
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+bcrypt==5.0.0
+certifi==2026.10.18
+cffi==2.1.1
+click==8.5.0
+colorama==0.4.6
+cryptography==50.0.2
+dnspython==2.9.0
+email-validator==2.3.0
+fastapi==0.146.0
+fasteners==0.20
+greenlet==3.5.6
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.9.0
+httpx==0.28.1
+idna==3.20
+iniconfig==2.3.1
+itsdangerous==2.2.0
+jinja2==3.1.6
+mako==1.4.3
+markupsafe==3.0.4
+metatrader5==5.0.6231
+mt5manager==5.0.6231
+numpy==2.5.4
+opentelemetry-api==1.45.1
+packaging==26.3
+pgserver==0.1.4
+platformdirs==4.13.5
+playwright==1.64.0
+pluggy==1.7.0
+psutil==7.2.2
+psycopg==3.3.6
+psycopg-binary==3.3.6
+pycparser==3.11
+pydantic==2.14.1
+pydantic-core==2.50.1
+pydantic-settings==2.16.0
+pyee==14.0.0
+pygments==2.21.0
+pyjwt==2.15.1
+pyotp==2.10.0
+pytest==9.1.1
+python-dotenv==1.2.4
+python-multipart==0.0.32
+pyyaml==6.0.3
+qrcode==8.2
+sqlalchemy==2.1.5
+starlette==1.9.0
+typing-extensions==4.16.0
+typing-inspection==0.4.4
+tzdata==2026.5
+uvicorn==0.54.0
+watchfiles==1.3.0
+websockets==17.2

@@ -1,0 +1,42 @@
+{% extends "site/layout.html" %}
+{% block page_title %}MetaTrader 5 platform{% endblock %}
+{% block content %}
+<section class="s-pagehead"><div class="container">
+  <div class="s-eyebrow">Platforms</div>
+  <h1 class="mt-2">MetaTrader 5 on every device</h1>
+  <p>The world's most popular multi-asset platform: advanced charting, 80+ indicators, algorithmic trading and one-click execution.</p>
+</div></section>
+<section class="s-section"><div class="container">
+  <div class="row g-4">
+    {% for icon, title, text, href, cta in [
+      ("windows", "Windows desktop", "Full-featured terminal with Expert Advisors and strategy tester.", settings().mt5_download_windows, "Download for Windows"),
+      ("globe2", "Web terminal", "Trade from any browser, nothing to install.", settings().mt5_webterminal_url, "Open web terminal"),
+      ("android2", "Android", "Trade and monitor positions on the go.", settings().mt5_download_android, "Get it on Google Play"),
+      ("apple", "iPhone & iPad", "Native iOS app with push notifications.", settings().mt5_download_ios, "Download on the App Store"),
+    ] %}
+    <div class="col-md-6 col-lg-3"><div class="s-card d-flex flex-column">
+      <div class="s-icon"><i class="bi bi-{{ icon }}"></i></div>
+      <h3 class="h5">{{ title }}</h3><p class="text-muted flex-grow-1">{{ text }}</p>
+      <a class="btn btn-outline-dark" href="{{ href }}" rel="noopener" target="_blank">{{ cta }}</a>
+    </div></div>
+    {% endfor %}
+  </div>
+  <div class="row g-4 mt-2 align-items-center">
+    <div class="col-lg-6">
+      <h2 class="s-h2">Connect in three steps</h2>
+      <ol class="text-muted fs-6">
+        <li class="mb-2">Open an account in the client area: your login and password are shown instantly.</li>
+        <li class="mb-2">Install MetaTrader 5 and choose <strong class="text-dark">File → Login to trade account</strong>.</li>
+        <li>Enter your login, password and the server <span class="badge text-bg-dark">{{ brand().mt5_server_name }}</span>.</li>
+      </ol>
+    </div>
+    <div class="col-lg-6"><div class="s-card s-static">
+      {% for k, v in [("Order types", "Market, limit, stop, stop-limit"), ("Timeframes", "21, from 1 minute to 1 month"),
+                      ("Indicators", "80+ built-in, thousands in the Market"), ("Automation", "Expert Advisors (MQL5)"),
+                      ("Hedging", "Supported"), ("Depth of market", "Level II pricing")] %}
+        <div class="s-kv"><span>{{ k }}</span><span>{{ v }}</span></div>
+      {% endfor %}
+    </div></div>
+  </div>
+</div></section>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "site/layout.html" %}
+{% block page_title %}Promotions{% endblock %}
+{% block content %}
+<section class="s-pagehead"><div class="container">
+  <div class="s-eyebrow">Promotions</div>
+  <h1 class="mt-2">Boost your trading capital</h1>
+  <p>Deposit bonuses are credited to your trading account as trading credit. Enter the promo code when you deposit.</p>
+</div></section>
+<section class="s-section"><div class="container">
+  <div class="row g-4">
+    {% for c in campaigns %}
+    <div class="col-md-6"><div class="s-cta h-100">
+      <div class="s-chip mb-3">Promo code <strong>{{ c.code }}</strong></div>
+      <h2 class="h1">{{ c.bonus_pct|money(0) }}% deposit bonus</h2>
+      <p class="opacity-75">{{ c.name }}{% if c.max_bonus %} · up to ${{ c.max_bonus|money(0) }} bonus{% endif %} · minimum deposit ${{ c.min_deposit|money(0) }}{% if c.ends_at %} · until {{ c.ends_at|dt }}{% endif %}</p>
+      <a class="btn btn-accent" href="/portal/register">Claim bonus</a>
+    </div></div>
+    {% else %}
+    <div class="col"><p class="text-muted">There are no promotions running right now.</p></div>
+    {% endfor %}
+  </div>
+  <p class="small text-muted mt-4">Bonus credit can be used for trading margin and cannot be withdrawn. One bonus per client unless stated otherwise. Full terms apply.</p>
+</div></section>
+{% endblock %}

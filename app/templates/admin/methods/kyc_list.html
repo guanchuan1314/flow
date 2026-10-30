@@ -1,0 +1,28 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty, post_button %}
+{% block page_title %}KYC methods{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="small text-muted mb-0">Configure as many methods as you like; <strong>one is active</strong> and used for every client.
+    <strong>Manual</strong>: clients upload documents and staff review them. <strong>Custom</strong>: an external verification provider decides.</p>
+  <a class="btn btn-success btn-sm" href="/admin/kyc-methods/new"><i class="bi bi-plus-lg"></i> New KYC method</a>
+</div>
+{% if methods and not methods|selectattr("active")|list %}
+  <div class="alert alert-warning small">No method is active: clients can upload any document and staff review them.</div>
+{% endif %}
+<div class="card"><div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>Name</th><th>Type</th><th>Requires</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for m in methods %}
+    <tr>
+      <td><a href="/admin/kyc-methods/{{ m.id }}">{{ m.name }}</a></td>
+      <td>{% if m.is_custom %}<span class="badge text-bg-info">custom provider</span>{% else %}<span class="badge text-bg-light border">manual</span>{% endif %}</td>
+      <td class="small">{% if m.is_custom %}{{ m.api_url or m.redirect_template }}{% else %}{% for c in m.required_documents %}{{ categories[c][0] if c in categories else c }}{{ "; " if not loop.last }}{% endfor %}{% endif %}</td>
+      <td>{% if m.active %}<span class="badge text-bg-success">active</span>{% else %}<span class="badge text-bg-secondary">off</span>{% endif %}</td>
+      <td class="text-end">{% if not m.active %}{{ post_button("/admin/kyc-methods/" ~ m.id ~ "/activate", "Activate", csrf, "btn-outline-primary btn-sm",
+            confirm="Use " ~ m.name ~ " for all client verifications from now on? The current active method is switched off.") }}{% endif %}</td>
+    </tr>
+  {% else %}{{ empty(5, "No KYC methods yet: clients upload any document and staff review them.") }}{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% from "macros.html" import post_button, empty %}
+{# Polled every 2 s (htmx) while a task is queued or running. #}
+<div id="sync-jobs" {% if jobs|selectattr("active")|list %}hx-get="/admin/sync/jobs" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="table-responsive"><table class="table align-middle mb-0">
+    <thead><tr><th>#</th><th>Scope</th><th>Period</th><th class="w-25">Progress</th><th class="num">Deals added</th><th class="num">Orders added</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for j in jobs %}
+      <tr>
+        <td class="mono">{{ j.id }}</td>
+        <td class="small">
+          <span class="text-muted">{{ (j.logins|length ~ " account(s)") if j.logins else "all accounts" }}</span></td>
+        <td class="small">{{ j.date_from.strftime("%Y-%m-%d") }} → {{ j.date_to.strftime("%Y-%m-%d") }}</td>
+        <td>
+          <div class="progress" role="progressbar" aria-label="Task {{ j.id }} progress" aria-valuenow="{{ j.percent }}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar progress-w-{{ (j.percent // 5) * 5 }} {% if j.status == 'running' %}progress-bar-striped progress-bar-animated{% elif j.status == 'failed' %}bg-danger{% elif j.status == 'cancelled' %}bg-secondary{% endif %}">{{ j.percent }}%</div>
+          </div>
+          <div class="small text-muted mt-1">{{ j.message }}</div>
+        </td>
+        <td class="num">{{ j.deals_added }} <span class="text-muted small">/ {{ j.deals_seen }} read</span></td>
+        <td class="num">{% if j.include_orders %}{{ j.orders_added }} <span class="text-muted small">/ {{ j.orders_seen }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>
+          {% set colors = {"queued": "secondary", "running": "primary", "done": "success", "failed": "danger", "cancelled": "light border"} %}
+          <span class="badge text-bg-{{ colors[j.status] }}">{{ j.status|label }}</span>
+          {% if j.errors %}<span class="badge text-bg-warning">{{ j.errors }} error(s)</span>{% endif %}
+          <div class="small text-muted">{{ (j.finished_at or j.started_at or j.created_at)|dt }}</div>
+        </td>
+        <td class="text-end">{% if j.active and staff.has_perm("trading.sync") %}
+          {{ post_button("/admin/sync/jobs/" ~ j.id ~ "/cancel", "Cancel", csrf, "btn-outline-danger btn-sm",
+                         confirm="Stop sync task #" ~ j.id ~ "? Deals already added are kept.") }}{% endif %}</td>
+      </tr>
+    {% else %}{{ empty(8, "No sync tasks yet.") }}{% endfor %}
+    </tbody>
+  </table></div>
+</div>

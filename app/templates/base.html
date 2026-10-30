@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ brand().app_name }}{% endblock %}</title>
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  {% block head %}{% endblock %}
+  <link rel="stylesheet" href="/brand.css">
+</head>
+<body class="{% block body_class %}{% endblock %}" hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
+{% block body %}{% endblock %}
+<script src="/static/vendor/bootstrap.bundle.min.js"></script>
+<script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

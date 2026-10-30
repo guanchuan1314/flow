@@ -1,0 +1,141 @@
+{% extends "portal/layout.html" %}
+{% from "macros.html" import field, select, csrf_input, badge, empty, pnl %}
+{% block page_title %}Funds{% endblock %}
+{% block content %}
+{% set verified = client.kyc_status.value == "approved" %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="a-card"><div class="a-card-b">
+      <div class="a-tabs">
+        {% for t, icon, label in [("deposit", "box-arrow-in-down", "Deposit"), ("withdraw", "box-arrow-up", "Withdraw"),
+                                  ("transfer", "arrow-left-right", "Transfer"), ("history", "clock-history", "History")] %}
+          <a class="{% if tab == t %}active{% endif %}" href="?tab={{ t }}"><i class="bi bi-{{ icon }} me-1"></i>{{ label }}</a>
+        {% endfor %}
+      </div>
+
+      {% if tab == "deposit" %}
+        {% if not verified %}
+          <div class="text-center py-4"><i class="bi bi-person-vcard fs-1 text-warning"></i>
+            <p class="mt-2">Identity verification is required before you can deposit.</p>
+            <a class="btn btn-accent" href="/portal/verification">Verify my identity</a></div>
+        {% elif not deposit_methods %}
+          <div class="text-center py-4 text-muted">No deposit method is available at the moment. Please contact support.</div>
+        {% else %}
+        <form method="post" action="/portal/wallet/deposit" enctype="multipart/form-data" data-toggle-scope>
+          {{ csrf_input(csrf) }}
+          <div class="a-step-label">1. Choose a payment method</div>
+          <div class="row g-2 mb-4">
+            {% for m in deposit_methods %}
+            <div class="col-md-4"><label class="a-method">
+              <input class="form-check-input" type="radio" name="method_id" value="{{ m.id }}" {% if loop.first %}checked{% endif %}>
+              <i class="bi bi-{{ m.icon }}"></i><span><span class="fw-semibold d-block">{{ m.name }}</span>
+                <span class="small text-muted">{{ m.description }}{% if m.min_amount is not none %} · min {{ m.min_amount|money }}{% endif %}</span></span>
+            </label></div>
+            {% endfor %}
+          </div>
+          <div class="a-step-label">2. Amount &amp; destination</div>
+          <div class="row">
+            {{ field("amount", "Amount (" ~ wallet.currency ~ ")", type="number", step="0.01", required=True, col="col-md-6") }}
+            {% set targets = [] %}{% for a in accounts %}{% set _ = targets.append((a.login, "MT5 #" ~ a.login ~ " (" ~ (a.account_group.name if a.account_group else "live") ~ ")")) %}{% endfor %}
+            {{ select("trading_login", "Credit to", targets, blank="Wallet", col="col-md-6") }}
+            {{ field("promo_code", "Promo code", col="col-md-6", help="Bonus applies to deposits into a trading account") }}
+          </div>
+          {% for m in deposit_methods %}
+          <div data-show-when="method_id={{ m.id }}">
+            {% if m.is_custom %}
+              <div class="alert alert-light border small"><i class="bi bi-shield-lock me-1"></i>
+                You'll pay on {{ m.name }}'s secure page; the deposit is credited as soon as the payment is confirmed.</div>
+            {% else %}
+              {% if m.instructions %}<div class="alert alert-light border small mb-3"><i class="bi bi-info-circle me-1"></i><span class="pre-line">{{ m.instructions }}</span></div>{% endif %}
+              <div class="row">
+                {{ field("external_ref", "Payment reference", col="col-md-6", help="Bank transfer reference or transaction ID") }}
+                <div class="col-md-6 mb-3">
+                  <label class="form-label" for="proof-{{ m.id }}">Proof of payment{% if m.requires_proof %} <span class="text-danger">*</span>{% endif %}</label>
+                  <input class="form-control" id="proof-{{ m.id }}" type="file" name="proof" accept=".pdf,.jpg,.jpeg,.png">
+                  <div class="form-text">Receipt or bank confirmation. PDF, JPG or PNG, up to 10 MB.</div>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+          <button class="btn btn-accent btn-lg px-4" type="submit">Continue</button>
+        </form>
+        {% endif %}
+
+      {% elif tab == "withdraw" %}
+        {% if not verified %}
+          <div class="text-center py-4"><i class="bi bi-person-vcard fs-1 text-warning"></i>
+            <p class="mt-2">Identity verification is required before you can withdraw.</p>
+            <a class="btn btn-accent" href="/portal/verification">Verify my identity</a></div>
+        {% else %}
+        <form method="post" action="/portal/wallet/withdraw" data-confirm="Request this withdrawal? The amount will be held until processed.">
+          {{ csrf_input(csrf) }}
+          <p class="text-muted small">Withdrawals are paid from your wallet. To withdraw trading profits, first <a href="?tab=transfer">transfer them to your wallet</a>.
+            Available: <strong>{{ wallet.balance|money }} {{ wallet.currency }}</strong></p>
+          {% if withdrawal_methods %}
+          <div class="row g-2 mb-3">
+            {% for m in withdrawal_methods %}
+            <div class="col-md-4"><label class="a-method">
+              <input class="form-check-input" type="radio" name="method_id" value="{{ m.id }}" {% if loop.first %}checked{% endif %}>
+              <i class="bi bi-{{ m.icon }}"></i><span><span class="fw-semibold d-block">{{ m.name }}</span><span class="small text-muted">{{ m.description }}</span></span>
+            </label></div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="alert alert-warning small">No withdrawal method is available at the moment. Please contact support.</div>
+          {% endif %}
+          {{ field("amount", "Amount (" ~ wallet.currency ~ ")", type="number", step="0.01", required=True) }}
+          <div class="mb-3"><label class="form-label">Pay to</label>
+            <textarea class="form-control" name="details" rows="3" required placeholder="Bank name, IBAN / account number, SWIFT, account holder"></textarea>
+            <div class="form-text">For anti-money-laundering reasons we pay back to the method you deposited with where possible.</div></div>
+          <button class="btn btn-accent btn-lg px-4" type="submit">Request withdrawal</button>
+        </form>
+        {% endif %}
+
+      {% elif tab == "transfer" %}
+        {% if accounts %}
+        <form method="post" action="/portal/wallet/transfer">
+          {{ csrf_input(csrf) }}
+          <p class="text-muted small">Move money instantly between your wallet and your live trading accounts.</p>
+          <div class="row">
+            {{ select("direction", "Direction", [("to_mt5", "Wallet → trading account"), ("from_mt5", "Trading account → wallet")], col="col-md-6") }}
+            {% set accs = [] %}{% for a in accounts %}{% set _ = accs.append((a.login, "MT5 #" ~ a.login ~ " · equity " ~ a.equity|money)) %}{% endfor %}
+            {{ select("login", "Trading account", accs, col="col-md-6") }}
+            {{ field("amount", "Amount (" ~ wallet.currency ~ ")", type="number", step="0.01", required=True, col="col-md-6") }}
+          </div>
+          <button class="btn btn-accent btn-lg px-4" type="submit">Transfer instantly</button>
+        </form>
+        {% else %}
+          <div class="text-center py-4"><p class="text-muted">Open a live trading account to transfer funds.</p>
+            <a class="btn btn-accent" href="/portal/accounts">Open account</a></div>
+        {% endif %}
+
+      {% else %}
+        <div class="table-responsive"><table class="table">
+          <thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="text-end">Amount</th><th class="text-end">Balance</th></tr></thead>
+          <tbody>{% for t in txs %}<tr><td class="small">{{ t.created_at|dt }}</td><td>{{ t.kind|label }}</td><td class="small">{{ t.comment }}</td>
+            <td class="text-end">{{ pnl(t.amount) }}</td><td class="text-end">{{ t.balance_after|money }}</td></tr>
+          {% else %}{{ empty(5, "No wallet transactions yet.") }}{% endfor %}</tbody>
+        </table></div>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="a-hero mb-4">
+      <div class="muted">Wallet balance</div>
+      <div class="big">{{ wallet.balance|money }} <span class="fs-6 opacity-75">{{ wallet.currency }}</span></div>
+    </div>
+    <div class="a-card">
+      <div class="a-card-h">Deposit &amp; withdrawal requests</div>
+      {% for r in requests %}
+        <div class="a-list-row">
+          <span class="small"><span class="fw-semibold">{{ r.kind|label }} {{ r.amount|money }}</span>
+            {% if r.trading_login %}<span class="text-muted">→ #{{ r.trading_login }}</span>{% endif %}<br>
+            <span class="text-muted">{{ r.created_at|dt }}{% if r.review_comment and r.status.value == "rejected" %} · {{ r.review_comment }}{% endif %}</span></span>
+          {{ badge(r.status) }}</div>
+      {% else %}<div class="a-list-row small text-muted">No requests yet.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

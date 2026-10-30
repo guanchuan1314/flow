@@ -1,0 +1,12 @@
+{% extends "portal/auth_base.html" %}
+{% from "macros.html" import csrf_input %}
+{% block title %}Choose a new password · {{ brand().app_name }}{% endblock %}
+{% block subtitle %}Choose a new password{% endblock %}
+{% block form %}
+<form method="post" action="/portal/reset-password">
+  {{ csrf_input(csrf) }}<input type="hidden" name="token" value="{{ token }}">
+  <div class="mb-3"><label class="form-label">New password</label><input class="form-control" type="password" name="new_password" required autofocus autocomplete="new-password">
+    <div class="form-text">At least {{ settings().password_min_length }} characters with upper and lower case letters and a digit.</div></div>
+  <button class="btn btn-accent btn-lg w-100" type="submit">Set password</button>
+</form>
+{% endblock %}

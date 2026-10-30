@@ -1,0 +1,49 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import add_row_button, field, select, csrf_input %}
+{% block page_title %}New commission plan{% endblock %}
+
+{% macro rule_row(pattern="*", kind="per_lot", value="", priority=100) -%}
+<tr>
+  <td><input class="form-control form-control-sm" name="rule_pattern" value="{{ pattern }}" placeholder="*, EURUSD, XAU*"></td>
+  <td><select class="form-select form-select-sm" name="rule_type"><option value="">Any</option>
+    {% for t in groups %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></td>
+  <td><select class="form-select form-select-sm" name="rule_kind">
+    <option value="per_lot" {% if kind == "per_lot" %}selected{% endif %}>Fixed {{ settings().base_currency }} per lot</option>
+    <option value="spread_share" {% if kind == "spread_share" %}selected{% endif %}>% of spread markup</option>
+    <option value="commission_pct" {% if kind == "commission_pct" %}selected{% endif %}>% of MT5 commission</option></select></td>
+  <td><input class="form-control form-control-sm" name="rule_value" type="number" step="0.0001" value="{{ value }}"></td>
+  <td><input class="form-control form-control-sm w-priority" name="rule_priority" type="number" value="{{ priority }}"></td>
+</tr>
+{%- endmacro %}
+
+{% block content %}
+<div class="card"><div class="card-body">
+  <form method="post" action="/admin/plans/new">
+    {{ csrf_input(csrf) }}
+    <div class="row">
+      {{ field("name", "Plan name", required=True, col="col-md-4") }}
+      {{ field("level_shares", "Level split (%)", "100", required=True, col="col-md-3",
+               help="How each rebate is shared up the IB tree, e.g. 70, 20, 10") }}
+      {{ select("trigger", "Pay on", [("close", "Closing deals"), ("open", "Opening deals"), ("both", "Open and close")], col="col-md-2") }}
+      {{ field("min_hold_seconds", "Min. hold (seconds)", 0, type="number", col="col-md-3", help="Closed trades held shorter earn nothing (anti-scalping)") }}
+    </div>
+    <div class="d-flex align-items-center gap-2 mt-2 mb-2"><h2 class="h6 mb-0">Rules <small class="text-muted">— the lowest priority number that matches a deal wins</small></h2>
+      {{ add_row_button("rule-template", "rules", "Add rule", "ms-auto") }}</div>
+    <div class="table-responsive"><table class="table">
+      <thead><tr><th>Symbol pattern</th><th>Account group</th><th>Rule</th><th>Value</th><th>Priority</th></tr></thead>
+      <tbody id="rules">
+        {{ rule_row("XAU*", "per_lot", "", 10) }}
+        {{ rule_row("*", "spread_share", "", 100) }}
+      </tbody>
+    </table></div>
+    <template id="rule-template">{{ rule_row() }}</template>
+    <div class="alert alert-light border small">
+      <strong>Fixed per lot</strong>: value in {{ settings().base_currency }} per traded lot.
+      <strong>% of spread markup</strong>: share of the account group's configured markup (points × point value × lots).
+      <strong>% of MT5 commission</strong>: percentage of the commission charged on the deal. Rows with an empty value are ignored.
+    </div>
+    <button class="btn btn-primary" type="submit">Create plan</button>
+    <a class="btn btn-link" href="/admin/plans">Cancel</a>
+  </form>
+</div></div>
+{% endblock %}

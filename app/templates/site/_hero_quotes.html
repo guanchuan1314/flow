@@ -1,0 +1,14 @@
+{% for q in quotes[:6] %}
+<div class="s-qrow">
+  <div class="d-flex align-items-center">
+    <span class="s-sym-badge">{{ q.symbol[:3] }}</span>
+    <div><div class="fw-bold">{{ q.symbol }}</div><div class="s-qname">{{ q.name }}</div></div>
+  </div>
+  <div class="text-end">
+    <div><span class="s-price {{ 'q-up' if q.direction == 'up' else 'q-down' if q.direction == 'down' else '' }}" data-q="{{ q.symbol }}" data-f="bid">{{ q.bid }}</span> <i class="bi q-caret {{ 'bi-caret-up-fill' if q.direction == 'up' else 'bi-caret-down-fill' if q.direction == 'down' else '' }}" data-qc="{{ q.symbol }}"></i></div>
+    <span class="s-chip">spread <span data-q="{{ q.symbol }}" data-f="spread">{{ q.spread }}</span></span>
+  </div>
+</div>
+{% else %}
+<div class="s-qrow">Live prices are temporarily unavailable.</div>
+{% endfor %}

@@ -1,0 +1,54 @@
+# Caddy (https://caddyserver.com) terminates HTTPS with automatic Let's Encrypt certificates
+# and forwards to the CRM on localhost. setup.ps1 -Mode prod -InstallServices installs it as the FlowCRM-Proxy
+# service; by hand: caddy run --config deploy/Caddyfile
+# The two host names come from PORTAL_HOST and BACKOFFICE_HOST (setup.ps1 sets them on the service).
+# Point both DNS names at this server and open ports 80/443 only.
+
+(common) {
+	encode gzip
+	# Uploads (KYC documents, payment proofs) are capped by the app; refuse bigger bodies at the edge.
+	request_body {
+		max_size 12MB
+	}
+	# Don't advertise the web server.
+	header -Server
+	# Health and readiness checks are for local monitoring only (install-services.ps1, uptime checks on the host).
+	@probes {
+		path /ready /health
+		not remote_ip 127.0.0.1 ::1
+	}
+	respond @probes 404
+	log {
+		output file logs/caddy/access.log {
+			roll_size 50MiB
+			roll_keep 10
+			roll_keep_for 720h
+		}
+	}
+}
+
+{$PORTAL_HOST:portal.example.com} {
+	import common
+	# The client domain only exposes the portal and the client API.
+	@staff_only {
+		path /admin /admin/* /docs /openapi.json
+	}
+	@staff_api {
+		path /api/*
+		not path /api/portal/* /api/auth/client/*
+	}
+	respond @staff_only 404
+	respond @staff_api 404
+	reverse_proxy 127.0.0.1:8000
+}
+
+{$BACKOFFICE_HOST:backoffice.example.com} {
+	import common
+	# ---- EXAMPLE, not active: restrict the back-office to office / VPN addresses. ----
+	# Replace 203.0.113.0/24 (a documentation range) with your own addresses, then uncomment both lines.
+	# @outside not remote_ip 203.0.113.0/24
+	# respond @outside 403
+	# ---- end of example ----
+	redir / /admin
+	reverse_proxy 127.0.0.1:8000
+}

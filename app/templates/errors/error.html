@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block head %}<link rel="stylesheet" href="/static/site.css">{% endblock %}
+{% block title %}{{ title }} · {{ brand().app_name }}{% endblock %}
+{% block body_class %}s-error{% endblock %}
+{% block body %}
+<main class="s-err">
+  <div class="s-err-card">
+    <span class="brand-mark s-mark-lg">{{ brand().initials }}</span>
+    <div class="s-err-code">{{ status_code }}</div>
+    <h1>{{ title }}</h1>
+    <p class="text-muted">{{ message }}</p>
+    <a class="btn btn-primary" href="{{ home }}">{{ "Go to homepage" if home == "/" else "Go to dashboard" }}</a>
+    {% if request_id %}<div class="small text-muted mt-4">Reference: <span class="mono">{{ request_id }}</span></div>{% endif %}
+  </div>
+</main>
+{% endblock %}

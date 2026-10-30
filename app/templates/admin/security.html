@@ -1,0 +1,50 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, csrf_input, secret %}
+{% block page_title %}Password &amp; two-factor authentication{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">Change password</div>
+      <div class="card-body">
+        <form method="post" action="/admin/me/password">
+          {{ csrf_input(csrf) }}
+          {{ field("current_password", "Current password", type="password", required=True) }}
+          {{ field("new_password", "New password", type="password", required=True,
+                   help="At least " ~ settings().password_min_length ~ " characters with upper and lower case letters and a digit.") }}
+          <button class="btn btn-primary" type="submit">Update password</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">Two-factor authentication</div>
+      <div class="card-body">
+        {% if staff.totp_enabled %}
+          <p><span class="badge text-bg-success">Enabled</span> Your account is protected by an authenticator app.</p>
+          <form method="post" action="/admin/me/2fa/disable" data-confirm="Disable two-factor authentication?">
+            {{ csrf_input(csrf) }}
+            {{ field("code", "Current code (to confirm)", required=True) }}
+            <button class="btn btn-outline-danger" type="submit">Disable 2FA</button>
+          </form>
+        {% elif enroll %}
+          <p>Scan this QR code with Google Authenticator, Microsoft Authenticator or 1Password, then enter the 6-digit code.</p>
+          <img class="qr mb-3" src="{{ enroll.qr }}" alt="2FA QR code">
+          {{ secret("Or enter this key manually", enroll.secret) }}
+          <form method="post" action="/admin/me/2fa/confirm">
+            {{ csrf_input(csrf) }}
+            {{ field("code", "Code from the app", required=True) }}
+            <button class="btn btn-primary" type="submit">Turn on 2FA</button>
+          </form>
+        {% else %}
+          <p class="text-muted">Protect your account with a one-time code from an authenticator app.</p>
+          <form method="post" action="/admin/me/2fa/start">{{ csrf_input(csrf) }}
+            <button class="btn btn-primary" type="submit">Set up 2FA</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

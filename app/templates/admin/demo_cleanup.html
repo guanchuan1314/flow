@@ -1,0 +1,99 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import alert, csrf_input, post_button %}
+{% block page_title %}Inactive demo accounts · {{ server.name }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+  <a class="small" href="/admin/configuration"><i class="bi bi-arrow-left"></i> Configuration</a>
+</div>
+<p class="small text-muted">Demo accounts nobody uses still cost the MT5 server memory and work. This list comes from the CRM's own data:
+  each account's last terminal connection (read every {{ refresh_minutes }} minutes from the Manager API's local copy of the accounts) and its
+  last trade. It costs MT5 nothing to show. Accounts with open positions or orders, and copy trading or PAMM accounts, are never included.
+  Before anything changes, each account is checked against MT5 again.</p>
+
+{% set last = cfg.last_result %}
+{% if last %}<div class="alert {% if last.error %}alert-danger{% else %}alert-secondary{% endif %} small">Last run {{ last.at[:16].replace("T", " ") }} UTC ({{ last.by }}):
+  {% if last.error %}failed: {{ last.error }}{% else %}{{ last.done }} account(s) {{ "archived" if last.action == "archive" else "deleted" }}{% if last.active_again %}, {{ last.active_again }} kept as active again{% endif %}{% if last.failed %}, {{ last.failed }} not done{% endif %}{% if last.remaining %}, {{ last.remaining }} left for the next run{% endif %}.{% endif %}</div>{% endif %}
+
+<div class="row g-3">
+  <div class="col-xl-4"><div class="card h-100">
+    <div class="card-header">CRM clean-up settings</div>
+    <form method="post" action="/admin/mt5-servers/{{ server.id }}/inactive/settings" class="card-body">
+      {{ csrf_input(csrf) }}
+      <div class="mb-2"><label class="form-label small" for="c-days">No activity for at least</label>
+        <div class="input-group input-group-sm"><input class="form-control" id="c-days" type="number" name="days" min="{{ min_days }}" value="{{ cfg.days }}" required>
+          <span class="input-group-text">days</span></div></div>
+      <div class="mb-2"><label class="form-label small" for="c-groups">Groups</label>
+        <input class="form-control form-control-sm" id="c-groups" name="groups" value="{{ cfg.groups }}" required>
+        <div class="form-text">Masks, comma separated, e.g. <code>demo*</code>. Only demo accounts are ever included.</div></div>
+      <div class="mb-2"><span class="form-label small d-block">Do what</span>
+        {% for k, label in actions.items() %}<div class="form-check"><input class="form-check-input" type="radio" name="action" id="c-{{ k }}" value="{{ k }}" {% if cfg.action == k %}checked{% endif %}>
+          <label class="form-check-label small" for="c-{{ k }}">{{ label }}</label></div>{% endfor %}</div>
+      <div class="form-check mb-3"><input class="form-check-input" type="checkbox" id="c-on" name="enabled" value="1" {% if cfg.enabled %}checked{% endif %}>
+        <label class="form-check-label small" for="c-on">Run it automatically once a day (at most {{ max_per_run }} accounts per run)</label></div>
+      <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
+    </form>
+  </div></div>
+
+  <div class="col-xl-8"><div class="card h-100">
+    <div class="card-header">MT5's own demo inactivity period <span class="small text-muted">set on each demo group in MT5</span></div>
+    <div class="card-body small">
+      <p class="text-muted">MT5 itself removes demo accounts that haven't connected for this many days, with no work for the CRM. 0 means MT5 never removes them.</p>
+      {% if mt5_error %}{{ alert(mt5_error, "danger", "small mb-0") }}
+      {% elif not mt5_groups %}<span class="text-muted">This server has no demo groups.</span>
+      {% else %}
+      <form id="mt5days" method="post" action="/admin/mt5-servers/{{ server.id }}/inactive/mt5-days">{{ csrf_input(csrf) }}</form>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-2">
+        <thead><tr><th><input class="form-check-input" type="checkbox" data-check-all="group" aria-label="Tick all groups"></th>
+          <th>Group</th><th class="text-end">Now</th><th class="text-end">Accounts in the CRM</th><th class="text-end">Inactive {{ found.days }}+ days</th></tr></thead>
+        <tbody>{% set counts = {} %}{% for g in found.groups %}{% set _ = counts.update({g.group: g}) %}{% endfor %}
+        {% for g in mt5_groups %}<tr>
+          <td><input class="form-check-input" type="checkbox" name="group" value="{{ g.name }}" form="mt5days" aria-label="Tick {{ g.name }}"></td>
+          <td>{{ g.name }}</td>
+          <td class="text-end">{% if g.days %}{{ g.days }} days{% else %}<span class="text-muted">never</span>{% endif %}</td>
+          <td class="text-end">{{ counts[g.name].accounts if g.name in counts else 0 }}</td>
+          <td class="text-end">{{ counts[g.name].inactive if g.name in counts else 0 }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span>Set the ticked groups to</span>
+        <input class="form-control form-control-sm w-auto" type="number" name="days" min="0" max="{{ max_mt5_days }}" value="{{ cfg.days }}" form="mt5days" aria-label="Days" required>
+        <span>days</span>
+        <button class="btn btn-sm btn-outline-primary" type="submit" form="mt5days">Save on MT5</button>
+      </div>
+      {% endif %}
+    </div>
+  </div></div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+    <span><strong>{{ found.total }}</strong> demo account(s) inactive for {{ found.days }}+ days</span>
+    {% for why, n in found.skipped.items() %}{% if n %}<span class="small text-muted">· {{ n }} kept: {{ why }}</span>{% endif %}{% endfor %}
+    {% if found.candidates %}
+    <form id="clean" method="post" action="/admin/mt5-servers/{{ server.id }}/inactive/run" data-confirm="Archive or delete the ticked demo accounts on MT5?" data-confirm-variant="danger" data-confirm-ok="Go ahead">
+      {{ csrf_input(csrf) }}</form>
+    <span class="ms-auto d-flex gap-2 align-items-center">
+      <select class="form-select form-select-sm w-auto" name="action" form="clean" aria-label="Action">
+        {% for k, label in actions.items() %}<option value="{{ k }}" {% if cfg.action == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-sm btn-danger" type="submit" form="clean">Apply to ticked</button>
+      {{ post_button("/admin/mt5-servers/" ~ server.id ~ "/inactive/run", (("Archive" if cfg.action == "archive" else "Delete") ~ " all (at most " ~ max_per_run ~ ")"), csrf,
+         "btn-outline-danger btn-sm", confirm=(("Archive" if cfg.action == "archive" else "Delete") ~ " all " ~ found.total ~ " inactive demo accounts on MT5?"), danger=True,
+         fields={"everything": "1", "action": cfg.action}) }}
+    </span>{% endif %}
+  </div>
+  {% if found.never_seen %}<div class="card-body small text-muted py-2 border-bottom">{{ found.never_seen }} of them have never been seen connecting since the CRM
+    started tracking, so they are judged by their last trade or registration.</div>{% endif %}
+  <div class="table-responsive"><table class="table table-sm table-hover mb-0 small">
+    <thead><tr><th><input class="form-check-input" type="checkbox" data-check-all="login" aria-label="Tick all"></th>
+      <th>Login</th><th>Group</th><th>Client</th><th>Email</th><th>Last connection</th><th>Last trade</th><th>Registered</th></tr></thead>
+    <tbody>{% for c in found.candidates %}
+      <tr><td><input class="form-check-input" type="checkbox" name="login" value="{{ c.login }}" form="clean" aria-label="Tick {{ c.login }}"></td>
+        <td><a href="/admin/accounts/{{ c.login }}">{{ c.login }}</a></td><td>{{ c.group }}</td><td>{{ c.name }}</td><td>{{ c.email }}</td>
+        <td>{{ c.last_access.strftime("%Y-%m-%d") if c.last_access else "never" }}</td>
+        <td>{{ c.last_trade.strftime("%Y-%m-%d") if c.last_trade else "never" }}</td>
+        <td>{{ c.registration.strftime("%Y-%m-%d") if c.registration else "" }}</td></tr>
+    {% else %}<tr><td colspan="8" class="text-center text-muted py-4">No demo account qualifies.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if found.total > preview %}<div class="card-footer small text-muted">Showing the {{ preview }} inactive longest of {{ found.total }}.</div>{% endif %}
+</div>
+{% endblock %}

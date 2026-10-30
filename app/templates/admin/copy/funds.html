@@ -1,0 +1,45 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, csrf_input, badge, empty %}
+{% block page_title %}PAMM funds{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="card"><div class="table-responsive"><table class="table table-hover">
+      <thead><tr><th>Fund</th><th>Master login</th><th>Manager</th><th>Status</th><th class="num">Last NAV</th><th class="num">Units</th><th class="num">Perf. fee</th><th class="num">Mgmt fee / yr</th></tr></thead>
+      <tbody>
+      {% for f in rows %}
+        <tr>
+          <td><a href="/admin/pamm/{{ f.id }}">{{ f.name }}</a></td>
+          <td><a href="/admin/accounts/{{ f.master_login }}">{{ f.master_login }}</a></td>
+          <td><a href="/admin/clients/{{ f.manager_client_id }}">{{ managers[f.manager_client_id].full_name }}</a></td>
+          <td>{{ badge(f.status) }}</td>
+          <td class="num">{{ f.last_nav|money(4) }}</td><td class="num">{{ f.total_units|money(2) }}</td>
+          <td class="num">{{ f.performance_fee_pct|money }}%</td><td class="num">{{ f.management_fee_pct_annual|money }}%</td>
+        </tr>
+      {% else %}{{ empty(8, "No PAMM funds yet.") }}{% endfor %}
+      </tbody>
+    </table></div></div>
+  </div>
+  {% if staff.has_perm("copy.manage") %}
+  <div class="col-xl-4">
+    <div class="card"><div class="card-header">New PAMM fund</div><div class="card-body">
+      <form method="post" action="/admin/pamm/new">
+        {{ csrf_input(csrf) }}
+        {{ field("name", "Fund name", required=True) }}
+        <div class="row">
+          {{ field("manager_client_id", "Manager client ID", type="number", required=True, col="col-6") }}
+          {{ field("master_login", "Master MT5 login", type="number", required=True, col="col-6") }}
+          {{ field("performance_fee_pct", "Performance fee %", 20, type="number", step="0.01", col="col-6") }}
+          {{ field("management_fee_pct_annual", "Management fee % / yr", 0, type="number", step="0.01", col="col-6") }}
+        </div>
+        {{ field("min_investment", "Minimum investment", 100, type="number", step="0.01") }}
+        {{ field("description", "Description") }}
+        <button class="btn btn-primary" type="submit">Create fund</button>
+        <div class="form-text">The master account must be a live, empty account (zero equity, no positions) owned by the manager.
+          All money enters and leaves through the fund so unit accounting stays exact.</div>
+      </form>
+    </div></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

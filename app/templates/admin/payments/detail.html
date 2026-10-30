@@ -1,0 +1,53 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, badge %}
+{% block page_title %}Payment #{{ p.id }}{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card"><ul class="list-group list-group-flush">
+      <li class="list-group-item d-flex justify-content-between"><span>Status</span>{{ badge(p.status) }}</li>
+      <li class="list-group-item d-flex justify-content-between"><span>Client</span><a href="/admin/clients/{{ c.id }}?tab=finance">{{ c.full_name }}</a></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Type</span><span>{{ p.kind|label }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Amount</span><span class="fw-semibold">{{ p.amount|money }} {{ p.currency }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Target</span><span>{{ ("MT5 " ~ p.trading_login) if p.trading_login else "Wallet" }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Method</span><span>{{ p.method|label }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Reference</span><span class="mono">{{ p.external_ref or "—" }}</span></li>
+      {% if p.proof_path %}<li class="list-group-item d-flex justify-content-between"><span>Proof of payment</span>
+        <a href="/admin/payments/{{ p.id }}/proof"><i class="bi bi-paperclip"></i> {{ p.proof_name }}</a></li>{% endif %}
+      {% if p.gateway_status %}<li class="list-group-item d-flex justify-content-between"><span>Provider</span>
+        <span>{{ p.gateway_status }}{% if p.paid_at %} · paid {{ p.paid_at|dt }}{% endif %} · <span class="mono">{{ p.gateway_ref }}</span></span></li>{% endif %}
+      <li class="list-group-item d-flex justify-content-between"><span>Promo code</span><span>{{ p.promo_code or "—" }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Notes</span><span>{{ p.details or "—" }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Created</span><span>{{ p.created_at|dt }} by {{ staff_names.get(p.created_by_staff_id, "client") }}</span></li>
+      {% if p.reviewed_at %}
+      <li class="list-group-item d-flex justify-content-between"><span>Reviewed</span><span>{{ p.reviewed_at|dt }} by {{ staff_names.get(p.reviewed_by_staff_id, "?") }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Review comment</span><span>{{ p.review_comment or "—" }}</span></li>
+      {% endif %}
+      {% if p.mt5_deal_ticket %}<li class="list-group-item d-flex justify-content-between"><span>MT5 deal</span><span class="mono">{{ p.mt5_deal_ticket }}</span></li>{% endif %}
+    </ul></div>
+  </div>
+  {% if p.status.value == "pending" and staff.has_perm("finance.approve") %}
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header">Decision</div><div class="card-body">
+      {% if p.created_by_staff_id == staff.id %}
+        <div class="alert alert-warning mb-0">You created this request, so a different staff member must approve or reject it.</div>
+      {% else %}
+      <form method="post" action="/admin/payments/{{ p.id }}/approve" class="mb-4" data-confirm="Approve this payment? Funds will move immediately.">
+        {{ csrf_input(csrf) }}
+        <label class="form-label">Comment (optional)</label>
+        <input class="form-control mb-2" name="comment">
+        <button class="btn btn-success" type="submit"><i class="bi bi-check-lg"></i> Approve</button>
+      </form>
+      <form method="post" action="/admin/payments/{{ p.id }}/reject">
+        {{ csrf_input(csrf) }}
+        <label class="form-label">Rejection reason <span class="text-danger">*</span></label>
+        <input class="form-control mb-2" name="comment" required>
+        <button class="btn btn-outline-danger" type="submit"><i class="bi bi-x-lg"></i> Reject</button>
+        {% if p.kind.value == "withdrawal" and not p.trading_login %}<div class="form-text">The held amount is returned to the client's wallet.</div>{% endif %}
+      </form>
+      {% endif %}
+    </div></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

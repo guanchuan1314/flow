@@ -1,0 +1,28 @@
+{% extends "portal/auth_base.html" %}
+{% from "macros.html" import csrf_input %}
+{% block title %}Open an account · {{ brand().app_name }}{% endblock %}
+{% block card_class %}wide{% endblock %}
+{% block subtitle %}Open your account{% endblock %}
+{% block lead %}It takes less than two minutes. You can start with a free demo.{% endblock %}
+{% block form %}
+{% set f = form or {} %}
+<form method="post" action="/portal/register">
+  {{ csrf_input(csrf) }}
+  <input type="hidden" name="utm_source" value="{{ utm.source }}"><input type="hidden" name="utm_medium" value="{{ utm.medium }}">
+  <input type="hidden" name="utm_campaign" value="{{ utm.campaign }}">
+  <div class="row">
+    <div class="col-md-6 mb-3"><label class="form-label">First name</label><input class="form-control" name="first_name" value="{{ f.first_name or '' }}" required autocomplete="given-name"></div>
+    <div class="col-md-6 mb-3"><label class="form-label">Last name</label><input class="form-control" name="last_name" value="{{ f.last_name or '' }}" required autocomplete="family-name"></div>
+    <div class="col-12 mb-3"><label class="form-label">Email</label><input class="form-control" type="email" name="email" value="{{ f.email or '' }}" required autocomplete="email"></div>
+    <div class="col-md-7 mb-3"><label class="form-label">Phone</label><input class="form-control" name="phone" value="{{ f.phone or '' }}" autocomplete="tel"></div>
+    <div class="col-md-5 mb-3"><label class="form-label">Country (ISO code)</label><input class="form-control" name="country" value="{{ f.country or '' }}" maxlength="2" placeholder="GB" autocomplete="country"></div>
+    <div class="col-12 mb-3"><label class="form-label">Password</label><input class="form-control" type="password" name="password" required autocomplete="new-password">
+      <div class="form-text">At least {{ settings().password_min_length }} characters with upper and lower case letters and a digit.</div></div>
+    <div class="col-12 mb-3"><label class="form-label">Referral code</label><input class="form-control" name="ref" value="{{ ref }}" placeholder="Optional"></div>
+  </div>
+  <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="accept_terms" id="terms" required>
+    <label class="form-check-label small" for="terms">I accept the terms and conditions and understand that trading leveraged products carries a high level of risk.</label></div>
+  <button class="btn btn-accent btn-lg w-100" type="submit">Create account</button>
+</form>
+<div class="text-center mt-3 small a-auth-alt">Already registered? <a href="/portal/login">Sign in</a></div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, empty, pagination %}
+{% block page_title %}KYC review queue{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead><tr><th>Uploaded</th><th>Client</th><th>Type</th><th>File</th><th class="text-end">Decision</th></tr></thead>
+      <tbody>
+      {% for d in page.items %}
+        <tr>
+          <td>{{ d.created_at|dt }}</td>
+          <td><a href="/admin/clients/{{ d.client_id }}?tab=kyc">{{ clients[d.client_id].full_name }}</a></td>
+          <td>{{ d.doc_type|label }}</td>
+          <td><a href="/admin/kyc/{{ d.id }}/file"><i class="bi bi-download"></i> {{ d.original_name }}</a></td>
+          <td>
+            <form method="post" action="/admin/kyc/{{ d.id }}/review" class="d-flex gap-1 justify-content-end">
+              {{ csrf_input(csrf) }}
+              <input class="form-control form-control-sm w-reason" name="reason" placeholder="Reason (if rejecting)">
+              <button class="btn btn-sm btn-success" name="decision" value="approve">Approve</button>
+              <button class="btn btn-sm btn-outline-danger" name="decision" value="reject">Reject</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}{{ empty(5, "The queue is empty.") }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ pagination(page, request) }}
+</div>
+<p class="small text-muted mt-2">Approving a document does not approve the client. Set the client's KYC status on their KYC tab once all documents are reviewed.</p>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import select, csrf_input, badge, empty %}
+{% block page_title %}IB #{{ ib.id }}: {{ owner.full_name }}{% endblock %}
+
+{% macro tree_node(n) -%}
+  <li>
+    <a href="/admin/ibs/{{ n.ib.id }}">IB #{{ n.ib.id }}</a> · <a href="/admin/clients/{{ n.client.id }}">{{ n.client.full_name }}</a> {{ badge(n.ib.status) }}
+    {% if n.children %}<ul>{% for c in n.children %}{{ tree_node(c) }}{% endfor %}</ul>{% endif %}
+  </li>
+{%- endmacro %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="card mb-4"><div class="card-header">Downline (sub-IBs)</div><div class="card-body">
+      <ul class="mb-0">{{ tree_node(tree) }}</ul>
+    </div></div>
+    <div class="card mb-4"><div class="card-header">Directly referred clients ({{ referred|length }})</div><div class="table-responsive"><table class="table">
+      <thead><tr><th>Client</th><th>Status</th><th>KYC</th><th>Registered</th></tr></thead>
+      <tbody>{% for c in referred %}<tr><td><a href="/admin/clients/{{ c.id }}">{{ c.full_name }}</a></td><td>{{ badge(c.status) }}</td><td>{{ badge(c.kyc_status) }}</td><td>{{ c.created_at|dt }}</td></tr>
+      {% else %}{{ empty(4, "No referred clients yet.") }}{% endfor %}</tbody>
+    </table></div></div>
+    <div class="card"><div class="card-header d-flex justify-content-between">Recent commissions <a class="small" href="/admin/commissions?status=&ib_id={{ ib.id }}">All</a></div><div class="table-responsive"><table class="table">
+      <thead><tr><th>Time</th><th>Deal</th><th>Level</th><th>Login</th><th>Symbol</th><th class="num">Lots</th><th class="num">Amount</th><th>Status</th></tr></thead>
+      <tbody>{% for r in recent %}<tr><td class="small">{{ r.created_at|dt }}</td><td class="mono">{{ r.deal_ticket }}</td><td>L{{ r.level }}</td><td>{{ r.login }}</td><td>{{ r.symbol }}</td><td class="num">{{ r.volume|money }}</td><td class="num">{{ r.amount|money }}</td><td>{{ badge(r.status) }}</td></tr>
+      {% else %}{{ empty(8, "No commissions yet.") }}{% endfor %}</tbody>
+    </table></div></div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card"><div class="card-header">Settings</div><div class="card-body">
+      <p class="small mb-3">Referral code <span class="mono fw-semibold">{{ owner.referral_code }}</span><br>
+        Link: <span class="mono small">{{ settings().public_url }}/portal/register?ref={{ owner.referral_code }}</span></p>
+      {% if staff.has_perm("marketing.manage") %}
+      <form method="post" action="/admin/ibs/{{ ib.id }}">
+        {{ csrf_input(csrf) }}
+        {{ select("plan_id", "Commission plan", plans|map(attribute="id")|zip(plans|map(attribute="name")), ib.plan_id, blank="— none —") }}
+        {% set parent_opts = [] %}
+        {% for o in others %}{% set _ = parent_opts.append((o.id, "IB #" ~ o.id ~ " – " ~ other_clients[o.client_id].full_name)) %}{% endfor %}
+        {{ select("parent_ib_id", "Parent IB", parent_opts, ib.parent_ib_id, blank="— top level —") }}
+        {{ select("status", "Status", opts(statuses), ib.status.value) }}
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

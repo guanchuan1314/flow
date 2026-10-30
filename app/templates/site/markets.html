@@ -1,0 +1,27 @@
+{% extends "site/layout.html" %}
+{% block page_title %}Markets &amp; live prices{% endblock %}
+{% block content %}
+<section class="s-pagehead"><div class="container">
+  <div class="s-eyebrow">Markets</div>
+  <h1 class="mt-2">Live prices across global markets</h1>
+  <p>Forex majors, gold and silver, the world's leading indices and crypto, streamed live from our MetaTrader 5 servers.</p>
+</div></section>
+<section class="s-section"><div class="container">
+  <div class="row g-4 mb-5">
+    {% for icon, title, text in [("currency-exchange", "Forex", "Majors, minors and exotics with deep liquidity."),
+                                 ("gem", "Metals", "Gold and silver against the US dollar."),
+                                 ("bar-chart-line", "Indices", "Trade Wall Street and US tech in one click."),
+                                 ("currency-bitcoin", "Crypto", "Bitcoin CFDs, long or short, 7 days a week.")] %}
+    <div class="col-md-6 col-lg-3"><div class="s-card"><div class="s-icon"><i class="bi bi-{{ icon }}"></i></div>
+      <h3 class="h5">{{ title }}</h3><p class="text-muted mb-0">{{ text }}</p></div></div>
+    {% endfor %}
+  </div>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="h4 fw-bold mb-0">Live quotes</h2><span class="small text-muted"><span class="s-live-dot"></span> Streaming live</span>
+  </div>
+  <div class="s-table table-responsive" data-quotes-view="table">
+    {% include "site/_quotes_table.html" %}
+  </div>
+  <p class="small text-muted mt-3">Prices are indicative. Spreads shown in pips (forex) or points; trading hours vary by instrument.</p>
+</div></section>
+{% endblock %}

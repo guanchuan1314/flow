@@ -1,0 +1,57 @@
+{% extends "portal/layout.html" %}
+{% from "macros.html" import select, csrf_input, badge, empty %}
+{% block page_title %}Identity verification{% endblock %}
+{% block content %}
+<p>Status: {{ badge(client.kyc_status) }}</p>
+{% if method and method.is_custom %}
+  <div class="card mw-md"><div class="card-body">
+    {% if client.kyc_status.value == "approved" %}
+      <p class="mb-0"><i class="bi bi-patch-check-fill text-success me-1"></i>Your identity is verified.</p>
+    {% else %}
+      <p>{{ method.description or "Verify your identity online in a few minutes with our verification partner." }}</p>
+      {% if session and session.status == "started" %}
+        <p class="small text-muted">You started a verification on {{ session.created_at|dt }}. If you didn't finish it, start again.</p>
+      {% elif session and session.status == "rejected" %}
+        <div class="alert alert-danger small">Your last verification was not approved{% if session.reason %}: {{ session.reason }}{% endif %}.</div>
+      {% endif %}
+      <form method="post" action="/portal/verification/start">
+        {{ csrf_input(csrf) }}
+        <button class="btn btn-primary" type="submit"><i class="bi bi-person-check me-1"></i>
+          {{ "Start again" if session else "Verify my identity" }}</button>
+      </form>
+    {% endif %}
+  </div></div>
+{% else %}
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card"><div class="card-header">Upload a document</div><div class="card-body">
+      {% if checklist %}
+        <ul class="list-unstyled small mb-3">
+          {% for item in checklist %}
+            <li class="mb-1"><i class="bi bi-{{ 'check-circle-fill text-success' if item.done else 'circle text-muted' }} me-1"></i>{{ item.label }}</li>
+          {% endfor %}
+        </ul>
+        {% if method.instructions %}<p class="small text-muted pre-line">{{ method.instructions }}</p>{% endif %}
+      {% else %}
+      <p class="small text-muted">We need a government-issued photo ID (passport, ID card or driving license) and a proof of address no older than 3 months (utility bill or bank statement).</p>
+      {% endif %}
+      <form method="post" action="/portal/verification" enctype="multipart/form-data">
+        {{ csrf_input(csrf) }}
+        {{ select("doc_type", "Document type", opts(doc_types)) }}
+        <div class="mb-3"><input class="form-control" type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required>
+          <div class="form-text">PDF, JPG or PNG, up to 10 MB. Make sure all four corners are visible.</div></div>
+        <button class="btn btn-primary" type="submit">Upload</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card"><div class="card-header">Your documents</div><div class="table-responsive"><table class="table">
+      <thead><tr><th>Type</th><th>File</th><th>Uploaded</th><th>Status</th></tr></thead>
+      <tbody>{% for d in docs %}<tr><td>{{ d.doc_type|label }}</td><td class="small">{{ d.original_name }}</td><td class="small">{{ d.created_at|dt }}</td>
+        <td>{{ badge(d.status) }}{% if d.reject_reason %}<div class="small text-danger">{{ d.reject_reason }}</div>{% endif %}</td></tr>
+      {% else %}{{ empty(4, "No documents uploaded yet.") }}{% endfor %}</tbody>
+    </table></div></div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

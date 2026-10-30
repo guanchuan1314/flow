@@ -1,0 +1,164 @@
+{% extends "site/layout.html" %}
+{% block content %}
+<section class="s-hero">
+  <div class="container">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-6">
+        <span class="s-chip"><i class="bi bi-lightning-charge-fill"></i>MetaTrader 5 · ultra-fast execution</span>
+        <h1 class="mt-4">{{ brand().brand_tagline }}</h1>
+        <p class="lead mt-3">Trade the world's markets your way. Tight spreads on forex, gold, indices and crypto, copy top traders or invest in managed PAMM funds, all from one account.</p>
+        <div class="d-flex flex-wrap gap-2 mt-4">
+          <a class="btn btn-accent btn-lg" href="/portal/register">Open an account</a>
+          <a class="btn btn-ghost-light btn-lg" href="/portal/register">Try a free demo</a>
+        </div>
+        <ul class="s-check">
+          <li>Spreads from 0.0 pips on ECN accounts</li>
+          <li>Leverage up to 1:{{ groups|map(attribute="leverage_options")|map("max")|max if groups else 500 }}</li>
+          <li>Instant wallet transfers, deposits approved fast</li>
+        </ul>
+      </div>
+      <div class="col-lg-6">
+        <div class="s-glass">
+          <div class="s-glass-h">
+            <span class="fw-semibold"><span class="s-live-dot"></span>Live prices</span>
+            <a href="/markets">All markets <i class="bi bi-arrow-right"></i></a>
+          </div>
+          <div data-quotes-view="hero">
+            {% include "site/_hero_quotes.html" %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="s-hero-stats">
+      <div><div class="v">{{ quotes|length }}+</div><div class="l">Popular instruments</div></div>
+      <div><div class="v">&lt; 30 ms</div><div class="l">Average execution</div></div>
+      <div><div class="v">24/5</div><div class="l">Multilingual support</div></div>
+      <div><div class="v">$0</div><div class="l">Deposit fees</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="s-trust" aria-label="Client protection">
+  <div class="container">
+    <div class="s-trust-grid">
+      <div class="s-trust-item"><i class="bi bi-safe2"></i><span>Segregated client funds<small>Kept apart from our own money</small></span></div>
+      <div class="s-trust-item"><i class="bi bi-shield-check"></i><span>Negative balance protection<small>On every account</small></span></div>
+      <div class="s-trust-item"><i class="bi bi-display"></i><span>MetaTrader 5<small>Desktop, web and mobile</small></span></div>
+      <div class="s-trust-item"><i class="bi bi-headset"></i><span>24/5 support<small>Multilingual team</small></span></div>
+    </div>
+  </div>
+</section>
+
+<section class="s-section">
+  <div class="container">
+    <div class="s-head-center">
+      <div class="s-eyebrow">Why traders choose us</div>
+      <h2 class="s-h2 mt-2">Everything you need to trade with an edge</h2>
+    </div>
+    <div class="row g-4">
+      {% for icon, title, text in [
+        ("speedometer2", "Fast, reliable execution", "Orders are executed on MetaTrader 5 with no dealing-desk intervention on ECN accounts."),
+        ("shield-lock", "Your money, protected", "Client funds are segregated and every account has negative balance protection."),
+        ("people", "Copy the best traders", "Follow strategy providers automatically and scale trades to your own equity."),
+        ("pie-chart", "Managed PAMM funds", "Invest alongside professional managers. You only pay performance fees on new profits."),
+        ("wallet2", "One wallet, every account", "Move money between your wallet and trading accounts instantly, 24/7."),
+        ("phone", "Trade anywhere", "Desktop, web and mobile: your MetaTrader 5 account works on every device."),
+      ] %}
+      <div class="col-md-6 col-lg-4"><div class="s-card">
+        <div class="s-icon"><i class="bi bi-{{ icon }}"></i></div>
+        <h3 class="h5">{{ title }}</h3><p class="text-muted mb-0">{{ text }}</p>
+      </div></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{% if groups %}
+<section class="s-section s-section-alt">
+  <div class="container">
+    <div class="d-flex flex-wrap justify-content-between align-items-end mb-5 gap-3">
+      <div><div class="s-eyebrow">Accounts</div><h2 class="s-h2 mt-2 mb-0">Pick the account that fits you</h2></div>
+      <a class="btn btn-outline-dark" href="/accounts">Compare all accounts <i class="bi bi-arrow-right ms-1"></i></a>
+    </div>
+    <div class="row g-4 justify-content-center">
+      {% for t in groups[:3] %}
+      <div class="col-md-6 col-lg-4">
+        <div class="s-plan {% if loop.index == 1 %}featured{% endif %}">
+          {% if loop.index == 1 %}<span class="badge-feat">Most popular</span>{% endif %}
+          <h3>{{ t.name }}</h3>
+          <p class="text-muted">{{ t.description or "Trade forex, metals, indices and crypto." }}</p>
+          <div><span class="text-muted small">Minimum deposit</span><div class="price">${{ t.min_deposit|money(0) }}</div></div>
+          <ul>
+            <li><span>Leverage</span><span>up to 1:{{ t.leverage_options|max }}</span></li>
+            <li><span>Spread</span><span>{{ ("from " ~ (t.spread_markup_points / 10)|round(1) ~ " pips") if t.spread_markup_points else "raw from 0.0" }}</span></li>
+            <li><span>Base currency</span><span>{{ t.currency }}</span></li>
+          </ul>
+          <a class="btn {{ 'btn-accent' if loop.index == 1 else 'btn-outline-dark' }} w-100" href="/portal/register">Open {{ t.name }}</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="s-section s-section-dark">
+  <div class="container">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-5">
+        <div class="s-eyebrow">Copy trading</div>
+        <h2 class="s-h2 mt-2">Let experienced traders work for you</h2>
+        <p class="s-sub">Choose a strategy, set how much to allocate and every trade is mirrored on your account automatically. Stop any time.</p>
+        <a class="btn btn-accent mt-3" href="/copy-trading">Explore strategies</a>
+      </div>
+      <div class="col-lg-7">
+        <div class="row g-3 justify-content-center">
+          {% for r in strategies %}
+          <div class="col-md-6"><div class="s-card-dark s-strat">
+            <div class="d-flex align-items-center gap-3 mb-3"><span class="s-avatar">{{ r.strategy.name[:1] }}</span>
+              <div><div class="fw-semibold text-white">{{ r.strategy.name }}</div><div class="small">{{ r.followers }} followers · fee {{ r.strategy.performance_fee_pct|money(0) }}%</div></div></div>
+            <div class="row text-center">
+              <div class="col stat"><div class="v {{ 'q-up' if r.profit > 0 else 'q-down' if r.profit < 0 else 'text-white' }}">{{ r.profit|money(0) }}</div><div class="l">Closed P/L $</div></div>
+              <div class="col stat"><div class="v text-white">{{ (r.win_rate ~ "%") if r.win_rate is not none else "—" }}</div><div class="l">Win rate</div></div>
+              <div class="col stat"><div class="v text-white">{{ r.trades }}</div><div class="l">Trades</div></div>
+            </div>
+          </div></div>
+          {% else %}
+          <div class="col"><div class="s-card-dark">Strategies will appear here once providers go live.</div></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="s-section">
+  <div class="container">
+    <div class="s-head-center"><div class="s-eyebrow">Get started</div><h2 class="s-h2 mt-2">Start trading in 3 simple steps</h2></div>
+    <div class="row g-4 text-center s-steps">
+      {% for title, text in [("Register", "Create your account in under two minutes."),
+                             ("Verify & fund", "Upload your ID, then deposit by bank transfer, card or crypto."),
+                             ("Trade", "Download MetaTrader 5 and start trading, or copy a strategy.")] %}
+      <div class="col-md-4"><div class="s-step-num">{{ loop.index }}</div><h3 class="h5 fw-semibold">{{ title }}</h3><p class="text-muted mb-0">{{ text }}</p></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="s-section pt-0">
+  <div class="container">
+    <div class="s-cta d-flex flex-wrap justify-content-between align-items-center gap-4">
+      <div>
+        {% if campaigns %}
+          <div class="s-chip mb-3">Promotion · code {{ campaigns[0].code }}</div>
+          <h2 class="h1 mb-2">Get a {{ campaigns[0].bonus_pct|money(0) }}% deposit bonus</h2>
+          <p class="mb-0 opacity-75">Up to ${{ campaigns[0].max_bonus|money(0) }} trading credit on your first deposit. Terms apply.</p>
+        {% else %}
+          <h2 class="h1 mb-2">Ready to trade?</h2><p class="mb-0 opacity-75">Open an account in minutes. Practice on demo first if you like.</p>
+        {% endif %}
+      </div>
+      <a class="btn btn-accent btn-lg" href="/portal/register">Open account</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

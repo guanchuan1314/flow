@@ -1,0 +1,35 @@
+{% extends "portal/layout.html" %}
+{% from "macros.html" import badge, empty %}
+{% block page_title %}Refer &amp; earn{% endblock %}
+{% block content %}
+<div class="row g-4 mb-4">
+  <div class="col-lg-7"><div class="card h-100"><div class="card-body">
+    <div class="form-label fw-semibold">Your referral link</div>
+    <div class="d-flex gap-2 mb-3"><input class="form-control mono" value="{{ link }}" readonly>
+      <button class="btn btn-outline-secondary" type="button" data-copy="{{ link }}"><i class="bi bi-clipboard"></i></button></div>
+    <p class="mb-1">Referral code: <span class="mono fw-semibold">{{ client.referral_code }}</span></p>
+    <p class="small text-muted mb-0">People who sign up with your link are linked to you.
+      {% if ib %}As an introducing broker you earn commission on their trading.{% else %}Contact us to become an introducing broker and earn commission on their trading.{% endif %}</p>
+  </div></div></div>
+  <div class="col-lg-5"><div class="card h-100"><div class="card-body text-center">
+    <img class="qr" src="{{ qr }}" alt="Referral QR code"><div class="small text-muted">Scan to register</div>
+  </div></div></div>
+</div>
+{% if ib %}
+<div class="row g-3 mb-4">
+  <div class="col-md-4"><div class="card kpi"><div class="card-body"><div class="kpi-label">Referred clients</div><div class="kpi-value">{{ referred|length }}</div></div></div></div>
+  <div class="col-md-4"><div class="card kpi"><div class="card-body"><div class="kpi-label">Pending commission</div><div class="kpi-value">{{ totals.get("pending", 0)|money }}</div></div></div></div>
+  <div class="col-md-4"><div class="card kpi"><div class="card-body"><div class="kpi-label">Paid to wallet</div><div class="kpi-value">{{ totals.get("paid", 0)|money }}</div></div></div></div>
+</div>
+<div class="card mb-4"><div class="card-header">Recent commissions</div><div class="table-responsive"><table class="table">
+  <thead><tr><th>Date</th><th>Level</th><th>Symbol</th><th class="num">Lots</th><th class="num">Amount</th><th>Status</th></tr></thead>
+  <tbody>{% for r in recent %}<tr><td class="small">{{ r.created_at|dt }}</td><td>L{{ r.level }}</td><td>{{ r.symbol }}</td><td class="num">{{ r.volume|money }}</td><td class="num">{{ r.amount|money }}</td><td>{{ badge(r.status) }}</td></tr>
+  {% else %}{{ empty(6, "No commissions yet.") }}{% endfor %}</tbody>
+</table></div></div>
+{% endif %}
+<div class="card"><div class="card-header">People you referred</div><div class="table-responsive"><table class="table">
+  <thead><tr><th>Name</th><th>Joined</th><th>Verified</th></tr></thead>
+  <tbody>{% for c in referred %}<tr><td>{{ c.first_name }} {{ c.last_name[:1] }}.</td><td class="small">{{ c.created_at|dt }}</td><td>{{ "Yes" if c.kyc_status.value == "approved" else "Not yet" }}</td></tr>
+  {% else %}{{ empty(3, "No referrals yet — share your link!") }}{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

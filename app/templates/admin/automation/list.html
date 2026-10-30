@@ -1,0 +1,41 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty, post_button %}
+{% block page_title %}Automation{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="small text-muted mb-0 mw-lg">Rules the CRM runs on its own: every {{ every }} minutes the worker looks for what each enabled rule
+    describes (in the CRM's accounts, deals, payments and KYC) and does its action. Nothing here is an MT5 setting; actions that change an
+    account (group, leverage, trading) are written to MT5 as usual. New rules start disabled.</p>
+  <a class="btn btn-success btn-sm" href="/admin/automation/new"><i class="bi bi-plus-lg"></i> New rule</a>
+</div>
+<div class="card mb-4"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Rule</th><th>When</th><th>Then</th><th>Cooldown</th><th>Last run</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rules %}
+    <tr class="{% if not r.enabled %}text-muted{% endif %}">
+      <td><a class="fw-semibold" href="/admin/automation/{{ r.id }}">{{ r.name }}</a></td>
+      <td class="small">{{ triggers[r.trigger][0] if r.trigger in triggers else r.trigger }}
+        <span class="text-muted">{% for k, v in (r.params or {}).items() %}{{ k|replace("_", " ") }} {{ v }}{{ ", " if not loop.last }}{% endfor %}</span></td>
+      <td class="small">{{ actions[r.action][0] if r.action in actions else r.action }}</td>
+      <td class="small">{{ (r.cooldown_hours ~ " h") if r.cooldown_hours else "once per target" }}</td>
+      <td class="small">{{ r.last_run_at|dt if r.last_run_at else "never" }}{% if r.last_result %}<div class="text-muted">{{ r.last_result }}</div>{% endif %}</td>
+      <td>{% if r.enabled %}<span class="badge text-bg-success">enabled</span>{% else %}<span class="badge text-bg-secondary">disabled</span>{% endif %}</td>
+      <td class="text-end text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="/admin/automation/{{ r.id }}?preview=1">Preview</a>
+        {{ post_button("/admin/automation/" ~ r.id ~ "/toggle", "Disable" if r.enabled else "Enable", csrf,
+                       "btn-outline-primary btn-sm") }}</td>
+    </tr>
+  {% else %}{{ empty(7, "No rules yet. For example: email the account manager when a client hasn't deposited 7 days after registering.") }}{% endfor %}
+  </tbody>
+</table></div></div>
+
+<h2 class="h6">Recent actions</h2>
+<div class="card"><div class="table-responsive"><table class="table table-sm mb-0 small">
+  <thead><tr><th>When</th><th>Rule</th><th>Target</th><th>Outcome</th><th>Message</th></tr></thead>
+  <tbody>{% for x in runs %}
+    <tr><td>{{ x.at|dt }}</td><td>{{ names.get(x.rule_id, x.rule_id) }}</td>
+      <td>{% if x.login %}<a href="/admin/accounts/{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
+      <td>{% if x.outcome == "done" %}<span class="badge text-bg-success">done</span>{% else %}<span class="badge text-bg-danger">failed</span>{% endif %}</td>
+      <td>{{ x.message }}</td></tr>
+  {% else %}{{ empty(5, "Nothing done yet.") }}{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

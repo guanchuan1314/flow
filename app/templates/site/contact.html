@@ -1,0 +1,42 @@
+{% extends "site/layout.html" %}
+{% from "macros.html" import csrf_input %}
+{% block page_title %}Contact us{% endblock %}
+{% block content %}
+{% set f = form or {} %}
+<section class="s-pagehead"><div class="container">
+  <div class="s-eyebrow">Contact</div>
+  <h1 class="mt-2">We're here to help</h1>
+  <p>Questions about accounts, deposits or partnerships? Send us a message and the right team will get back to you.</p>
+</div></section>
+<section class="s-section"><div class="container">
+  <div class="row g-5">
+    <div class="col-lg-7"><div class="s-card">
+      {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+      <form method="post" action="/contact">
+        {{ csrf_input(csrf) }}
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Full name</label><input class="form-control" name="name" value="{{ f.name or '' }}" required autocomplete="name"></div>
+          <div class="col-md-6"><label class="form-label">Email</label><input class="form-control" type="email" name="email" value="{{ f.email or '' }}" required autocomplete="email"></div>
+          <div class="col-md-6"><label class="form-label">Phone</label><input class="form-control" name="phone" value="{{ f.phone or '' }}" autocomplete="tel"></div>
+          <div class="col-md-6"><label class="form-label">Topic</label>
+            <select class="form-select" name="topic">
+              {% for v, l in [("general", "General question"), ("accounts", "Accounts & trading"), ("funding", "Deposits & withdrawals"), ("partnership", "Partnership / IB"), ("copy", "Copy trading & PAMM")] %}
+                <option value="{{ v }}" {% if v == topic %}selected{% endif %}>{{ l }}</option>{% endfor %}
+            </select></div>
+          <div class="col-12"><label class="form-label">Message</label><textarea class="form-control" name="message" rows="5" required>{{ f.message or '' }}</textarea></div>
+          {# honeypot: hidden from people, bots fill it in #}
+          <div class="d-none" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+          <div class="col-12"><button class="btn btn-accent btn-lg" type="submit">Send message</button></div>
+        </div>
+      </form>
+    </div></div>
+    <div class="col-lg-5">
+      <div class="s-card mb-3"><div class="s-icon"><i class="bi bi-envelope"></i></div><h3 class="h5">Email</h3>
+        <a class="s-link" href="mailto:{{ brand().support_email }}">{{ brand().support_email }}</a></div>
+      {% if brand().support_phone %}<div class="s-card mb-3"><div class="s-icon"><i class="bi bi-telephone"></i></div><h3 class="h5">Phone</h3>{{ brand().support_phone }}</div>{% endif %}
+      <div class="s-card"><div class="s-icon"><i class="bi bi-person-circle"></i></div><h3 class="h5">Existing client?</h3>
+        <p class="text-muted">Sign in to your client area for deposits, withdrawals and account changes.</p><a class="btn btn-outline-dark" href="/portal/login">Client area</a></div>
+    </div>
+  </div>
+</div></section>
+{% endblock %}

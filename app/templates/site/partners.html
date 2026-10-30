@@ -1,0 +1,39 @@
+{% extends "site/layout.html" %}
+{% block page_title %}Partners &amp; introducing brokers{% endblock %}
+{% block content %}
+<section class="s-pagehead"><div class="container">
+  <div class="s-eyebrow">Partnership</div>
+  <h1 class="mt-2">Grow with our IB programme</h1>
+  <p>Refer traders, earn rebates on every lot they trade, and build your own network of sub-partners. Payouts land in your wallet automatically.</p>
+  <a class="btn btn-accent btn-lg mt-2" href="/contact?topic=partnership">Become a partner</a>
+</div></section>
+<section class="s-section"><div class="container">
+  <div class="row g-4 mb-5">
+    {% for icon, title, text in [("cash-stack", "Rebates per lot", "Earn a fixed amount per lot or a share of the spread on every closed trade."),
+                                 ("diagram-3", "Multi-level network", "Earn from sub-IBs you introduce as well as your direct clients."),
+                                 ("graph-up", "Real-time reporting", "Track referrals, volume and commission from your client area."),
+                                 ("lightning", "Fast payouts", "Commissions are credited to your wallet; withdraw or trade them.")] %}
+    <div class="col-md-6 col-lg-3"><div class="s-card"><div class="s-icon"><i class="bi bi-{{ icon }}"></i></div>
+      <h3 class="h5">{{ title }}</h3><p class="text-muted mb-0">{{ text }}</p></div></div>
+    {% endfor %}
+  </div>
+  {% if plans %}
+  <h2 class="s-h2 mb-4">Commission plans</h2>
+  <div class="row g-4">
+    {% for p in plans %}
+    <div class="col-md-6"><div class="s-plan">
+      <h3>{{ p.name }}</h3>
+      <ul>
+        {% for r in p.rules %}
+          <li><span>{{ "All instruments" if r.symbol_pattern == "*" else r.symbol_pattern|replace("*", " (all)") }}</span>
+            <span>{% if r.kind.value == "per_lot" %}${{ r.value|money }} per lot{% elif r.kind.value == "spread_share" %}{{ (r.value * 100)|money(0) }}% of spread markup{% else %}{{ r.value|money(0) }}% of commission{% endif %}</span></li>
+        {% endfor %}
+        <li><span>Network levels</span><span>{{ p.level_shares|length }}</span></li>
+      </ul>
+      <a class="btn btn-outline-dark" href="/contact?topic=partnership">Apply for {{ p.name }}</a>
+    </div></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div></section>
+{% endblock %}

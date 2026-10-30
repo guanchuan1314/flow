@@ -1,0 +1,26 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty %}
+{% block page_title %}Payment methods{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="small text-muted mb-0"><strong>Manual</strong>: the client pays outside the CRM (and can upload a proof); finance approves.
+    <strong>Custom</strong>: an external payment provider; the client pays on the provider's page and its callback confirms the payment.</p>
+  <a class="btn btn-success btn-sm" href="/admin/payment-methods/new"><i class="bi bi-plus-lg"></i> New payment method</a>
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>Name</th><th>Type</th><th>Used for</th><th>Currency</th><th class="num">Limits</th><th>Options</th><th>Enabled</th></tr></thead>
+  <tbody>
+  {% for m in methods %}
+    <tr>
+      <td><i class="bi bi-{{ m.icon }} me-1"></i><a href="/admin/payment-methods/{{ m.id }}">{{ m.name }}</a></td>
+      <td>{% if m.is_custom %}<span class="badge text-bg-info">custom provider</span>{% else %}<span class="badge text-bg-light border">manual</span>{% endif %}</td>
+      <td>{{ ["deposits" if m.allow_deposit, "withdrawals" if m.allow_withdrawal]|select|join(", ") }}</td>
+      <td>{{ m.currency }}</td>
+      <td class="num">{{ m.min_amount|money if m.min_amount is not none else "-" }} – {{ m.max_amount|money if m.max_amount is not none else "-" }}</td>
+      <td class="small">{% if m.is_custom %}{{ "auto-credit" if m.auto_credit else "finance approves" }}{% else %}{{ "proof required" if m.requires_proof else "" }}{% endif %}</td>
+      <td>{% if m.enabled %}<span class="badge text-bg-success">yes</span>{% else %}<span class="badge text-bg-secondary">no</span>{% endif %}</td>
+    </tr>
+  {% else %}{{ empty(7, "No payment methods yet. Clients can't deposit until you add one.") }}{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

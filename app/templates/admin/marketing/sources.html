@@ -1,0 +1,16 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty %}
+{% block page_title %}Lead sources{% endblock %}
+{% block content %}
+<div class="card"><div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>Lead source</th><th>UTM source</th><th>UTM medium</th><th>UTM campaign</th><th class="num">Registrations</th><th class="num">KYC approved</th><th class="num">Funded</th><th class="num">Conversion</th></tr></thead>
+  <tbody>
+  {% for src, us, um, uc, n, verified, funded in rows %}
+    <tr><td>{{ src or "direct" }}</td><td>{{ us or "" }}</td><td>{{ um or "" }}</td><td>{{ uc or "" }}</td>
+      <td class="num">{{ n }}</td><td class="num">{{ verified or 0 }}</td><td class="num">{{ funded or 0 }}</td>
+      <td class="num">{{ ((funded or 0) / n * 100)|round(1) }}%</td></tr>
+  {% else %}{{ empty(8, "No registrations yet.") }}{% endfor %}
+  </tbody>
+</table></div></div>
+<p class="small text-muted mt-2">Add <span class="mono">?ref=CODE&amp;utm_source=…&amp;utm_medium=…&amp;utm_campaign=…</span> to the portal registration link to track campaigns.</p>
+{% endblock %}

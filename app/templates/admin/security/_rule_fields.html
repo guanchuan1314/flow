@@ -1,0 +1,34 @@
+{# Fields of an IP rule (new and edit). `r` is the rule or None. #}
+{% from "macros.html" import field %}
+<div class="row" data-toggle-scope>
+  {{ field("network", "IP address or range", r.network if r else "", required=True, col="col-md-4",
+           placeholder="203.0.113.7 or 203.0.113.0/24", help="IPv4 or IPv6; a range in CIDR notation.") }}
+  <div class="col-md-2 mb-3">
+    <label class="form-label" for="f-action">Action</label>
+    <select class="form-select" id="f-action" name="action">
+      <option value="block" {% if not r or r.action == "block" %}selected{% endif %}>Block (blacklist)</option>
+      <option value="allow" {% if r and r.action == "allow" %}selected{% endif %}>Allow (whitelist)</option>
+    </select>
+  </div>
+  <div class="col-md-3 mb-3">
+    <label class="form-label" for="f-scope">Applies to (CRM)</label>
+    <select class="form-select" id="f-scope" name="scope">
+      {% for k, label in scopes.items() %}<option value="{{ k }}" {% if (r.scope if r else "all") == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3 mb-3">
+    <label class="form-label" for="f-expires">Expires (optional)</label>
+    <input class="form-control" id="f-expires" type="datetime-local" name="expires_at" value="{{ r.expires_at.strftime('%Y-%m-%dT%H:%M') if r and r.expires_at else '' }}">
+  </div>
+  {{ field("description", "Description", r.description if r else "", col="col-md-8", placeholder="Office VPN, abusive scraper, …") }}
+  <div class="col-md-4 mb-3 d-flex align-items-end"><div class="form-check">
+    <input class="form-check-input" type="checkbox" name="enabled" id="f-enabled" {% if not r or r.enabled %}checked{% endif %}>
+    <label class="form-check-label" for="f-enabled">Enabled</label></div></div>
+
+  <div class="col-12 mb-2"><div class="form-check">
+    <input class="form-check-input" type="checkbox" name="apply_mt5" id="f-apply" value="on" {% if r and r.apply_mt5 %}checked{% endif %}>
+    <label class="form-check-label fw-semibold" for="f-apply">Also apply on MT5 (server firewall)</label>
+    <div class="form-text">Creating, changing and deleting this rule then updates the MT5 firewall too. The MT5 firewall covers
+      <strong>every</strong> connection to the MT5 server (traders' terminals, managers and this CRM), whatever the CRM scope.
+      Needs a manager login with MT5 administrator access.</div></div></div>
+</div>

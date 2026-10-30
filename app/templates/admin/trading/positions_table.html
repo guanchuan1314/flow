@@ -1,0 +1,21 @@
+{% from "macros.html" import empty, pagination, pnl %}
+<div class="d-flex gap-4 px-3 pt-2 small"><span>Total lots: <strong>{{ total_lots|money }}</strong></span>
+  <span>Floating P/L: <strong>{{ pnl(total_profit) }}</strong></span></div>
+<div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>Position</th><th>Login</th><th>Client</th><th>Symbol</th><th>Side</th><th class="num">Lots</th><th class="num">Open price</th><th class="num">Current</th><th class="num">SL</th><th class="num">TP</th><th class="num">Swap</th><th class="num">Profit</th><th>Opened</th></tr></thead>
+  <tbody>
+  {% for p in page.items %}
+    {% set owner = owners.get(p.login) %}
+    <tr>
+      <td class="mono">{{ p.position_id }}</td>
+      <td><a href="/admin/accounts/{{ p.login }}">{{ p.login }}</a></td>
+      <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
+      <td>{{ p.symbol }}</td><td>{{ p.action|side }}</td>
+      <td class="num">{{ p.volume|money }}</td><td class="num">{{ p.price_open|price }}</td><td class="num">{{ p.price_current|price }}</td>
+      <td class="num">{{ p.sl|price if p.sl else "" }}</td><td class="num">{{ p.tp|price if p.tp else "" }}</td>
+      <td class="num">{{ p.swap|money }}</td><td class="num">{{ pnl(p.profit) }}</td><td class="small">{{ p.time_create|dt }}</td>
+    </tr>
+  {% else %}{{ empty(14, "No open positions.") }}{% endfor %}
+  </tbody>
+</table></div>
+{{ pagination(page, request) }}

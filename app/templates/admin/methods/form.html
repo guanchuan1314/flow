@@ -1,0 +1,147 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, csrf_input, post_button %}
+{% set what = "payment method" if scope == "payment" else "KYC method" %}
+{% block page_title %}{{ ("Edit " ~ m.name) if m else "New " ~ what }}{% endblock %}
+{% block content %}
+{% macro check(name, label, on, help=None) -%}
+  <div class="form-check mb-2">
+    <input class="form-check-input" type="checkbox" name="{{ name }}" id="f-{{ name }}" {% if on %}checked{% endif %}>
+    <label class="form-check-label" for="f-{{ name }}">{{ label }}</label>
+    {% if help %}<div class="form-text">{{ help }}</div>{% endif %}
+  </div>
+{%- endmacro %}
+<div class="row g-3" data-toggle-scope>
+<div class="col-xl-8">
+<form method="post" action="{{ base }}/{{ m.id if m else 'new' }}">
+  {{ csrf_input(csrf) }}
+  <div class="card mb-3"><div class="card-body"><div class="row">
+    {{ field("name", "Name", m.name if m else "", required=True, col="col-md-6",
+             placeholder="Bank transfer, Card, USDT…" if scope == "payment" else "Manual review, Sumsub…") }}
+    <div class="col-md-6 mb-3">
+      <label class="form-label" for="f-kind">Type</label>
+      <select class="form-select" id="f-kind" name="kind">
+        <option value="manual" {% if not m or not m.is_custom %}selected{% endif %}>Manual{{ " (client pays offline, uploads proof)" if scope == "payment" else " (documents reviewed by staff)" }}</option>
+        <option value="custom" {% if m and m.is_custom %}selected{% endif %}>Custom provider (external URL + callback)</option>
+      </select>
+    </div>
+    {{ field("description", "Short description (shown to clients)", m.description if m else "", col="col-12",
+             placeholder="1-3 business days, no fee" if scope == "payment" else "") }}
+    <div class="col-12 mb-3" data-show-when="kind=manual">
+      <label class="form-label" for="f-instructions">Instructions for the client</label>
+      <textarea class="form-control" id="f-instructions" name="instructions" rows="4"
+        placeholder="{{ 'Bank name, IBAN, SWIFT, account holder; use your client ID as the reference.' if scope == 'payment' else 'Upload a clear colour photo of the whole document…' }}">{{ m.instructions if m else "" }}</textarea>
+    </div>
+  </div></div></div>
+
+  {% if scope == "payment" %}
+  <div class="card mb-3"><div class="card-header">Availability</div><div class="card-body"><div class="row">
+    <div class="col-md-6">
+      {{ check("enabled", "Enabled (offered to clients)", not m or m.enabled) }}
+      {{ check("allow_deposit", "Deposits", not m or m.allow_deposit) }}
+      {{ check("allow_withdrawal", "Withdrawals", m and m.allow_withdrawal, "Withdrawals are paid out by finance, for every type.") }}
+      <div data-show-when="kind=manual">{{ check("requires_proof", "Require a proof of payment upload", m and m.requires_proof) }}</div>
+    </div>
+    <div class="col-md-6"><div class="row">
+      {{ field("currency", "Currency", m.currency if m else "USD", col="col-6") }}
+      {{ field("sort_order", "Order", m.sort_order if m else 100, type="number", col="col-6") }}
+      {{ field("min_amount", "Minimum", m.min_amount if m else "", type="number", step="0.01", col="col-6") }}
+      {{ field("max_amount", "Maximum", m.max_amount if m else "", type="number", step="0.01", col="col-6") }}
+      {{ field("icon", "Icon", m.icon if m else "bank", col="col-12", help="Bootstrap icon name: bank, credit-card, currency-bitcoin, wallet2…") }}
+    </div></div>
+  </div></div></div>
+  {% else %}
+  <div class="card mb-3" data-show-when="kind=manual"><div class="card-header">Documents the client must upload</div><div class="card-body">
+    {% set required = (m.required_documents or []) if m else ["identity", "proof_of_address"] %}
+    {% for key, (label, types) in categories.items() %}
+      <div class="form-check mb-1">
+        <input class="form-check-input" type="checkbox" name="required_documents" value="{{ key }}" id="doc-{{ key }}"
+               {% if key in required %}checked{% endif %}>
+        <label class="form-check-label" for="doc-{{ key }}">{{ label }}</label>
+      </div>
+    {% endfor %}
+    <div class="form-text">The client's verification goes to review once all of these are uploaded.</div>
+  </div></div>
+  {% endif %}
+
+  <div class="card mb-3" data-show-when="kind=custom"><div class="card-header">Provider: where to send the client</div><div class="card-body"><div class="row">
+    {{ field("api_url", "Provider API URL (creates a unique " ~ ("payment" if scope == "payment" else "verification") ~ " URL)", m.api_url if m else "", col="col-12",
+             placeholder="https://api.provider.com/v1/" ~ ("checkout" if scope == "payment" else "verifications"),
+             help="The CRM POSTs the order as signed JSON and sends the client to the URL in the answer.") }}
+    {{ field("url_field", "URL field in the answer", m.url_field if m else "url", col="col-md-6", help="Dot path, e.g. data.checkout_url") }}
+    <div class="col-md-6 mb-3">
+      <label class="form-label" for="f-api_key">API key {% if m and m.api_key_enc %}<span class="badge text-bg-light border">stored</span>{% endif %}</label>
+      <input class="form-control" id="f-api_key" name="api_key" type="password" autocomplete="new-password" placeholder="{{ 'leave blank to keep' if m and m.api_key_enc else 'optional' }}">
+      <div class="form-text">Sent as <span class="mono">Authorization: Bearer …</span></div>
+    </div>
+    {{ field("redirect_template", "…or a redirect URL template (no API call)", m.redirect_template if m else "", col="col-12",
+             placeholder="https://pay.provider.com/?ref={reference}&amount={amount}&cur={currency}&cb={callback_url}&sig={signature}",
+             help="Placeholders: {reference} {amount} {currency} {email} {first_name} {last_name} {client_id} {callback_url} {return_url} {signature}") }}
+  </div></div></div>
+
+  <div class="card mb-3" data-show-when="kind=custom"><div class="card-header">Provider: result callback</div><div class="card-body"><div class="row">
+    <div class="col-md-6 mb-3">
+      <label class="form-label" for="f-secret">Shared secret {% if m and m.secret_enc %}<span class="badge text-bg-light border">stored</span>{% endif %}</label>
+      <input class="form-control" id="f-secret" name="secret" type="password" autocomplete="new-password" placeholder="{{ 'leave blank to keep' if m and m.secret_enc else 'required' }}">
+      <div class="form-text">HMAC-SHA256 key: signs our requests and verifies the provider's callbacks. Stored encrypted.
+        Changing it needs the {{ 'finance.approve' if scope == 'payment' else 'kyc.review' }} permission too.</div>
+    </div>
+    {{ field("signature_header", "Signature header", m.signature_header if m else "X-Signature", col="col-md-6") }}
+    {{ field("ref_field", "Reference field", m.ref_field if m else "reference", col="col-md-4") }}
+    {{ field("status_field", "Status field", m.status_field if m else "status", col="col-md-4") }}
+    {{ field("reason_field", "Reason field", m.reason_field if m else "reason", col="col-md-4") }}
+    {{ field("success_values", "Status values meaning success", m.success_values if m else "success,paid,completed,approved", col="col-md-6") }}
+    {{ field("failure_values", "Status values meaning failure", m.failure_values if m else "failed,cancelled,declined,expired,rejected", col="col-md-6") }}
+    {% if scope == "payment" %}
+      {{ field("amount_field", "Paid amount field", m.amount_field if m else "amount", col="col-md-6", help="Checked against the request; a missing or different amount (or a different \"currency\") is held for review. Required for auto-credit.") }}
+      <div class="col-md-6 mb-3 d-flex align-items-end">{{ check("auto_credit", "Credit automatically when paid", not m or m.auto_credit, "Otherwise finance approves paid deposits. Turning it on needs the finance.approve permission.") }}</div>
+    {% endif %}
+  </div></div></div>
+
+  <button class="btn btn-primary" type="submit">Save</button>
+  <a class="btn btn-link" href="{{ base }}">Cancel</a>
+</form>
+{% if m %}
+  <div class="card mt-3 border-danger"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div class="small text-muted">{{ "Only possible if no payment request used it; disable it otherwise." if scope == "payment" else "Not possible for the active method or one with verification history." }}</div>
+    {{ post_button(base ~ "/" ~ m.id ~ "/delete", '<i class="bi bi-trash"></i> Delete ' ~ what, csrf, "btn-outline-danger btn-sm",
+                   confirm="Delete " ~ m.name ~ "?", danger=True) }}
+  </div></div>
+{% endif %}
+</div>
+
+<div class="col-xl-4">
+  {% if m and m.is_custom %}
+  <div class="card mb-3"><div class="card-header">Callback URL for the provider</div><div class="card-body">
+    <div class="input-group mb-2">
+      <input class="form-control mono small" value="{{ callback_url }}" readonly aria-label="Callback URL">
+      <button class="btn btn-outline-secondary" type="button" data-copy="{{ callback_url }}"><i class="bi bi-clipboard"></i></button>
+    </div>
+    <p class="small text-muted mb-2">Unique to this method. It is also sent with every request as <span class="mono">callback_url</span>.</p>
+    {{ post_button(base ~ "/" ~ m.id ~ "/callback-url", "Generate a new URL", csrf, "btn-outline-warning btn-sm",
+                   confirm="Generate a new callback URL? The current one stops working immediately.") }}
+  </div></div>
+  {% endif %}
+  <div class="card mb-3" data-show-when="kind=custom"><div class="card-header">How the integration works</div><div class="card-body small">
+    <ol class="ps-3 mb-0">
+      <li class="mb-2">The client chooses this method. The CRM creates a unique <span class="mono">reference</span> and POSTs JSON to the
+        API URL: <span class="mono">reference, {{ "amount, currency, description, " if scope == "payment" else "date_of_birth, " }}client_id, email,
+        first_name, last_name, country, callback_url, return_url</span>, signed in the signature header (hex HMAC-SHA256 of the body).</li>
+      <li class="mb-2">The provider answers with the unique URL; the client is redirected there.</li>
+      <li class="mb-2">The provider POSTs the result (JSON or form) to the callback URL, signed the same way, with the reference
+        and status{{ " and amount" if scope == "payment" else "" }}.</li>
+      <li>{{ "Success credits the deposit (or waits for finance); failure rejects it." if scope == "payment" else "Success approves the client; failure rejects them with the reason." }}
+        Every callback is logged below.</li>
+    </ol>
+  </div></div>
+  {% if callbacks %}
+  <div class="card"><div class="card-header">Recent callbacks</div>
+    <ul class="list-group list-group-flush small">
+    {% for c in callbacks %}
+      <li class="list-group-item"><span class="text-muted">{{ c.created_at|dt }}</span> · <span class="mono">{{ c.reference or "-" }}</span>
+        {% if not c.signature_ok %}<span class="badge text-bg-danger">bad signature</span>{% endif %}<br>{{ c.outcome }}</li>
+    {% endfor %}
+    </ul></div>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

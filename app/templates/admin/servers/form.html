@@ -1,0 +1,104 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, csrf_input, post_button, badge %}
+{% block page_title %}Configuration{% endblock %}
+{% block content %}
+{% set in_use = s and usage.get("accounts", 0) > 0 %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="card"><div class="card-body">
+      <form method="post" action="/admin/mt5-servers/{{ s.id if s else 'new' }}" autocomplete="off">
+        {{ csrf_input(csrf) }}
+        <h2 class="h6 text-uppercase text-muted mb-3">Server</h2>
+        <div class="row">
+          {{ field("name", "Name (internal)", s.name if s else "", required=True, col="col-md-5", placeholder="Live London") }}
+          <div class="col-md-7 mb-3">
+            <label class="form-label" for="f-kind">Type</label>
+            <select class="form-select" id="f-kind" name="kind" {% if in_use %}disabled{% endif %}>
+              <option value="manager" {% if not s or s.kind.value == "manager" %}selected{% endif %}>MT5 Manager API</option>
+              {% if simulators_allowed or (s and s.kind.value == "simulator") %}
+              <option value="simulator" {% if s and s.kind.value == "simulator" %}selected{% endif %}>Simulator (testing)</option>
+              {% endif %}
+            </select>
+            {% if in_use %}<input type="hidden" name="kind" value="{{ s.kind.value }}">{% endif %}
+          </div>
+          {{ field("address", "Server address", s.address if s else "", col="col-md-6", placeholder="mt5.yourbroker.com:443",
+                   help="Host and port of the MT5 access server (Manager API).") }}
+          {{ field("terminal_name", "Server name shown to clients", s.terminal_name if s else "", col="col-md-6",
+                   placeholder="YourBroker-Live", help="What clients choose in the MetaTrader 5 login dialog.") }}
+        </div>
+
+        <h2 class="h6 text-uppercase text-muted mb-3 mt-2">Manager credentials</h2>
+        <div class="row">
+          {{ field("manager_login", "Manager login", s.manager_login if s and s.manager_login else "", type="number", col="col-md-4") }}
+          <div class="col-md-5 mb-3">
+            <label class="form-label" for="f-password">Manager password</label>
+            <input class="form-control" id="f-password" name="password" type="password" autocomplete="new-password"
+                   placeholder="{{ '•••••••• (unchanged)' if s and s.manager_password_enc else '' }}">
+            <div class="form-text">{% if s and s.manager_password_enc %}Stored encrypted. Leave empty to keep it.{% else %}Stored encrypted; never shown again.{% endif %}</div>
+          </div>
+          {{ field("timeout_seconds", "Timeout (seconds)", ((s.timeout_ms // 1000) if s else 30), type="number", col="col-md-3") }}
+        </div>
+        <div class="alert alert-light border small">The manager account needs these rights in MT5 Administrator: <strong>users</strong>,
+          <strong>accounts</strong>, <strong>deals &amp; positions</strong>, <strong>balance operations</strong>, and <strong>dealer</strong>
+          (for copy trading). Restrict it to the groups the CRM manages.</div>
+
+        <h2 class="h6 text-uppercase text-muted mb-3 mt-2">Options</h2>
+        <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="enabled" id="f-enabled" {% if not s or s.enabled %}checked{% endif %}>
+          <label class="form-check-label" for="f-enabled">Enabled: sync, copy trading and account operations use this server</label></div>
+        <div class="mb-3"><label class="form-label" for="f-notes">Notes</label>
+          <textarea class="form-control" id="f-notes" name="notes" rows="2">{{ s.notes if s else "" }}</textarea></div>
+
+        <button class="btn btn-primary" type="submit">{{ "Save changes" if s else "Save & test connection" }}</button>
+      </form>
+    </div></div>
+  </div>
+  {% if s %}
+  <div class="col-xl-4">
+    <div class="card mb-3"><div class="card-header">Connection</div><div class="card-body">
+      <p class="mb-2">Last test: {{ badge(s.last_status) }} <span class="small text-muted">{{ s.last_checked_at|dt if s.last_checked_at else "never" }}</span></p>
+      {% if s.last_error %}<div class="alert alert-danger small py-2">{{ s.last_error }}</div>{% endif %}
+      {{ post_button("/admin/mt5-servers/" ~ s.id ~ "/test", '<i class="bi bi-plug"></i> Test connection', csrf, "btn-outline-primary") }}
+    </div></div>
+    <div class="card border-danger"><div class="card-header">Remove from the CRM</div><div class="card-body">
+      <p class="small mb-2">Deleting removes this server <strong>from the CRM only</strong>. Nothing is deleted or changed
+        on the MT5 server: its accounts, balances and history stay there.</p>
+      {% set has_data = crm_data.values()|sum > 0 %}
+      {% if has_data %}
+        <ul class="small mb-2">{% for k, v in crm_data.items() if v %}<li>{{ v }} {{ k }}</li>{% endfor %}</ul>
+        <p class="small text-muted">To keep this data, disable the server instead.</p>
+        <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#delete-server"><i class="bi bi-trash"></i> Delete server…</button>
+      {% else %}
+        {{ post_button("/admin/mt5-servers/" ~ s.id ~ "/delete", '<i class="bi bi-trash"></i> Delete server', csrf, "btn-outline-danger btn-sm",
+                       confirm="Remove " ~ s.name ~ " from the CRM? Nothing changes on the MT5 server.", danger=True) }}
+      {% endif %}
+    </div></div>
+    {% if has_data %}
+    <div class="modal fade" id="delete-server" tabindex="-1" aria-labelledby="delete-server-title" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <form method="post" action="/admin/mt5-servers/{{ s.id }}/delete">
+          {{ csrf_input(csrf) }}
+          <input type="hidden" name="purge" value="on">
+          <div class="modal-header"><h5 class="modal-title" id="delete-server-title">Delete {{ s.name }} from the CRM</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <div class="modal-body">
+            <div class="alert alert-info small mb-3"><i class="bi bi-shield-check me-1"></i>The MT5 server is not touched: no account,
+              group, deal or setting is deleted there. You can add the server again later and import everything back.</div>
+            <p class="small mb-1">The CRM's copy of this server's data is deleted:</p>
+            <ul class="small">{% for k, v in crm_data.items() if v %}<li>{{ v }} {{ k }}</li>{% endfor %}</ul>
+            <p class="small text-muted">Clients, wallets, payments and the audit log are kept. Not possible while its accounts
+              have copy-trading / PAMM roles, pending payments or unpaid IB commissions.</p>
+            <label class="form-label small" for="confirm-server">Type <strong>{{ s.name }}</strong> to confirm</label>
+            <input class="form-control" id="confirm-server" name="confirm_name" autocomplete="off" required>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-danger">Delete from the CRM</button>
+          </div>
+        </form>
+      </div></div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

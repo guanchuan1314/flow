@@ -1,0 +1,27 @@
+{% extends "site/layout.html" %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="s-pagehead"><div class="container"><div class="s-eyebrow">Legal</div><h1 class="mt-2">{{ title }}</h1></div></section>
+<section class="s-section"><div class="container"><div class="row g-5">
+  <div class="col-lg-3"><div class="list-group s-legal-nav">
+    {% for s, t in pages.items() %}<a class="list-group-item list-group-item-action {% if s == slug %}active{% endif %}" href="/legal/{{ s }}">{{ t }}</a>{% endfor %}
+  </div></div>
+  <div class="col-lg-9 s-prose">
+    <div class="s-placeholder mb-4"><strong>Template text.</strong> This page must be replaced with documents prepared by your legal and compliance team for your licence and jurisdictions before going live.</div>
+    {% if slug == "risk-disclosure" %}
+      <h2>Leveraged products</h2><p>Contracts for difference (CFDs) and foreign exchange are leveraged products. Leverage magnifies both profits and losses, and you may lose more than your initial investment unless negative balance protection applies to your account.</p>
+      <h2>Market risk</h2><p>Prices can move rapidly, gap over weekends or news, and liquidity can dry up. Stop-loss orders do not guarantee execution at the requested price.</p>
+      <h2>Copy trading and PAMM</h2><p>Copying a strategy or investing in a PAMM fund does not remove risk. The performance of a strategy provider or manager in the past does not guarantee future results.</p>
+    {% elif slug == "terms" %}
+      <h2>The agreement</h2><p>These terms govern your use of {{ brand().company_legal_name }}'s services, client area and trading accounts.</p>
+      <h2>Your account</h2><p>You must provide accurate information and keep your credentials secure. We may suspend accounts to comply with regulation.</p>
+    {% elif slug == "privacy" %}
+      <h2>What we collect</h2><p>Identity and contact details, verification documents, trading and payment history, and technical data such as IP addresses.</p>
+      <h2>Why</h2><p>To provide the service, meet legal obligations (including anti-money-laundering rules) and protect your account.</p>
+    {% else %}
+      <h2>Verification</h2><p>We verify the identity and address of every client before live trading, deposits or withdrawals.</p>
+      <h2>Monitoring</h2><p>Transactions are monitored, and withdrawals are returned to the original funding method where possible.</p>
+    {% endif %}
+  </div>
+</div></div></section>
+{% endblock %}

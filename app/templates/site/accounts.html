@@ -1,0 +1,41 @@
+{% extends "site/layout.html" %}
+{% block page_title %}Account groups{% endblock %}
+{% block content %}
+<section class="s-pagehead"><div class="container">
+  <div class="s-eyebrow">Accounts</div>
+  <h1 class="mt-2">Accounts built for every trader</h1>
+  <p>Same award-winning platform, different pricing models. Open as many accounts as you need from one client area.</p>
+</div></section>
+<section class="s-section"><div class="container">
+  <div class="row g-4 mb-5 justify-content-center">
+    {% for t in groups %}
+    <div class="col-md-6 col-lg-4">
+      <div class="s-plan {% if loop.index == 1 %}featured{% endif %}">
+        {% if loop.index == 1 %}<span class="badge-feat">Most popular</span>{% endif %}
+        <h3>{{ t.name }}</h3>
+        <p class="text-muted">{{ t.description or "Trade forex, metals, indices and crypto CFDs." }}</p>
+        <div><span class="text-muted small">Minimum deposit</span><div class="price">${{ t.min_deposit|money(0) }}</div></div>
+        <ul>
+          <li><span>Spread</span><span>{{ ("from " ~ (t.spread_markup_points / 10)|round(1) ~ " pips") if t.spread_markup_points else "raw, from 0.0 pips" }}</span></li>
+          <li><span>Commission</span><span>{{ "none" if t.spread_markup_points else "per lot" }}</span></li>
+          <li><span>Leverage</span><span>1:{{ t.leverage_options|min }} – 1:{{ t.leverage_options|max }}</span></li>
+          <li><span>Currency</span><span>{{ t.currency }}</span></li>
+          <li><span>Platform</span><span>MetaTrader 5</span></li>
+          <li><span>Copy trading &amp; PAMM</span><span><i class="bi bi-check-lg text-success"></i></span></li>
+        </ul>
+        <a class="btn {{ 'btn-accent' if loop.index == 1 else 'btn-outline-dark' }} w-100" href="/portal/register">Open {{ t.name }} account</a>
+      </div>
+    </div>
+    {% else %}
+    <div class="col"><p class="text-muted">Account groups are being configured. Please check back soon.</p></div>
+    {% endfor %}
+  </div>
+  {% if demo %}
+  <div class="s-card s-static d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div><h3 class="h4 fw-bold mb-1"><i class="bi bi-joystick me-2 text-primary"></i>Practice risk-free with a demo account</h3>
+      <p class="text-muted mb-0">${{ demo.demo_initial_balance|money(0) }} in virtual funds, real market prices, no time limit.</p></div>
+    <a class="btn btn-accent" href="/portal/register">Get a free demo</a>
+  </div>
+  {% endif %}
+</div></section>
+{% endblock %}

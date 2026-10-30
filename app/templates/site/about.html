@@ -1,0 +1,23 @@
+{% extends "site/layout.html" %}
+{% block page_title %}About us{% endblock %}
+{% block content %}
+<section class="s-pagehead"><div class="container">
+  <div class="s-eyebrow">About</div>
+  <h1 class="mt-2">Built by traders, for traders</h1>
+  <p>{{ brand().company_legal_name }} gives retail and professional traders transparent access to global markets on MetaTrader 5.</p>
+</div></section>
+<section class="s-section"><div class="container">
+  <div class="row g-5 align-items-center">
+    <div class="col-lg-6 s-prose">
+      <h2>Our commitment</h2>
+      <p class="text-muted">We believe trading should be fair and transparent. That means clear pricing, fast execution, client money kept separate from our own, and support from people who understand the markets.</p>
+      <div class="s-placeholder small mt-3"><strong>For the broker:</strong> replace this section with your company story, licences, offices and key people.</div>
+    </div>
+    <div class="col-lg-6"><div class="row g-3">
+      {% for v, l in [("Segregated", "client funds"), ("Negative", "balance protection"), ("24/5", "client support"), ("MT5", "trading platform")] %}
+      <div class="col-6"><div class="s-card s-static text-center"><div class="h3 fw-bold mb-1">{{ v }}</div><div class="text-muted">{{ l }}</div></div></div>
+      {% endfor %}
+    </div></div>
+  </div>
+</div></section>
+{% endblock %}

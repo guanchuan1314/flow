@@ -1,0 +1,43 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, badge, empty, pagination %}
+{% block page_title %}IB commissions{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="card kpi"><div class="card-body">
+    <div class="kpi-label">Pending payout</div><div class="kpi-value">{{ pending_total|money }} {{ settings().base_currency }}</div>
+    {% if staff.has_perm("marketing.payout") and pending_total %}
+    <form method="post" action="/admin/commissions/payout" class="mt-2" data-confirm="Credit all pending commissions to IB wallets?">
+      {{ csrf_input(csrf) }}<button class="btn btn-sm btn-success">Pay out all pending</button></form>
+    {% endif %}
+  </div></div></div>
+  {% if staff.has_perm("marketing.manage") %}
+  <div class="col-md-8"><div class="card"><div class="card-body">
+    <form method="post" action="/admin/commissions/recalculate" class="row g-2 align-items-end">
+      {{ csrf_input(csrf) }}
+      <div class="col-auto"><label class="form-label small">From</label><input class="form-control form-control-sm" type="date" name="date_from" required></div>
+      <div class="col-auto"><label class="form-label small">To</label><input class="form-control form-control-sm" type="date" name="date_to" required></div>
+      <div class="col-auto"><button class="btn btn-sm btn-outline-primary">Recalculate missing</button></div>
+      <div class="col-12 form-text">Fills in commissions for deals in the range that have none (e.g. after creating an IB later). Never duplicates.</div>
+    </form>
+  </div></div></div>
+  {% endif %}
+</div>
+<ul class="nav nav-pills mb-3">
+  {% for s, label in [("pending", "Pending"), ("paid", "Paid"), ("", "All")] %}
+    <li class="nav-item"><a class="nav-link {% if status == s %}active{% endif %}" href="?status={{ s }}&ib_id={{ ib_id }}">{{ label }}</a></li>
+  {% endfor %}
+</ul>
+<div class="card"><div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>Time</th><th>IB</th><th>Level</th><th>Trader</th><th>Login</th><th>Deal</th><th>Symbol</th><th class="num">Lots</th><th class="num">Amount</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for r in page.items %}
+    <tr><td class="small">{{ r.created_at|dt }}</td>
+      <td><a href="/admin/ibs/{{ r.ib_id }}">{{ names.get(ib_clients.get(r.ib_id), "IB #" ~ r.ib_id) }}</a></td>
+      <td>L{{ r.level }}</td><td><a href="/admin/clients/{{ r.trader_client_id }}">{{ names.get(r.trader_client_id, r.trader_client_id) }}</a></td>
+      <td>{{ r.login }}</td><td class="mono">{{ r.deal_ticket }}</td><td>{{ r.symbol }}</td>
+      <td class="num">{{ r.volume|money }}</td><td class="num">{{ r.amount|money }}</td><td>{{ badge(r.status) }}</td></tr>
+  {% else %}{{ empty(10, "No commissions in this view.") }}{% endfor %}
+  </tbody>
+</table></div>
+{{ pagination(page, request) }}</div>
+{% endblock %}

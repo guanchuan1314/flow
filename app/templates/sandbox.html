@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Sandbox provider{% endblock %}
+{% block body %}
+<div class="container py-5 mw-sm">
+  <div class="card shadow-sm"><div class="card-body p-4">
+    <div class="badge text-bg-warning mb-3">SANDBOX - test provider, no real money or identity check</div>
+    {% if kyc %}
+      <h1 class="h4">Identity verification</h1>
+      <p class="text-muted">{{ p.first_name }} {{ p.last_name }} · {{ p.email }}</p>
+    {% else %}
+      <h1 class="h4">Pay {{ p.amount }} {{ p.currency }}</h1>
+      <p class="text-muted">{{ p.description }} · {{ p.email }}</p>
+    {% endif %}
+    <p class="small text-muted">Reference <span class="font-monospace">{{ p.reference }}</span></p>
+    <form method="post" action="/sandbox/provider/page/{{ sid }}" class="d-flex gap-2">
+      <button class="btn btn-success flex-grow-1" name="decision" value="approve" type="submit">{{ "Approve" if kyc else "Pay" }}</button>
+      <button class="btn btn-outline-danger flex-grow-1" name="decision" value="decline" type="submit">Decline</button>
+    </form>
+  </div></div>
+</div>
+{% endblock %}

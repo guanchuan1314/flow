@@ -1,0 +1,23 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, select, csrf_input %}
+{% block page_title %}New payment for {{ c.full_name }}{% endblock %}
+{% block content %}
+<div class="card mw-md"><div class="card-body">
+  <form method="post" action="/admin/payments/new">
+    {{ csrf_input(csrf) }}
+    <input type="hidden" name="client_id" value="{{ c.id }}">
+    <div class="row">
+      {{ select("kind", "Type", [("deposit", "Deposit"), ("withdrawal", "Withdrawal")], col="col-md-4") }}
+      {{ field("amount", "Amount (" ~ settings().base_currency ~ ")", type="number", step="0.01", required=True, col="col-md-4") }}
+      {{ select("method", "Method", method_options, col="col-md-4") }}
+      {{ select("trading_login", "Target", account_options, blank="Client wallet", col="col-md-6") }}
+      {{ field("promo_code", "Promo code", col="col-md-6", help="Deposits into an MT5 account only.") }}
+      {{ field("external_ref", "Bank / PSP reference", col="col-md-6") }}
+      {{ field("details", "Notes", col="col-md-6") }}
+    </div>
+    <div class="alert alert-info small">Maker-checker: you are creating this request; a different staff member with approval rights must approve it.</div>
+    <button class="btn btn-primary" type="submit">Create request</button>
+    <a class="btn btn-link" href="/admin/clients/{{ c.id }}?tab=finance">Cancel</a>
+  </form>
+</div></div>
+{% endblock %}

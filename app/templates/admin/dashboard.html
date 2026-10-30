@@ -1,0 +1,86 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import badge, empty, pnl %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% macro tile(label, value, icon, href=None, warn=False) -%}
+  <div class="col-6 col-xl-3">
+    <div class="card kpi h-100 {% if href %}kpi-link{% endif %} {% if warn %}kpi-warn border-warning{% endif %}">
+      <div class="card-body">
+        <div class="d-flex align-items-start gap-3">
+          <span class="kpi-icon"><i class="bi bi-{{ icon }}"></i></span>
+          <div class="flex-grow-1 min-w-0">
+            <div class="kpi-label">{{ label }}</div>
+            <div class="kpi-value text-truncate">{% if href %}<a class="text-reset text-decoration-none stretched-link" href="{{ href }}">{{ value }}</a>{% else %}{{ value }}{% endif %}</div>
+          </div>
+          {% if href %}<i class="bi bi-arrow-up-right kpi-go"></i>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{%- endmacro %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  {{ tile("Clients", kpi.clients, "people", "/admin/clients") }}
+  {{ tile("New this week", kpi.new_clients, "person-plus") }}
+  {{ tile("Live accounts", kpi.live_accounts, "wallet2", "/admin/accounts") }}
+  {{ tile("Client equity", kpi.equity|money, "safe") }}
+  {{ tile("Deposits this month", kpi.deposits_month|money, "box-arrow-in-down") }}
+  {{ tile("Withdrawals this month", kpi.withdrawals_month|money, "box-arrow-up") }}
+  {{ tile("Open positions", kpi.open_positions, "activity", "/admin/positions") }}
+  {% if kpi.sync_errors %}
+    {{ tile("Sync errors", kpi.sync_errors, "exclamation-triangle", "/admin/sync", warn=True) }}
+  {% else %}
+    {{ tile("Floating P/L", pnl(kpi.floating), "graph-up") }}
+  {% endif %}
+</div>
+
+<div class="row g-3">
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-hourglass-split text-muted me-2"></i>Pending payments</span>
+        <a class="small" href="/admin/payments?status=pending">View all <i class="bi bi-arrow-right"></i></a></div>
+      <div class="table-responsive">
+        <table class="table table-hover">
+          <thead><tr><th>#</th><th>Client</th><th>Type</th><th class="num">Amount</th><th>Target</th><th>Requested</th></tr></thead>
+          <tbody>
+          {% for p in pending_payments %}
+            <tr>
+              <td><a href="/admin/payments/{{ p.id }}">{{ p.id }}</a></td>
+              <td><a href="/admin/clients/{{ p.client_id }}">{{ names[p.client_id].full_name }}</a></td>
+              <td>{{ p.kind|label }}</td>
+              <td class="num">{{ p.amount|money }} {{ p.currency }}</td>
+              <td>{{ p.trading_login or "Wallet" }}</td>
+              <td>{{ p.created_at|dt }}</td>
+            </tr>
+          {% else %}{{ empty(6, "No pending payments.") }}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-5">
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-person-vcard text-muted me-2"></i>Awaiting KYC review</span>
+        <a class="small" href="/admin/kyc">Open queue <i class="bi bi-arrow-right"></i></a></div>
+      <ul class="list-group list-group-flush">
+        {% for c in pending_kyc %}
+          <li class="list-group-item d-flex justify-content-between">
+            <a href="/admin/clients/{{ c.id }}?tab=kyc">{{ c.full_name }}</a><small class="text-muted">{{ c.updated_at|dt }}</small></li>
+        {% else %}<li class="list-group-item empty-state"><i class="bi bi-check2-circle"></i>Nothing to review.</li>{% endfor %}
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><i class="bi bi-person-plus text-muted me-2"></i>Latest registrations</div>
+      <ul class="list-group list-group-flush">
+        {% for c in recent %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span><a href="/admin/clients/{{ c.id }}">{{ c.full_name }}</a> <small class="text-muted">{{ c.country or "" }}</small></span>
+            {{ badge(c.status) }}
+          </li>
+        {% else %}<li class="list-group-item empty-state"><i class="bi bi-people"></i>No clients yet.</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, select, csrf_input, badge, empty, post_button %}
+{% block page_title %}Strategy: {{ s.name }}{% endblock %}
+{% block content %}
+{% set manage = staff.has_perm("copy.manage") %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  {{ badge(s.status) }}
+  <span class="small text-muted">Master <a href="/admin/accounts/{{ s.master_login }}">{{ s.master_login }}</a> ·
+    owner <a href="/admin/clients/{{ s.owner_client_id }}">{{ clients[s.owner_client_id].full_name }}</a> ·
+    performance fee {{ s.performance_fee_pct|money }}% · min equity {{ s.min_investment|money }}</span>
+  {% if manage %}
+  <form method="post" action="/admin/copy/{{ s.id }}/status" class="ms-auto d-flex gap-2">
+    {{ csrf_input(csrf) }}
+    <select class="form-select form-select-sm" name="status">
+      {% for st in statuses %}<option value="{{ st.value }}" {% if st == s.status %}selected{% endif %}>{{ st|label }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-sm btn-outline-primary">Set status</button>
+  </form>
+  {% endif %}
+</div>
+{% if s.description %}<p>{{ s.description }}</p>{% endif %}
+<div class="alert alert-light border small">
+  <strong>Active</strong>: new master trades are copied. <strong>Paused</strong>: no new copies; closes are still mirrored so followers aren't left exposed.
+  <strong>Closed</strong>: nothing is copied.
+</div>
+
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="card mb-4"><div class="card-header">Followers</div><div class="table-responsive"><table class="table">
+      <thead><tr><th>Follower</th><th>Login</th><th>Allocation</th><th class="num">Ratio</th><th class="num">Max lot</th><th>Status</th><th class="num">HWM</th><th class="num">Fees paid</th><th></th></tr></thead>
+      <tbody>
+      {% for sub in subs %}
+        <tr>
+          <td><a href="/admin/clients/{{ sub.follower_client_id }}">{{ clients[sub.follower_client_id].full_name }}</a></td>
+          <td><a href="/admin/accounts/{{ sub.follower_login }}">{{ sub.follower_login }}</a></td>
+          <td>{{ sub.allocation_mode|label }}</td><td class="num">{{ sub.ratio }}</td><td class="num">{{ sub.max_lot or "—" }}</td>
+          <td>{{ badge(sub.status) }}</td><td class="num">{{ sub.high_water_mark|money }}</td><td class="num">{{ sub.fees_paid|money }}</td>
+          <td class="text-end text-nowrap">
+            {% if manage and sub.status.value != "stopped" %}
+              {{ post_button("/admin/copy/subscriptions/" ~ sub.id ~ "/settle-fee", "Settle fee", csrf, confirm="Charge the performance fee now?") }}
+              <form method="post" action="/admin/copy/subscriptions/{{ sub.id }}/stop" class="d-inline" data-confirm="Stop copying for this follower?">
+                {{ csrf_input(csrf) }}<input type="hidden" name="close_positions" value="on">
+                <button class="btn btn-sm btn-outline-danger">Stop &amp; close</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}{{ empty(9, "No followers yet.") }}{% endfor %}
+      </tbody>
+    </table></div></div>
+
+    <div class="card"><div class="card-header">Recent copy executions</div><div class="table-responsive"><table class="table">
+      <thead><tr><th>Time</th><th>Follower</th><th>Master deal</th><th>Action</th><th>Symbol</th><th class="num">Lots</th><th>Result</th><th>Message</th></tr></thead>
+      <tbody>
+      {% for e in execs %}
+        <tr><td class="small">{{ e.created_at|dt }}</td><td>{{ e.follower_login }}</td><td class="mono">{{ e.master_deal_ticket }}</td>
+          <td>{{ e.action }}</td><td>{{ e.symbol }}</td><td class="num">{{ e.volume|money }}</td><td>{{ badge(e.status) }}</td>
+          <td class="small">{{ e.message }}{% if e.retcode %} <span class="text-muted">(retcode {{ e.retcode }})</span>{% endif %}</td></tr>
+      {% else %}{{ empty(8, "No trades copied yet.") }}{% endfor %}
+      </tbody>
+    </table></div></div>
+  </div>
+  {% if manage %}
+  <div class="col-xl-4">
+    <div class="card"><div class="card-header">Add follower</div><div class="card-body">
+      <form method="post" action="/admin/copy/{{ s.id }}/subscribe">
+        {{ csrf_input(csrf) }}
+        <div class="row">
+          {{ field("follower_client_id", "Client ID", type="number", required=True, col="col-6") }}
+          {{ field("follower_login", "Follower MT5 login", type="number", required=True, col="col-6") }}
+        </div>
+        {{ select("allocation_mode", "Allocation", opts(modes)) }}
+        <div class="row">
+          {{ field("ratio", "Ratio / lots", 1, type="number", step="0.0001", required=True, col="col-6",
+                   help="Multiplier, or the fixed lot size for fixed_lot") }}
+          {{ field("max_lot", "Max lot (optional)", type="number", step="0.01", col="col-6") }}
+        </div>
+        <button class="btn btn-primary" type="submit">Add follower</button>
+      </form>
+    </div></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,8 @@
+{# Rendered twice back-to-back so the CSS marquee loops seamlessly #}
+<div class="s-ticker-track">
+  {% for _ in range(2) %}{% for q in quotes %}
+    <span><span class="sym">{{ q.symbol }}</span><span class="s-price {{ 'q-up' if q.direction == 'up' else 'q-down' if q.direction == 'down' else '' }}" data-q="{{ q.symbol }}" data-f="bid">{{ q.bid }}</span>
+      <i class="bi q-caret {{ 'bi-caret-up-fill' if q.direction == 'up' else 'bi-caret-down-fill' if q.direction == 'down' else '' }}" data-qc="{{ q.symbol }}"></i></span>
+  {% endfor %}{% endfor %}
+  {% if not quotes %}<span>Live prices are temporarily unavailable.</span>{% endif %}
+</div>

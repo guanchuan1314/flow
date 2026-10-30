@@ -1,0 +1,52 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, empty %}
+{% block page_title %}IP access rules{% endblock %}
+{% block content %}
+<p class="small text-muted"><strong>Block</strong> refuses matching addresses. <strong>Allow</strong> turns the scope into a
+  whitelist: once a scope has an allow rule, only allowed addresses can use it. Your address is <span class="mono">{{ my_ip or "unknown" }}</span>;
+  changes that would lock you out of the back-office are refused.</p>
+
+<div class="card mb-4"><div class="card-header">Add a rule</div><div class="card-body">
+  <form method="post" action="/admin/ip-rules">
+    {{ csrf_input(csrf) }}
+    {% include "admin/security/_rule_fields.html" %}
+    <button class="btn btn-primary" type="submit">Add rule</button>
+  </form>
+</div></div>
+
+<div class="card mb-4"><div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>Address / range</th><th>Action</th><th>Applies to</th><th>Description</th><th>Expires</th><th>MT5 firewall</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for x in rules %}
+    <tr class="{% if not x.enabled %}text-muted{% endif %}">
+      <td class="mono"><a href="/admin/ip-rules/{{ x.id }}">{{ x.network }}</a></td>
+      <td>{% if x.action == "block" %}<span class="badge text-bg-danger">block</span>{% else %}<span class="badge text-bg-success">allow</span>{% endif %}</td>
+      <td>{{ scopes[x.scope] }}</td>
+      <td class="small">{{ x.description }}</td>
+      <td class="small">{{ x.expires_at|dt if x.expires_at else "—" }}</td>
+      <td class="small">{% if not x.apply_mt5 %}<span class="text-muted">not applied</span>{% else %}
+        {% for sid, st in (x.mt5_state or {}).items() %}
+          {% set srv = servers|selectattr("id", "equalto", sid|int)|first %}
+          <div>{% if st.ok %}<i class="bi bi-check-circle text-success"></i>{% else %}<i class="bi bi-x-circle text-danger" title="{{ st.message }}"></i>{% endif %}
+            {{ srv.name if srv else "server " ~ sid }}</div>
+        {% else %}<span class="text-warning">pending</span>{% endfor %}{% endif %}</td>
+      <td>{% if x.enabled %}<span class="badge text-bg-light border">active</span>{% else %}<span class="badge text-bg-secondary">off</span>{% endif %}</td>
+    </tr>
+  {% else %}{{ empty(7, "No IP rules: every address can reach the CRM.") }}{% endfor %}
+  </tbody>
+</table></div></div>
+
+<div class="card"><div class="card-header d-flex flex-wrap gap-2 align-items-center">
+  <span>Current MT5 firewall</span>
+  {% if servers %}<a class="ms-auto btn btn-sm btn-outline-secondary" href="?firewall={{ servers[0].id }}">Read from MT5</a>{% endif %}</div>
+  {% if firewall_error %}<div class="card-body text-danger small">{{ firewall_error }}</div>
+  {% elif firewall is not none %}
+  <div class="table-responsive"><table class="table table-sm mb-0">
+    <thead><tr><th>From</th><th>To</th><th>Action</th><th>Comment</th></tr></thead>
+    <tbody>{% for f in firewall %}<tr><td class="mono">{{ f.from_ip }}</td><td class="mono">{{ f.to_ip }}</td><td>{{ f.action }}</td>
+      <td class="small">{{ f.comment }}{% if f.comment.startswith("CRM#") %} <span class="badge text-bg-light border">from CRM</span>{% endif %}</td></tr>
+    {% else %}{{ empty(4, "The MT5 firewall is empty.") }}{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="card-body small text-muted">Read from MT5 shows the firewall's entries.</div>{% endif %}
+</div>
+{% endblock %}

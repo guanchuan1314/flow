@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "macros.html" import flashes as show_flashes, csrf_input %}
+{% block title %}Staff sign in · {{ brand().app_name }}{% endblock %}
+{% block body_class %}crm-admin crm-auth{% endblock %}
+{% block body %}
+<div class="auth-wrap">
+  <div class="auth-col">
+    <div class="auth-brand">
+      <span class="brand-mark brand-mark-lg">{{ brand().initials }}</span>
+      <span class="auth-brand-name">{{ brand().app_name }}</span>
+    </div>
+    <div class="card auth-card">
+      <div class="card-body">
+        <h1 class="auth-title">{% if need_totp %}Two-step verification{% else %}Sign in{% endif %}</h1>
+        <p class="auth-sub small">Staff back-office</p>
+        {{ show_flashes(flashes) }}
+        {% if error %}<div class="alert alert-danger d-flex gap-2"><i class="bi bi-exclamation-circle alert-icon"></i><div>{{ error }}</div></div>{% endif %}
+        {% if need_totp %}
+        <form method="post" action="/admin/login/2fa">
+          {{ csrf_input(csrf) }}
+          <input type="hidden" name="next" value="{{ next or '' }}">
+          <div class="mb-3">
+            <label class="form-label" for="totp">Authenticator code</label>
+            <input class="form-control mono" id="totp" name="totp_code" inputmode="numeric" autocomplete="one-time-code"
+                   pattern="[0-9 ]{6,7}" required autofocus>
+            <div class="form-text">Enter the 6-digit code from your authenticator app.</div>
+          </div>
+          <button class="btn btn-primary w-100" type="submit">Verify</button>
+          <a class="btn btn-link w-100 mt-1" href="/admin/login">Start over</a>
+        </form>
+        {% else %}
+        <form method="post" action="/admin/login">
+          {{ csrf_input(csrf) }}
+          <input type="hidden" name="next" value="{{ next or '' }}">
+          <div class="mb-3">
+            <label class="form-label" for="email">Email</label>
+            <input class="form-control" id="email" name="email" type="email" value="{{ email or '' }}" required autofocus autocomplete="username">
+          </div>
+          <div class="mb-4">
+            <label class="form-label" for="password">Password</label>
+            <input class="form-control" id="password" name="password" type="password" required autocomplete="current-password">
+          </div>
+          <button class="btn btn-primary w-100" type="submit">Sign in</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    <p class="auth-foot"><i class="bi bi-shield-lock me-1"></i>Authorised staff only · {{ brand().company_legal_name }}</p>
+  </div>
+</div>
+{% endblock %}

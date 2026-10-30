@@ -1,0 +1,52 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input %}
+{% block page_title %}Branding{% endblock %}
+{% block content %}
+<p class="small text-muted">How the broker appears on the website, client area, back-office and in emails. Leave a field empty to use
+  the default from <span class="mono">.env</span> (shown as the placeholder). Changes show within 30 seconds, no restart needed.</p>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card"><div class="card-body">
+      <form method="post" action="/admin/branding">
+        {{ csrf_input(csrf) }}
+        {% for name, (label, help, limit) in fields.items() %}
+        <div class="mb-3">
+          <label class="form-label" for="f-{{ name }}">{{ label }}</label>
+          {% if name == "regulatory_text" %}
+          <textarea class="form-control" id="f-{{ name }}" name="{{ name }}" rows="3" maxlength="{{ limit }}"
+                    placeholder="{{ defaults[name] }}">{{ stored.get(name, "") }}</textarea>
+          {% elif name == "accent_color" %}
+          <div class="d-flex gap-2 align-items-center">
+            <input class="form-control form-control-color" type="color" data-color-for="f-{{ name }}"
+                   value="{{ stored.get(name) or defaults[name] }}" aria-label="Pick the brand colour">
+            <input class="form-control mono" id="f-{{ name }}" name="{{ name }}" maxlength="7" pattern="#[0-9a-fA-F]{6}"
+                   placeholder="{{ defaults[name] }}" value="{{ stored.get(name, '') }}">
+          </div>
+          {% else %}
+          <input class="form-control" id="f-{{ name }}" name="{{ name }}" maxlength="{{ limit }}"
+                 placeholder="{{ defaults[name] }}" value="{{ stored.get(name, '') }}">
+          {% endif %}
+          <div class="form-text">{{ help }}</div>
+        </div>
+        {% endfor %}
+        <button class="btn btn-primary" type="submit">Save branding</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><div class="card-header">Now showing</div><div class="card-body">
+      {% set b = brand() %}
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="brand-mark">{{ b.initials }}</span><strong class="fs-5">{{ b.app_name }}</strong>
+      </div>
+      <p class="small mb-2">{{ b.brand_tagline }}</p>
+      <p class="small text-muted mb-2">&copy; {{ b.company_legal_name }}</p>
+      <p class="small mb-0"><i class="bi bi-envelope me-1"></i>{{ b.support_email }}{% if b.support_phone %}<br><i class="bi bi-telephone me-1"></i>{{ b.support_phone }}{% endif %}</p>
+      <hr>
+      <button class="btn btn-primary btn-sm" type="button">Primary button</button>
+      <a class="small ms-2" href="#">A link</a>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

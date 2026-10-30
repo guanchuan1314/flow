@@ -1,0 +1,71 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import no_server_alert, post_button %}
+{% block page_title %}Trading setup{% endblock %}
+{% block content %}
+<p class="small text-muted">Everything that decides how a server's clients trade, in the order a trade flows through it: quotes come in from
+  <strong>data feeds</strong> (and gateways), clients trade the <strong>symbols</strong>, <strong>routing rules</strong> decide what happens
+  to each request, and <strong>gateways</strong> send orders on to your LPs. Every change made in the CRM is written to MT5 first.</p>
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  {% if server %}<div class="ms-auto d-flex gap-2 align-items-center">
+    {% if server.last_sync_summary and server.last_sync_summary.at %}<span class="small text-muted">Last synced {{ server.last_sync_summary.at[:16].replace("T", " ") }}</span>{% endif %}
+    {{ post_button("/admin/trading-setup/sync", '<i class="bi bi-arrow-repeat"></i> Sync everything from MT5', csrf, "btn-primary btn-sm",
+                   fields={"server_id": server.id}) }}
+  </div>{% endif %}
+</div>
+
+{% if not server %}{{ no_server_alert() }}
+{% else %}
+{% if o.warnings %}<div class="alert alert-warning small"><strong>Check:</strong><ul class="mb-0">
+  {% for w in o.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="row g-3">
+  {% macro status(c) -%}
+    {% if not c.enabled %}<span class="badge text-bg-secondary">disabled</span>
+    {% elif c.state and c.state.connected %}<span class="badge text-bg-success">connected</span>
+    {% else %}<span class="badge text-bg-warning">not connected</span>{% endif %}
+  {%- endmacro %}
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header d-flex justify-content-between"><span><i class="bi bi-1-circle"></i> Data feeds <span class="small text-muted">quotes in</span></span>
+      {% if staff.has_perm("liquidity.manage") %}<a class="small" href="/admin/liquidity/new?server={{ server.id }}&kind=feed">+ Add</a>{% endif %}</div>
+    <ul class="list-group list-group-flush">
+      {% for c in o.feeds %}<li class="list-group-item d-flex justify-content-between gap-2">
+        <span><a href="/admin/liquidity/{{ c.id }}">{{ c.name }}</a> <span class="small text-muted">{{ c.translations|length }} symbols translated</span></span>{{ status(c) }}</li>
+      {% else %}<li class="list-group-item small text-muted">None. Without a feed, symbols get quotes only from a gateway that brings them.</li>{% endfor %}
+    </ul>
+  </div></div>
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header d-flex justify-content-between"><span><i class="bi bi-2-circle"></i> Symbols <span class="small text-muted">what clients trade</span></span>
+      {% if staff.has_perm("symbols.manage") %}<a class="small" href="/admin/symbols?server={{ server.id }}">Manage</a>{% endif %}</div>
+    <div class="card-body">
+      <div class="fs-4">{{ o.symbols }} <span class="fs-6 text-muted">symbols{% if o.disabled_symbols %}, {{ o.disabled_symbols }} with trading disabled{% endif %}</span></div>
+      <div class="small">{% for folder, n in o.folders %}<span class="badge text-bg-light border me-1">{{ folder }} {{ n }}</span>{% endfor %}</div>
+    </div>
+  </div></div>
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header d-flex justify-content-between"><span><i class="bi bi-3-circle"></i> Routing rules <span class="small text-muted">checked from the top</span></span>
+      {% if staff.has_perm("routing.manage") %}<a class="small" href="/admin/routing?server={{ server.id }}">Manage</a>{% endif %}</div>
+    <ol class="list-group list-group-flush list-group-numbered">
+      {% for r, d in o.rules %}<li class="list-group-item small {% if not r.enabled %}text-muted{% endif %}">
+        <strong>{{ r.name }}</strong>{% if not r.enabled %} (disabled){% endif %}: {{ d.what }}{% if d.conditions %}, {{ d.conditions|join(", ") }}{% endif %}
+        → {{ d.action }}</li>
+      {% else %}<li class="list-group-item small text-muted">No rules synced yet.</li>{% endfor %}
+    </ol>
+  </div></div>
+
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header d-flex justify-content-between"><span><i class="bi bi-4-circle"></i> Gateways <span class="small text-muted">orders out to LPs</span></span>
+      {% if staff.has_perm("liquidity.manage") %}<a class="small" href="/admin/liquidity/new?server={{ server.id }}&kind=gateway">+ Connect an LP</a>{% endif %}</div>
+    <ul class="list-group list-group-flush">
+      {% for c in o.gateways %}<li class="list-group-item d-flex justify-content-between gap-2">
+        <span><a href="/admin/liquidity/{{ c.id }}">{{ c.name }}</a>
+          <span class="d-block small text-muted">{% if o.routes_to[c.id] %}orders from: {{ o.routes_to[c.id]|join(", ") }}{% else %}no routing rule sends orders here{% endif %}</span></span>
+        {{ status(c) }}</li>
+      {% else %}<li class="list-group-item small text-muted">None: orders are executed by MT5 itself (or by dealers), as the routing rules say.</li>{% endfor %}
+    </ul>
+  </div></div>
+</div>
+{% endif %}
+{% endblock %}

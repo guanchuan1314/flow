@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% from "macros.html" import flashes as show_flashes, csrf_input %}
+{% block title %}{% block page_title %}{% endblock %} · {{ brand().app_name }} Admin{% endblock %}
+
+{% macro navlink(href, icon, text, perm=None, exact=False) -%}
+  {% if perm is none or staff.has_perm(perm) %}
+    {% set active = (path == href) if exact else (path == href or path.startswith(href ~ "/")) %}
+    <a class="nav-link {% if active %}active{% endif %}" href="{{ href }}"><i class="bi bi-{{ icon }}"></i>{{ text }}</a>
+  {% endif %}
+{%- endmacro %}
+
+{# A menu entry with a nested menu that opens on hover (or focus); items are (href, icon, text, permission). #}
+{% macro navgroup(icon, text, items) -%}
+  {% set ns = namespace(visible=[], active=False) %}
+  {% for href, i, t, perm in items %}{% if perm is none or staff.has_perm(perm) %}
+    {% set ns.visible = ns.visible + [(href, i, t)] %}
+    {% if path == href or path.startswith(href ~ "/") %}{% set ns.active = True %}{% endif %}
+  {% endif %}{% endfor %}
+  {% if ns.visible %}
+  <div class="nav-group">
+    <button type="button" class="nav-link nav-group-toggle {% if ns.active %}active{% endif %}" aria-haspopup="true">
+      <i class="bi bi-{{ icon }}"></i>{{ text }}<i class="bi bi-chevron-right nav-chevron"></i></button>
+    <div class="nav-flyout" role="menu">
+      <div class="nav-flyout-title">{{ text }}</div>
+      {% for href, i, t in ns.visible %}{% set active = path == href or path.startswith(href ~ "/") %}
+      <a class="nav-link {% if active %}active{% endif %}" role="menuitem" href="{{ href }}"><i class="bi bi-{{ i }}"></i>{{ t }}</a>{% endfor %}
+    </div>
+  </div>{% endif %}
+{%- endmacro %}
+
+{% block body_class %}crm-admin{% endblock %}
+
+{% block body %}
+{% set who = (staff.full_name or staff.email or "?").split() %}
+{% set staff_initials = ((who[0][:1] ~ (who[-1][:1] if who|length > 1 else "")))|upper %}
+<div class="crm-shell">
+  <aside class="crm-sidebar" aria-label="Main menu">
+    <a class="brand" href="/admin"><span class="brand-mark">{{ brand().initials }}</span>
+      <span class="brand-name">{{ brand().app_name }}<span class="brand-sub">Back-office</span></span></a>
+    <nav class="nav flex-column pb-4">
+      {{ navlink("/admin", "speedometer2", "Dashboard", exact=True) }}
+
+      {% if staff.has_perm("clients.view") or staff.has_perm("kyc.review") %}<div class="nav-section">Clients</div>{% endif %}
+      {{ navlink("/admin/clients", "people", "Clients", "clients.view") }}
+      {{ navlink("/admin/kyc", "person-vcard", "KYC queue", "kyc.review") }}
+      {{ navlink("/admin/kyc-methods", "fingerprint", "KYC methods", "kyc.methods") }}
+
+      {% if staff.has_perm("accounts.view") or staff.has_perm("account_groups.manage") or staff.has_perm("mt5_servers.manage")
+            or staff.has_perm("symbols.manage") or staff.has_perm("liquidity.manage") or staff.has_perm("routing.manage")
+            or staff.has_perm("mt5_health.view") or staff.has_perm("trading.view") or staff.has_perm("automation.manage")
+            %}<div class="nav-section">MT5</div>{% endif %}
+      {{ navgroup("wallet2", "Accounts", [
+           ("/admin/accounts", "wallet2", "Trading accounts", "accounts.view"),
+           ("/admin/account-groups", "sliders", "Account groups", "account_groups.manage"),
+           ("/admin/trader-styles", "robot", "Trader styles", "accounts.view")]) }}
+      {% set setup_perm = "symbols.manage" if staff.has_perm("symbols.manage") else
+                          ("liquidity.manage" if staff.has_perm("liquidity.manage") else "routing.manage") %}
+      {{ navgroup("diagram-3", "Trading setup", [
+           ("/admin/trading-setup", "diagram-3", "Overview", setup_perm),
+           ("/admin/symbols", "currency-exchange", "Symbols", "symbols.manage"),
+           ("/admin/liquidity", "bezier2", "Liquidity providers", "liquidity.manage"),
+           ("/admin/routing", "signpost-split", "Routing", "routing.manage")]) }}
+      {{ navlink("/admin/automation", "lightning-charge", "Automation", "automation.manage") }}
+      {{ navgroup("cloud-download", "Import from MT5", [
+           ("/admin/import/account-groups", "diagram-2", "Account groups", "mt5_servers.manage"),
+           ("/admin/import/trading-accounts", "people", "Trading accounts", "mt5_servers.manage"),
+           ("/admin/sync", "arrow-repeat", "Trade sync", "trading.view")]) }}
+      {{ navgroup("tools", "Server tools", [
+           ("/admin/server-health", "activity", "Server health", "mt5_health.view"),
+           ("/admin/pricing", "tags", "Symbols & pricing", "symbols.manage"),
+           ("/admin/inactive-accounts", "archive", "Inactive accounts", "accounts.cleanup"),
+           ("/admin/restart", "bootstrap-reboot", "Restart components", "mt5_servers.restart")]) }}
+      {{ navlink("/admin/configuration", "gear", "Configuration", "mt5_servers.manage") }}
+
+      {% if staff.has_perm("finance.view") %}<div class="nav-section">Finance</div>{% endif %}
+      {{ navlink("/admin/payments", "cash-coin", "Payments", "finance.view") }}
+      {{ navlink("/admin/payment-methods", "credit-card-2-front", "Payment methods", "finance.methods") }}
+
+      {% if staff.has_perm("trading.view") %}<div class="nav-section">Trading</div>{% endif %}
+      {{ navlink("/admin/positions", "activity", "Open positions", "trading.view") }}
+      {{ navlink("/admin/deals", "list-columns", "Deals", "trading.view") }}
+      {{ navlink("/admin/orders", "card-checklist", "Orders", "trading.view") }}
+
+      {% if staff.has_perm("copy.view") %}<div class="nav-section">Copy trading</div>{% endif %}
+      {{ navlink("/admin/copy", "diagram-3", "MAM strategies", "copy.view") }}
+      {{ navlink("/admin/pamm", "pie-chart", "PAMM funds", "copy.view") }}
+
+      {% if staff.has_perm("marketing.view") %}<div class="nav-section">Marketing</div>{% endif %}
+      {{ navlink("/admin/ibs", "share", "IBs", "marketing.view") }}
+      {{ navlink("/admin/plans", "percent", "Commission plans", "marketing.view") }}
+      {{ navlink("/admin/commissions", "coin", "Commissions", "marketing.view") }}
+      {{ navlink("/admin/campaigns", "megaphone", "Campaigns", "marketing.view") }}
+      {{ navlink("/admin/sources", "bar-chart", "Lead sources", "marketing.view") }}
+
+      {% if staff.has_perm("staff.view") or staff.has_perm("security.view") or staff.has_perm("security.ip_rules")
+            or staff.has_perm("settings.branding") %}<div class="nav-section">Administration</div>{% endif %}
+      {{ navlink("/admin/staff", "person-badge", "Staff", "staff.view") }}
+      {{ navlink("/admin/roles", "shield-lock", "Roles", "staff.view") }}
+      {{ navlink("/admin/departments", "building", "Departments", "staff.view") }}
+      {{ navlink("/admin/audit", "journal-text", "Audit log", "security.view") }}
+      {{ navlink("/admin/login-attempts", "door-open", "Login attempts", "security.view") }}
+      {{ navlink("/admin/ip-rules", "shield-slash", "IP access rules", "security.ip_rules") }}
+      {{ navlink("/admin/branding", "palette", "Branding", "settings.branding") }}
+    </nav>
+  </aside>
+
+  <div class="crm-main">
+    <header class="crm-topbar d-flex align-items-center gap-3">
+      <button class="btn btn-outline-secondary crm-menu-btn d-lg-none" type="button" data-sidebar-toggle aria-label="Menu"><i class="bi bi-list"></i></button>
+      <h1 class="crm-page-title flex-grow-1">{{ self.page_title() }}</h1>
+      <div class="dropdown">
+        <button class="btn crm-user dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <span class="crm-avatar" aria-hidden="true">{{ staff_initials }}</span><span class="d-none d-sm-inline">{{ staff.full_name }}</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><div class="crm-user-card"><span class="crm-avatar crm-avatar-lg" aria-hidden="true">{{ staff_initials }}</span>
+            <div><div class="crm-user-name">{{ staff.full_name }}</div>
+              <div class="crm-user-meta">{{ staff.email }}<br>{{ staff.roles|map(attribute="name")|join(", ") }}</div></div></div></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item" href="/admin/me/security"><i class="bi bi-shield-check me-2"></i>Password &amp; 2FA</a></li>
+          <li>
+            <form method="post" action="/admin/logout">{{ csrf_input(csrf) }}
+              <button class="dropdown-item" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Sign out</button>
+            </form>
+          </li>
+        </ul>
+      </div>
+    </header>
+    <main class="crm-content">
+      {% if staff and staff.has_perm("mt5_health.view") %}{% for a in health_alerts() %}
+      <div class="alert alert-danger d-flex gap-2 align-items-start py-2 small" role="alert">
+        <i class="bi bi-exclamation-octagon-fill alert-icon"></i>
+        <div class="flex-grow-1">{% if a.error %}MT5 could not be read at {{ a.since.strftime("%H:%M") }} UTC ({{ a.error }}).
+          {% else %}<strong>MT5 {{ a.kind }} "{{ a.name }}" is disconnected</strong> since {{ a.since.strftime("%Y-%m-%d %H:%M") }} UTC.
+          {% if a.access %}Clients connected to it are cut off, or moved to another access server if they have one.{% endif %}{% endif %}</div>
+        <a class="alert-link text-nowrap" href="/admin/server-health?server={{ a.server_id }}">Server health</a>
+      </div>{% endfor %}{% endif %}
+      {{ show_flashes(flashes) }}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% endblock %}

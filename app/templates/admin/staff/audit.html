@@ -1,0 +1,31 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty, pagination %}
+{% block page_title %}Audit log{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header"><form class="row g-2" method="get">
+    <div class="col-md-3"><input class="form-control form-control-sm" name="action" value="{{ action }}" placeholder="Action prefix, e.g. payment."></div>
+    <div class="col-md-2"><select class="form-select form-select-sm" name="actor">
+      <option value="">Any actor</option>{% for a in ["staff", "client", "system"] %}<option value="{{ a }}" {% if a == actor %}selected{% endif %}>{{ a }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><input class="form-control form-control-sm" name="entity" value="{{ entity }}" placeholder="Entity, e.g. client"></div>
+    <div class="col-md-2"><input class="form-control form-control-sm" type="date" name="date_from" value="{{ date_from }}"></div>
+    <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button></div>
+  </form></div>
+  <div class="table-responsive"><table class="table table-sm table-hover">
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for e in page.items %}
+      <tr><td class="small text-nowrap">{{ e.created_at|dt }}</td>
+        <td class="small">{{ e.actor_type }}{% if e.actor_type == "staff" %}: {{ staff_names.get(e.actor_id, e.actor_id) }}{% elif e.actor_id %} #{{ e.actor_id }}{% endif %}</td>
+        <td class="mono small">{{ e.action }}</td>
+        <td class="small">{% if e.entity == "client" %}<a href="/admin/clients/{{ e.entity_id }}">client {{ e.entity_id }}</a>
+          {% elif e.entity == "trading_account" %}<a href="/admin/accounts/{{ e.entity_id }}">account {{ e.entity_id }}</a>
+          {% elif e.entity == "payment" %}<a href="/admin/payments/{{ e.entity_id }}">payment {{ e.entity_id }}</a>
+          {% else %}{{ e.entity or "" }} {{ e.entity_id or "" }}{% endif %}</td>
+        <td class="small mono text-break mw-details">{{ e.details|tojson }}</td><td class="small">{{ e.ip or "" }}</td></tr>
+    {% else %}{{ empty(6, "No matching events.") }}{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, request) }}
+</div>
+{% endblock %}

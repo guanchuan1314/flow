@@ -1,0 +1,97 @@
+{% macro flashes(items) -%}
+  {% for level, message in items %}
+    {% set icon = {"success": "check-circle", "danger": "exclamation-octagon", "warning": "exclamation-triangle"}.get(level, "info-circle") %}
+    <div class="alert alert-{{ level }} alert-dismissible fade show d-flex gap-2 align-items-start" role="alert">
+      <i class="bi bi-{{ icon }} alert-icon"></i><div>{{ message }}</div>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  {% endfor %}
+{%- endmacro %}
+
+{% macro csrf_input(csrf) -%}<input type="hidden" name="_csrf" value="{{ csrf }}">{%- endmacro %}
+
+{% macro field(name, label, value="", type="text", required=False, help=None, placeholder="", step=None, col="") -%}
+  <div class="mb-3 {{ col }}">
+    <label class="form-label" for="f-{{ name }}">{{ label }}{% if required %} <span class="text-danger">*</span>{% endif %}</label>
+    <input class="form-control" id="f-{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ value if value is not none else '' }}"
+           {% if required %}required{% endif %} {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+           {% if step %}step="{{ step }}"{% endif %} {% if type == 'password' %}autocomplete="new-password"{% endif %}>
+    {% if help %}<div class="form-text">{{ help }}</div>{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro select(name, label, options, selected=None, required=False, blank=None, col="") -%}
+  <div class="mb-3 {{ col }}">
+    <label class="form-label" for="f-{{ name }}">{{ label }}</label>
+    <select class="form-select" id="f-{{ name }}" name="{{ name }}" {% if required %}required{% endif %}>
+      {% if blank is not none %}<option value="">{{ blank }}</option>{% endif %}
+      {% for value, text in options %}
+        <option value="{{ value }}" {% if selected is not none and value|string == selected|string %}selected{% endif %}>{{ text }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{%- endmacro %}
+
+{% macro badge(value) -%}
+  <span class="badge text-bg-{{ value|badge }}">{{ value|label }}</span>
+{%- endmacro %}
+
+{% macro pnl(value) -%}
+  <span class="{{ 'profit-pos' if value and value > 0 else ('profit-neg' if value and value < 0 else '') }}">{{ value|money }}</span>
+{%- endmacro %}
+
+{% macro post_button(action, label, csrf, cls="btn-outline-secondary btn-sm", confirm=None, fields={}, danger=False, ok=None) -%}
+  <form method="post" action="{{ action }}" class="form-inline-sm" {% if confirm %}data-confirm="{{ confirm }}"{% endif %}
+        {% if danger %}data-confirm-variant="danger"{% endif %}{% if ok %} data-confirm-ok="{{ ok }}"{% endif %}>
+    {{ csrf_input(csrf) }}
+    {% for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <button type="submit" class="btn {{ cls }}">{{ label|safe }}</button>
+  </form>
+{%- endmacro %}
+
+{% macro pagination(page, request) -%}
+  {% if page.pages > 1 %}
+  <nav class="crm-pager d-flex justify-content-between align-items-center gap-2">
+    <small class="text-muted">{{ page.total }} total · page {{ page.page }} of {{ page.pages }}</small>
+    <ul class="pagination pagination-sm mb-0">
+      <li class="page-item {% if page.page <= 1 %}disabled{% endif %}">
+        <a class="page-link" href="{{ request.url.remove_query_params("partial").include_query_params(page=page.page - 1) }}">Previous</a></li>
+      <li class="page-item {% if page.page >= page.pages %}disabled{% endif %}">
+        <a class="page-link" href="{{ request.url.remove_query_params("partial").include_query_params(page=page.page + 1) }}">Next</a></li>
+    </ul>
+  </nav>
+  {% elif page.total %}
+  <div class="crm-pager"><small class="text-muted">{{ page.total }} total</small></div>
+  {% endif %}
+{%- endmacro %}
+
+{% macro empty(colspan, message="Nothing here yet.") -%}
+  <tr><td colspan="{{ colspan }}" class="empty-state"><i class="bi bi-inbox"></i>{{ message }}</td></tr>
+{%- endmacro %}
+
+{% macro secret(label, value) -%}
+  <div class="mb-3">
+    <div class="form-label fw-semibold">{{ label }}</div>
+    <div class="d-flex gap-2 align-items-center">
+      <div class="secret-box flex-grow-1">{{ value }}</div>
+      <button type="button" class="btn btn-outline-secondary" data-copy="{{ value }}"><i class="bi bi-clipboard"></i></button>
+    </div>
+  </div>
+{%- endmacro %}
+
+{% macro alert(msg, level="warning", cls="small") -%}
+  {% if msg %}<div class="alert alert-{{ level }} {{ cls }}">{{ msg }}</div>{% endif %}
+{%- endmacro %}
+
+{% macro no_server_alert() -%}
+  <div class="alert alert-info">Set up the MT5 server first (<a href="/admin/configuration">MT5 → Configuration</a>).</div>
+{%- endmacro %}
+
+{# Add / remove rows of a repeated-fields table (app.js: data-add-row copies the <template> into the tbody). #}
+{% macro remove_row_cell() -%}
+  <td><button type="button" class="btn btn-sm btn-link text-danger" data-remove-row aria-label="Remove"><i class="bi bi-x-lg"></i></button></td>
+{%- endmacro %}
+
+{% macro add_row_button(tpl_id, target, label, cls="mb-3") -%}
+  <button type="button" class="btn btn-sm btn-outline-secondary {{ cls }}" data-add-row="{{ tpl_id }}" data-target="{{ target }}"><i class="bi bi-plus"></i> {{ label }}</button>
+{%- endmacro %}

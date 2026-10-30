@@ -1,0 +1,10 @@
+{% extends "portal/layout.html" %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="card mw-sm"><div class="card-body text-center py-4">
+  <i class="bi bi-shield-lock fs-1 text-primary"></i>
+  <p class="mt-3">{{ text }}</p>
+  <a class="btn btn-accent btn-lg px-4" href="{{ url }}" rel="noopener noreferrer">{{ button }} <i class="bi bi-box-arrow-up-right ms-1"></i></a>
+  <p class="small text-muted mt-3 mb-0">Secure page provided by {{ provider }}.</p>
+</div></div>
+{% endblock %}

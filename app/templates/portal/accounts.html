@@ -1,0 +1,74 @@
+{% extends "portal/layout.html" %}
+{% from "macros.html" import csrf_input, badge, post_button %}
+{% block page_title %}My accounts{% endblock %}
+{% block content %}
+{% set can_live = client.kyc_status.value == "approved" or not settings().live_requires_kyc %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="row g-3">
+    {% for a in accounts %}
+    <div class="col-md-6">
+      <div class="a-acc {% if a.is_demo %}demo{% endif %}">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div><span class="a-tag {% if a.is_demo %}demo{% endif %}">{{ "Demo" if a.is_demo else "Live" }}</span>
+            {% if a.account_group and a.account_group.name|lower not in ("demo", "live") %}<span class="a-tag grey">{{ a.account_group.name }}</span>{% endif %}
+            {% if a.status.value != "active" %}{{ badge(a.status) }}{% endif %}
+            {% if a.purpose.value != "trading" %}<span class="a-tag grey">{{ a.purpose|label }}</span>{% endif %}</div>
+          <span class="small text-muted"><i class="bi bi-hdd-network"></i> {{ a.server.display_name }}</span>
+        </div>
+        <div class="login">#{{ a.login }}</div>
+        <div class="eq my-2">{{ a.equity|money }} <span class="fs-6 text-muted">{{ a.currency }}</span></div>
+        <div class="kv"><span>Balance</span><span>{{ a.balance|money }}</span></div>
+        <div class="kv"><span>Credit</span><span>{{ a.credit|money }}</span></div>
+        <div class="kv"><span>Margin / free</span><span>{{ a.margin|money }} / {{ a.margin_free|money }}</span></div>
+        <div class="kv"><span>Leverage</span><span>1:{{ a.leverage }}</span></div>
+        {% if a.status.value == "active" %}
+        <div class="border-top mt-3 pt-3 d-flex flex-wrap gap-2">
+          {% if a.account_group and a.account_group.leverage_options|length > 1 %}
+          <form method="post" action="/portal/accounts/{{ a.login }}/leverage" class="d-flex gap-1">
+            {{ csrf_input(csrf) }}
+            <select class="form-select form-select-sm" name="leverage" aria-label="Leverage">{% for l in a.account_group.leverage_options %}<option value="{{ l }}" {% if l == a.leverage %}selected{% endif %}>1:{{ l }}</option>{% endfor %}</select>
+            <button class="btn btn-sm btn-outline-secondary">Set</button>
+          </form>
+          {% endif %}
+          {{ post_button("/portal/accounts/" ~ a.login ~ "/password", '<i class="bi bi-key"></i> Trading password', csrf, "btn-outline-secondary btn-sm", confirm="Generate a new trading password? Open terminals will need to log in again.", fields={"which": "master"}) }}
+          {{ post_button("/portal/accounts/" ~ a.login ~ "/password", '<i class="bi bi-eye"></i> Investor password', csrf, "btn-outline-secondary btn-sm", fields={"which": "investor"}) }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+      <div class="col"><div class="a-card a-card-b text-muted">You have no trading accounts yet. Open one on the right.</div></div>
+    {% endfor %}
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="a-card">
+      <div class="a-card-h">Open a new account</div>
+      <div class="a-card-b">
+      {% if groups %}
+      <form method="post" action="/portal/accounts/open">
+        {{ csrf_input(csrf) }}
+        <div class="mb-3">
+          {% for t in groups %}
+          {% set locked = not t.is_demo and not can_live %}
+          <label class="a-method mb-2 {% if locked %}opacity-50{% endif %}">
+            <input class="form-check-input" type="radio" name="account_group_id" value="{{ t.id }}" {% if locked %}disabled{% elif loop.first or (not can_live and t.is_demo) %}checked{% endif %} required>
+            <span class="flex-grow-1"><span class="fw-semibold">{{ t.name }}</span> <span class="a-tag {% if t.is_demo %}demo{% endif %}">{{ "Demo" if t.is_demo else "Live" }}</span>
+              <span class="small text-muted d-block">{{ t.description or "" }}{% if not t.is_demo %} · min ${{ t.min_deposit|money(0) }}{% endif %} · up to 1:{{ t.leverage_options|max }}</span></span>
+            {% if locked %}<i class="bi bi-lock"></i>{% endif %}
+          </label>
+          {% endfor %}
+          {% if not can_live %}<div class="form-text">Live accounts unlock once your identity is verified. <a href="/portal/verification">Verify now</a></div>{% endif %}
+        </div>
+        <div class="mb-3"><label class="form-label">Leverage</label>
+          <select class="form-select" name="leverage"><option value="">Account default</option>
+            {% for l in groups|map(attribute="leverage_options")|sum(start=[])|unique|sort %}<option value="{{ l }}">1:{{ l }}</option>{% endfor %}</select></div>
+        <button class="btn btn-accent w-100" type="submit">Open account</button>
+      </form>
+      {% else %}<p class="text-muted mb-0">No account groups are available right now.</p>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

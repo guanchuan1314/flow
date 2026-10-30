@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.egg-info/
+.venv/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Settings and secrets (.env.example is the template)
+.env
+.env.*
+!.env.example
+
+# Local data: database (bundled PostgreSQL), uploads, MT5 cache / simulator state, logs, backups
+pgdata/
+storage/
+mt5data/
+bases/
+logs/
+*.db
+*.dump
+*.log
+*.pkl
+
+# Editors
+.idea/
+.vscode/

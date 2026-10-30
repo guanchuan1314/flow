@@ -1,0 +1,96 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, no_server_alert %}
+{% block page_title %}Trader styles{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+<p class="small text-muted mb-0">How each account trades, measured from the deals stored in the CRM (no MT5 request): where its deals were placed
+  (Expert Advisor, desktop, mobile, web, MQL5 signal), how long it holds positions, how often it trades, its sizing after losses, hedging and more.
+  The styles and tags to detect, and the account group each style belongs in, are set up under <strong>Set up styles</strong>.</p>
+  {% if staff.has_perm("accounts.manage") %}<a class="btn btn-sm btn-outline-primary text-nowrap" href="/admin/trader-styles/setup"><i class="bi bi-sliders"></i> Set up styles</a>{% endif %}
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">
+    <form class="row g-2 align-items-center" method="get">
+      <div class="col-auto"><div class="input-group input-group-sm"><span class="input-group-text">Last</span>
+        <input class="form-control" type="number" name="days" min="1" max="365" value="{{ days }}" aria-label="Days">
+        <span class="input-group-text">days</span></div></div>
+      <div class="col-auto"><div class="input-group input-group-sm"><span class="input-group-text">At least</span>
+        <input class="form-control" type="number" name="min_deals" min="1" value="{{ min_deals }}" aria-label="Minimum deals">
+        <span class="input-group-text">deals</span></div></div>
+      <div class="col-auto"><select class="form-select form-select-sm" name="style" aria-label="Style">
+        <option value="">All styles</option>
+        <option value="suggested" {% if style == "suggested" %}selected{% endif %}>Suggested moves</option>
+        <optgroup label="Styles">{% for k, label in styles.items() %}<option value="{{ k }}" {% if style == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</optgroup>
+        {% if tag_names %}<optgroup label="Tags">{% for k, label in tag_names.items() %}<option value="{{ k }}" {% if style == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</optgroup>{% endif %}
+      </select></div>
+      <div class="col-auto form-check ms-2"><input class="form-check-input" type="checkbox" id="f-demo" name="demo" value="1" {% if demo %}checked{% endif %}>
+        <label class="form-check-label small" for="f-demo">Demo accounts</label></div>
+      <div class="col-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Show</button></div>
+    </form>
+  </div>
+  {% if server or every %}
+  <div class="card-body small d-flex flex-wrap gap-3">
+    <span><strong>{{ total }}</strong> accounts traded</span>
+    {% for k, label in styles.items() if totals[k] %}<span>{{ label }}: <strong>{{ totals[k] }}</strong></span>{% endfor %}
+    {% if suggested %}<span class="text-primary">{{ suggested }} suggested move(s)</span>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if style_groups %}<p class="small text-muted">Belongs in: {% for k, ag in style_groups.items() %}<span class="badge text-bg-light border me-1">{{ styles.get(k, k) }} → {{ ag.name }}</span>{% endfor %}
+  Accounts of these styles in another group (with the same currency) are suggested for a move.</p>{% endif %}
+
+{% if server or every %}
+<form id="move" method="post" action="/admin/trader-styles/move">{{ csrf_input(csrf) }}<input type="hidden" name="back_to" value="{{ request.url.path }}?{{ request.url.query }}"></form>
+<div class="card">
+  {% if staff.has_perm("accounts.manage") and rows %}
+  <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+    <span class="small">Move the ticked accounts to</span>
+    <select class="form-select form-select-sm w-auto" name="target" form="move" aria-label="Account group">
+      {% for g in groups %}<option value="{{ g.id }}">{% if every %}{{ g.server.name }} · {% endif %}{{ g.name }} ({{ g.mt5_group }})</option>{% endfor %}
+    </select>
+    <button class="btn btn-sm btn-primary" type="submit" form="move" data-allow-repeat>Move on MT5</button>
+    {% if every %}<span class="small text-muted">An account only moves to a group on its own server.</span>{% endif %}
+  </div>
+  {% endif %}
+  <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+    <thead><tr>
+      {% if staff.has_perm("accounts.manage") %}<th><input class="form-check-input" type="checkbox" data-check-all="login" aria-label="Tick all"></th>{% endif %}
+      <th>Account</th>{% if every %}<th>Server</th>{% endif %}<th>Client</th><th>Group</th><th>Style</th><th class="text-end">Deals</th><th class="text-end">Per day</th>
+      <th class="text-end">EA</th><th>Placed from</th><th class="text-end" title="Median holding time">Hold</th>
+      <th class="text-end" title="Closed within 2 minutes">&lt; 2 min</th><th class="text-end" title="Winning positions">Win</th>
+      <th class="text-end" title="Bigger after a loss (martingale-like)">Bigger after loss</th><th class="text-end" title="Opened against an open position">Hedged</th>
+      <th>Suggested</th></tr></thead>
+    <tbody>
+    {% for row in rows %}{% set a = row.account %}
+      <tr>
+        {% if staff.has_perm("accounts.manage") %}<td><input class="form-check-input" type="checkbox" name="login" value="{{ a.login }}" form="move"
+          {% if style == "suggested" %}checked{% endif %} aria-label="Tick {{ a.login }}"></td>{% endif %}
+        <td><a href="/admin/accounts/{{ a.login }}">{{ a.login }}</a></td>
+        {% if every %}<td class="small">{{ a.server.name }}</td>{% endif %}
+        <td><a href="/admin/clients/{{ row.client.id }}">{{ row.client.first_name }} {{ row.client.last_name }}</a></td>
+        <td class="small">{{ a.group }}</td>
+        <td><span class="badge text-bg-{{ colors.get(row.style, 'light') }}{% if colors.get(row.style, 'light') == 'light' %} border{% endif %}">{{ styles.get(row.style, row.style) }}</span>
+          {% for t in row.tags %}<span class="badge text-bg-{{ colors.get(t, 'light') }}{% if colors.get(t, 'light') == 'light' %} border{% endif %}">{{ tag_names.get(t, t) }}</span>{% endfor %}</td>
+        <td class="text-end">{{ row.placed }}</td>
+        <td class="text-end">{{ row.per_day }}</td>
+        <td class="text-end">{{ row.ea_pct }}%</td>
+        <td class="small">{% for label, pct in row.platforms.items() %}{{ label }} {{ pct }}%{% if not loop.last %}, {% endif %}{% endfor %}
+          {% if row.signal_pct %}{% if row.platforms %}, {% endif %}Signal {{ row.signal_pct }}%{% endif %}</td>
+        {% set m = row.metrics %}{% set hold = m.median_hold_min %}
+        <td class="text-end small">{% if hold is not none %}{% if hold < 120 %}{{ hold }} min{% elif hold < 2880 %}{{ (hold / 60)|round(1) }} h{% else %}{{ (hold / 1440)|round(1) }} d{% endif %}{% else %}–{% endif %}</td>
+        <td class="text-end small">{{ m.quick_pct|round|int }}%</td>
+        <td class="text-end small">{{ (m.win_rate|round|int ~ "%") if m.win_rate is not none else "–" }}</td>
+        <td class="text-end small">{% if m.loss_followups %}{{ m.martingale_pct|round|int }}% <span class="text-muted">of {{ m.loss_followups }}</span>{% else %}–{% endif %}</td>
+        <td class="text-end small">{{ m.hedge_pct|round|int }}%</td>
+        <td class="small">{% if row.suggest %}<span class="text-primary">→ {{ row.suggest.name }}</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="16" class="text-center text-muted py-4">No {{ "demo" if demo else "live" }} account{% if not every %} of this server{% endif %} placed a trade in the last {{ days }} days{% if style %} with this style{% endif %}.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}{{ no_server_alert() }}{% endif %}
+{% endblock %}

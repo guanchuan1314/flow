@@ -1,0 +1,114 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import no_server_alert, post_button %}
+{% block page_title %}Server health{% endblock %}
+{% block content %}
+{% macro status_badge(level) -%}
+  {% if level == "danger" %}<span class="badge text-bg-danger">needs attention</span>
+  {% elif level == "warning" %}<span class="badge text-bg-warning">check</span>
+  {% elif level == "ok" %}<span class="badge text-bg-success">ok</span>
+  {% else %}<span class="badge text-bg-secondary">not read yet</span>{% endif %}
+{%- endmacro %}
+
+{% macro trend(label, t, unit, height=36) -%}
+  <div class="mb-1"><div class="d-flex justify-content-between"><span class="text-muted">{{ label }}, 24 h</span>
+    <span>{% if t[1] is not none %}highest {{ t[1]|round(1) }}{{ unit }}{% else %}<span class="text-muted">too few readings</span>{% endif %}</span></div>
+    {% if t[0] %}<svg class="w-100" viewBox="0 0 300 48" preserveAspectRatio="none" height="{{ height }}" role="img" aria-label="{{ label }} over 24 hours">
+      <polyline points="{{ t[0] }}" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>{% endif %}</div>
+{%- endmacro %}
+
+<p class="small text-muted">What each part of every MT5 platform reports about its load: the trade server, each access server (where clients
+  connect), the history server and backups. The figures are MT5's recent peaks, checked against the warning levels set in MT5 Administrator.
+  The CRM reads them every few minutes, keeps them for a week, and alerts on every page when a component disconnects.</p>
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  <form method="get" class="d-flex gap-2">
+    <select class="form-select form-select-sm" name="only" aria-label="Show" data-autosubmit>
+      <option value="">Everything</option>
+      <option value="warnings" {% if only == "warnings" %}selected{% endif %}>Warnings only</option>
+    </select>
+  </form>
+  {% if summary %}<div class="ms-auto">
+    {{ post_button("/admin/server-health/refresh", '<i class="bi bi-arrow-repeat"></i> ' ~ "Read now", csrf,
+                   "btn-primary btn-sm", fields={"server_id": chosen}) }}</div>{% endif %}
+</div>
+
+{% if not summary %}{{ no_server_alert() }}
+{% elif not reports %}<div class="alert alert-success"><i class="bi bi-check-circle"></i> Nothing needs attention.</div>{% endif %}
+
+
+{% for r in reports %}{% set server = r.server %}
+<section id="server-{{ server.id }}" class="mb-4">
+  <div class="d-flex flex-wrap gap-2 align-items-center border-bottom pb-2 mb-2">
+    <h2 class="h6 mb-0">{{ server.name }}</h2> {{ status_badge(r.level) }}
+    <span class="small text-muted">{% if r.latest %}read {{ r.latest.taken_at.strftime("%Y-%m-%d %H:%M") }} UTC · {{ r.samples }} readings in 24 h{% endif %}</span>
+  </div>
+
+  {% if r.latest and r.latest.error %}<div class="alert alert-danger small">The last reading failed: {{ r.latest.error }}
+    {% if r.read %}The figures below are from {{ r.read.taken_at.strftime("%Y-%m-%d %H:%M") }}.{% endif %}</div>{% endif %}
+  {% if not r.latest %}<div class="alert alert-info small">Not read yet. Press <strong>Read now</strong>, or wait for the CRM's next reading.</div>{% endif %}
+  {% for addr, names in r.shared %}
+  <div class="alert alert-secondary small py-2"><i class="bi bi-pc-display"></i> <strong>{{ names|length }} components share one machine ({{ addr }}):</strong>
+    {{ names|join(", ") }}. They compete for the same CPU, memory and disk.</div>
+  {% endfor %}
+
+  {% for c in r.components %}
+  <div class="card mb-2 {% if c.level == 'danger' %}border-danger{% elif c.level == 'warning' %}border-warning{% endif %}">
+    <div class="card-body py-2 small">
+      <div class="row g-3 align-items-start">
+        <div class="col-lg-3">
+          <div class="d-flex gap-2 align-items-center"><strong>{{ c.name }}</strong> {{ status_badge(c.level) }}</div>
+          <div class="text-muted">{{ c.kind }}</div>
+          {% if not c.connected %}<div class="text-danger fw-bold"><i class="bi bi-plug"></i> Disconnected{% if c.down_since %} since {{ c.down_since.strftime("%Y-%m-%d %H:%M") }} UTC{% endif %}</div>{% endif %}
+          <div class="text-muted mt-1">{{ c.address }} · {{ c.cores }} cores · build {{ c.build }}<br>{{ c.os }}{% if c.last_boot %}<br>started {{ c.last_boot.strftime("%Y-%m-%d") }}{% endif %}</div>
+        </div>
+        <div class="col-lg-5">
+          <div class="row g-2">
+            <div class="col-6"><span class="text-muted">CPU peak</span>
+              <div>{{ c.cpu_max }}% {% if c.cpu_critical %}<span class="text-muted">(warns at {{ c.cpu_critical }}%)</span>{% endif %}</div>
+              <progress class="w-100" max="100" value="{{ c.cpu_max }}">{{ c.cpu_max }}%</progress></div>
+            <div class="col-6"><span class="text-muted">Memory</span>
+              <div>{{ c.memory_free }} of {{ c.memory_total }} MB free <span class="text-muted">(lowest {{ c.memory_free_min }})</span></div>
+              {% if c.memory_used_pct is not none %}<progress class="w-100" max="100" value="{{ c.memory_used_pct }}">{{ c.memory_used_pct }}%</progress>{% endif %}</div>
+            <div class="col-6"><span class="text-muted">Disk</span>
+              <div>{{ (c.disk_free / 1024)|round|int }} of {{ (c.disk_total / 1024)|round|int }} GB free · {{ c.disk_read }}/{{ c.disk_write }} MB/s</div>
+              {% if c.disk_used_pct is not none %}<progress class="w-100" max="100" value="{{ c.disk_used_pct }}">{{ c.disk_used_pct }}%</progress>{% endif %}</div>
+            <div class="col-3"><span class="text-muted">Connections</span><div class="fs-6">{{ c.connections_max }}</div></div>
+            <div class="col-3"><span class="text-muted">Network</span><div class="fs-6">{{ c.network_max }} <span class="small">KB/s</span></div></div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          {{ trend("CPU", c.trends.cpu, "%") }}
+          {{ trend("Connections", c.trends.connections, "") }}
+        </div>
+      </div>
+      {% if c.issues %}<ul class="mb-0 mt-2 ps-3">{% for level, text in c.issues %}<li class="text-{{ level }}">{{ text }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="card">
+    <div class="card-body py-2 small">
+      <div class="row g-3 align-items-start">
+        <div class="col-lg-3"><strong>The CRM's load</strong><div class="text-muted">on this server</div></div>
+        {% set p = r.poll %}
+        <div class="col-lg-5">
+          {% if p %}<div class="row g-2">
+            <div class="col-6"><span class="text-muted">Accounts followed</span><div>{{ p.accounts }} <span class="text-muted">({{ r.accounts.live }} live, {{ r.accounts.demo }} demo)</span></div></div>
+            <div class="col-6"><span class="text-muted">Active / idle</span><div>{{ p.active }} every {{ p.interval }} s / {{ p.idle }} in turn</div></div>
+            <div class="col-6"><span class="text-muted">Last pass</span><div>{{ p.seconds }} s, {{ p.calls }} requests{% if p.ms_per_call %}, {{ p.ms_per_call }} ms each{% endif %}</div></div>
+            <div class="col-6"><span class="text-muted">Recorded</span><div>{{ p.at[:16].replace("T", " ") }} UTC</div></div>
+          </div>
+          {% else %}<span class="text-muted">No sync pass recorded yet (about once a minute).</span>{% endif %}
+          {% if r.poll_issues %}<ul class="mb-0 mt-2 ps-3">{% for level, text in r.poll_issues %}<li class="text-{{ level }}">{{ text }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+        <div class="col-lg-4">
+          {{ trend("One sync pass", r.poll_trend, " s") }}
+          {% if staff.has_perm("accounts.cleanup") %}<a href="/admin/inactive-accounts">Inactive demo accounts</a>:
+            {% if r.cleanup and r.cleanup.done is defined %}last run {{ r.cleanup.at[:10] }}, {{ r.cleanup.done }} {{ "archived" if r.cleanup.action == "archive" else "deleted" }}.
+            {% else %}unused demo accounts also cost the server memory.{% endif %}{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

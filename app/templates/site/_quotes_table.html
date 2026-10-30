@@ -1,0 +1,18 @@
+<table class="table table-hover s-light">
+  <thead><tr><th>Instrument</th><th>Category</th><th class="num">Sell (bid)</th><th class="num">Buy (ask)</th><th class="num">Spread</th><th></th></tr></thead>
+  <tbody>
+  {% for q in quotes %}
+    <tr>
+      <td><div class="d-flex align-items-center"><span class="s-sym-badge">{{ q.symbol[:3] }}</span>
+        <div><div class="fw-bold">{{ q.symbol }}</div><div class="small text-muted">{{ q.name }}</div></div></div></td>
+      <td><span class="badge text-bg-light border">{{ q.category }}</span></td>
+      <td class="num s-price {{ 'q-up' if q.direction == 'up' else 'q-down' if q.direction == 'down' else '' }}" data-q="{{ q.symbol }}" data-f="bid">{{ q.bid }}</td>
+      <td class="num s-price {{ 'q-up' if q.direction == 'up' else 'q-down' if q.direction == 'down' else '' }}" data-q="{{ q.symbol }}" data-f="ask">{{ q.ask }}</td>
+      <td class="num" data-q="{{ q.symbol }}" data-f="spread">{{ q.spread }}</td>
+      <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/portal/register">Trade</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="text-center text-muted py-4">Live prices are temporarily unavailable.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

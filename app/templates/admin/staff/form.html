@@ -1,0 +1,50 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, select, csrf_input, post_button %}
+{% block page_title %}{{ s.full_name if s else "New staff member" }}{% endblock %}
+{% block content %}
+{% set manage = staff.has_perm("staff.manage") %}
+<div class="card mw-md"><div class="card-body">
+  <form method="post" action="/admin/staff/{{ s.id if s else 'new' }}">
+    {{ csrf_input(csrf) }}
+    <fieldset {% if not manage %}disabled{% endif %}>
+    <div class="row">
+      {{ field("full_name", "Full name", s.full_name if s else "", required=True, col="col-md-6") }}
+      {% if s %}
+        <div class="col-md-6 mb-3"><div class="form-label">Email</div><div class="form-control-plaintext">{{ s.email }}</div></div>
+      {% else %}
+        {{ field("email", "Email", type="email", required=True, col="col-md-6") }}
+      {% endif %}
+      {{ field("password", "New password" if s else "Password", type="password", required=not s, col="col-md-6",
+               help=("Leave empty to keep the current password. " if s else "") ~ "Min " ~ settings().password_min_length ~ " chars, upper, lower and a digit.") }}
+      {{ select("department_id", "Department", departments|map(attribute="id")|zip(departments|map(attribute="name")), s.department_id if s else None, blank="—", col="col-md-3") }}
+      {{ select("manager_id", "Reports to", managers|rejectattr("id", "equalto", s.id if s else 0)|map(attribute="id")|zip(managers|rejectattr("id", "equalto", s.id if s else 0)|map(attribute="full_name")), s.manager_id if s else None, blank="—", col="col-md-3") }}
+      <div class="col-md-6 mb-3">
+        <label class="form-label">Roles</label>
+        {% if s and s.id == staff.id %}<div class="form-text mb-1">You cannot change your own roles.</div>{% endif %}
+        {% for r in roles %}
+          <div class="form-check"><input class="form-check-input" type="checkbox" name="role_ids" value="{{ r.id }}" id="role{{ r.id }}"
+            {% if s and r in s.roles %}checked{% endif %} {% if s and s.id == staff.id %}disabled{% endif %}>
+            <label class="form-check-label" for="role{{ r.id }}">{{ r.name }} <small class="text-muted">{{ r.description }}</small></label></div>
+        {% endfor %}
+      </div>
+      <div class="col-md-6 mb-3">
+        <label class="form-label" for="ips">IP allowlist</label>
+        <textarea class="form-control" id="ips" name="allowed_ips" rows="3" placeholder="203.0.113.10, 10.0.0.0/8">{{ s.allowed_ips|join(", ") if s else "" }}</textarea>
+        <div class="form-text">IPs or CIDR ranges. Empty = sign-in allowed from anywhere.</div>
+        {% if s %}<div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="is_active" id="active" {% if s.is_active %}checked{% endif %}>
+          <label class="form-check-label" for="active">Account active</label></div>{% endif %}
+      </div>
+    </div>
+    {% if manage %}<button class="btn btn-primary" type="submit">Save</button>{% endif %}
+    <a class="btn btn-link" href="/admin/staff">Back</a>
+    </fieldset>
+  </form>
+  {% if s and manage %}
+  <hr>
+  <div class="d-flex align-items-center gap-3">
+    <span>Two-factor authentication: {% if s.totp_enabled %}<span class="badge text-bg-success">enabled</span>{% else %}<span class="badge text-bg-secondary">not set up</span>{% endif %}</span>
+    {% if s.totp_enabled %}{{ post_button("/admin/staff/" ~ s.id ~ "/reset-2fa", "Reset 2FA (lost device)", csrf, "btn-outline-warning btn-sm", confirm="Remove this person's 2FA? Verify their identity first.") }}{% endif %}
+  </div>
+  {% endif %}
+</div></div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty %}
+{% block page_title %}Account groups{% endblock %}
+{% block content %}
+{% from "macros.html" import post_button %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="small text-muted mb-0">Account groups map to MT5 groups. <strong>Sync from MT5</strong> imports every group of the MT5 server;
+    new ones arrive disabled so you can name and price them before clients see them.</p>
+  <div class="d-flex gap-2">
+    {{ post_button("/admin/account-groups/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm") }}
+    <a class="btn btn-success btn-sm" href="/admin/account-groups/new"><i class="bi bi-plus-lg"></i> New account group</a>
+  </div>
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>Name</th><th>MT5 group</th><th>Kind</th><th>Currency</th><th>Leverage</th><th class="num">Min deposit</th><th class="num">Spread markup</th><th class="num">Margin call / stop-out</th><th>Max / client</th><th>Enabled</th></tr></thead>
+  <tbody>
+  {% for t in groups %}
+    <tr>
+      <td><a href="/admin/account-groups/{{ t.id }}">{{ t.name }}</a>
+        {% if t.source == "mt5" %}<span class="badge text-bg-light border" title="Imported from MT5 {{ t.synced_at|dt }}">from MT5</span>{% endif %}
+        {% if not t.on_server %}<span class="badge text-bg-danger" title="The MT5 group no longer exists">not on server</span>{% endif %}</td>
+      <td class="mono">{{ t.mt5_group }}</td>
+      <td>{{ "Demo" if t.is_demo else "Live" }}</td>
+      <td>{{ t.currency }}</td>
+      <td>{{ t.leverage_options|map("string")|join(", ") }} <small class="text-muted">(default {{ t.default_leverage }})</small></td>
+      <td class="num">{{ t.min_deposit|money }}</td>
+      <td class="num">{{ t.spread_markup_points }} pts</td>
+      <td class="num">{% for v in (t.margin_call, t.stop_out) %}{{ v|round(0)|int if v is not none else "-" }}{{ " / " if loop.first }}{% endfor %}</td>
+      <td>{{ t.max_accounts_per_client }}</td>
+      <td>{% if t.enabled %}<span class="badge text-bg-success">yes</span>{% else %}<span class="badge text-bg-secondary">no</span>{% endif %}</td>
+    </tr>
+  {% else %}{{ empty(11, "No account groups yet. Create one per MT5 group you offer.") }}{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

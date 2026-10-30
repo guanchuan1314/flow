@@ -1,0 +1,58 @@
+{% extends "site/layout.html" %}
+{% block page_title %}Copy trading &amp; PAMM{% endblock %}
+{% block content %}
+<section class="s-pagehead"><div class="container">
+  <div class="s-eyebrow">Social trading</div>
+  <h1 class="mt-2">Copy proven traders or invest in managed funds</h1>
+  <p>Pick a strategy and mirror every trade automatically, or join a PAMM fund run by a professional manager. You stay in control and can stop at any time.</p>
+</div></section>
+<section class="s-section"><div class="container">
+  <div class="row g-4 mb-5">
+    {% for n, title, text in [(1, "Choose", "Compare strategies by performance, risk and followers."),
+                              (2, "Allocate", "Copy proportionally to your equity, with a multiplier or fixed lots, and an optional lot cap."),
+                              (3, "Relax", "Trades open and close on your account in real time. Fees apply only to new profits.")] %}
+    <div class="col-md-4"><div class="s-card"><div class="s-step-num">{{ n }}</div><h3 class="h5">{{ title }}</h3><p class="text-muted mb-0">{{ text }}</p></div></div>
+    {% endfor %}
+  </div>
+
+  <h2 class="s-h2 mb-4">Top strategies</h2>
+  <div class="row g-4 mb-5 justify-content-center">
+    {% for r in strategies %}
+    <div class="col-md-6 col-lg-4"><div class="s-card s-strat d-flex flex-column">
+      <div class="d-flex align-items-center gap-3 mb-3"><span class="s-avatar">{{ r.strategy.name[:1] }}</span>
+        <div><div class="fw-bold">{{ r.strategy.name }}</div><div class="small text-muted">{{ r.followers }} followers</div></div></div>
+      <p class="text-muted small flex-grow-1">{{ r.strategy.description or "No description provided." }}</p>
+      <div class="row text-center g-0 s-statbox mb-3">
+        <div class="col stat"><div class="v {{ 'text-success' if r.profit > 0 else 'text-danger' if r.profit < 0 else '' }}">${{ r.profit|money(0) }}</div><div class="l">Closed P/L</div></div>
+        <div class="col stat"><div class="v">{{ (r.win_rate ~ "%") if r.win_rate is not none else "—" }}</div><div class="l">Win rate</div></div>
+        <div class="col stat"><div class="v">{{ r.strategy.performance_fee_pct|money(0) }}%</div><div class="l">Perf. fee</div></div>
+      </div>
+      <div class="small text-muted mb-3">Minimum equity ${{ r.strategy.min_investment|money(0) }} · {{ r.trades }} closed trades</div>
+      <a class="btn btn-accent" href="/portal/copy">Copy strategy</a>
+    </div></div>
+    {% else %}
+    <div class="col"><p class="text-muted">No public strategies yet.</p></div>
+    {% endfor %}
+  </div>
+
+  <h2 class="s-h2 mb-4">PAMM funds</h2>
+  <div class="row g-4 justify-content-center">
+    {% for f in funds %}
+    <div class="col-md-6 col-lg-4"><div class="s-card d-flex flex-column">
+      <div class="s-icon"><i class="bi bi-pie-chart"></i></div>
+      <h3 class="h5">{{ f.name }}</h3>
+      <p class="text-muted small flex-grow-1">{{ f.description or "Managed fund." }}</p>
+      <div class="s-kv"><span class="text-muted">Unit price (NAV)</span><span class="fw-semibold">{{ f.last_nav|money(4) }}</span></div>
+      <div class="s-kv"><span class="text-muted">Since launch</span>
+        <span class="fw-semibold {{ 'text-success' if f.last_nav > 1 else 'text-danger' if f.last_nav < 1 else '' }}">{{ ((f.last_nav - 1) * 100)|money }}%</span></div>
+      <div class="s-kv"><span class="text-muted">Fees</span><span>{{ f.performance_fee_pct|money(0) }}% perf. · {{ f.management_fee_pct_annual|money(1) }}%/yr</span></div>
+      <div class="s-kv mb-3"><span class="text-muted">Minimum</span><span>${{ f.min_investment|money(0) }}</span></div>
+      <a class="btn btn-outline-dark" href="/portal/pamm">Invest</a>
+    </div></div>
+    {% else %}
+    <div class="col"><p class="text-muted">No funds open for investment right now.</p></div>
+    {% endfor %}
+  </div>
+  <p class="small text-muted mt-4">Copy trading and PAMM investments carry the same risks as trading yourself. Past performance is not a reliable indicator of future results.</p>
+</div></section>
+{% endblock %}

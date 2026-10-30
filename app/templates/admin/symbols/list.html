@@ -1,0 +1,83 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, empty, pagination, post_button %}
+{% block page_title %}Symbols{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="small text-muted mb-0">The symbols of each MT5 server. Creating, editing and deleting here changes the symbol on MT5 first;
+    <strong>Sync from MT5</strong> brings in changes made in MT5 Administrator.</p>
+  {% if server %}<div class="d-flex gap-2">
+    {{ post_button("/admin/symbols/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm",
+                   fields={"server_id": server.id}) }}
+    <a class="btn btn-success btn-sm" href="/admin/symbols/new?server={{ server.id }}"><i class="bi bi-plus-lg"></i> New symbol</a>
+  </div>{% endif %}
+</div>
+
+{% if server and page.items %}
+<details class="card mb-3">
+  <summary class="card-header">Change several symbols at once</summary>
+  <form id="bulk" method="post" action="/admin/symbols/bulk" class="card-body">
+    {{ csrf_input(csrf) }}<input type="hidden" name="server_id" value="{{ server.id }}">
+    <p class="small text-muted">Tick the symbols in the table below, set only the values to change (blank = unchanged), then apply.
+      Each symbol is saved on MT5 first; one MT5 refuses is reported and the others still go through.</p>
+    <div class="row g-2">
+      {% macro bsel(name, label, options) -%}
+        <div class="col-md-3"><label class="form-label small" for="b-{{ name }}">{{ label }}</label>
+          <select class="form-select form-select-sm" id="b-{{ name }}" name="{{ name }}"><option value="">(unchanged)</option>
+            {% for v, t in options.items() %}<option value="{{ v }}">{{ t }}</option>{% endfor %}</select></div>
+      {%- endmacro %}
+      {% macro bnum(name, label, step="any") -%}
+        <div class="col-md-2"><label class="form-label small" for="b-{{ name }}">{{ label }}</label>
+          <input class="form-control form-control-sm" id="b-{{ name }}" type="number" step="{{ step }}" name="{{ name }}" placeholder="unchanged"></div>
+      {%- endmacro %}
+      {{ bsel("trade_mode", "Trading", trade_modes) }}
+      {{ bsel("exec_mode", "Execution", exec_modes) }}
+      {{ bnum("spread", "Spread (points)", "1") }}
+      {{ bnum("stops_level", "Stops level", "1") }}
+      {{ bnum("freeze_level", "Freeze level", "1") }}
+      {{ bsel("swap_mode", "Swap type", swap_modes) }}
+      {{ bnum("swap_long", "Swap long") }}
+      {{ bnum("swap_short", "Swap short") }}
+      {{ bsel("swap_3day", "Triple swap on", weekdays) }}
+      {{ bnum("volume_min", "Min volume") }}
+      {{ bnum("volume_max", "Max volume") }}
+      {{ bnum("volume_step", "Volume step") }}
+    </div>
+    <button class="btn btn-primary btn-sm mt-3" type="submit">Apply to the ticked symbols on MT5</button>
+  </form>
+</details>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <form class="row g-2" method="get">
+      <div class="col-md-3"><input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Name, folder or description"></div>
+      <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Show</button></div>
+      {% if server and server.last_sync_summary.symbols %}<div class="col text-end small text-muted align-self-center">
+        Last synced {{ server.last_sync_summary.at[:16].replace("T", " ") }}</div>{% endif %}
+    </form>
+  </div>
+  <div class="table-responsive"><table class="table table-hover">
+    <thead><tr><th><span class="visually-hidden">Select</span></th><th>Symbol</th><th>Folder</th><th>Description</th><th>Currencies</th><th class="num">Digits</th><th class="num">Contract</th>
+      <th>Trade</th><th>Execution</th><th class="num">Volume min / max / step</th><th class="num">Spread</th><th class="num">Swap long / short</th></tr></thead>
+    <tbody>
+    {% for s in page.items %}
+      <tr class="{% if s.trade_mode == 0 %}text-muted{% endif %}">
+        <td><input class="form-check-input" type="checkbox" name="ids" value="{{ s.id }}" form="bulk" aria-label="Select {{ s.name }}"></td>
+        <td class="mono"><a href="/admin/symbols/{{ s.id }}">{{ s.name }}</a></td>
+        <td class="small">{{ s.path.rpartition("\\")[0] }}</td>
+        <td class="small">{{ s.description }}</td>
+        <td class="small">{{ s.currency_base }}{% if s.currency_profit %}/{{ s.currency_profit }}{% endif %}</td>
+        <td class="num">{{ s.digits }}</td>
+        <td class="num">{{ s.contract_size|num }}</td>
+        <td class="small">{{ trade_modes.get(s.trade_mode, s.trade_mode) }}</td>
+        <td class="small">{{ exec_modes.get(s.exec_mode, s.exec_mode) }}</td>
+        <td class="num small">{{ s.volume_min|num }} / {{ s.volume_max|num }} / {{ s.volume_step|num }}</td>
+        <td class="num">{{ s.spread if s.spread else "floating" }}</td>
+        <td class="num small">{% if s.swap_mode %}{{ s.swap_long|num }} / {{ s.swap_short|num }}{% else %}—{% endif %}</td>
+      </tr>
+    {% else %}{{ empty(12, "No symbols yet. Use Sync from MT5 to import this server's symbols." if not q else "No symbol matches.") }}{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, request) }}
+</div>
+{% endblock %}

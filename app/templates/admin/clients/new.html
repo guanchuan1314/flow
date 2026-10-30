@@ -1,0 +1,26 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, select, csrf_input %}
+{% block page_title %}New client{% endblock %}
+{% block content %}
+<div class="card mw-md">
+  <div class="card-body">
+    <form method="post" action="/admin/clients/new">
+      {{ csrf_input(csrf) }}
+      <div class="row">
+        {{ field("first_name", "First name", required=True, col="col-md-6") }}
+        {{ field("last_name", "Last name", required=True, col="col-md-6") }}
+        {{ field("email", "Email", type="email", required=True, col="col-md-6") }}
+        {{ field("phone", "Phone", col="col-md-6") }}
+        {{ field("country", "Country (ISO code)", placeholder="GB", col="col-md-4") }}
+        {{ field("lead_source", "Lead source", placeholder="event, website, partner…", col="col-md-4") }}
+        {{ field("referral_code", "Referred by (code)", col="col-md-4") }}
+        {{ select("sales_staff_id", "Sales owner", staff_options, blank="— me / unassigned —", col="col-md-6") }}
+        {{ field("password", "Portal password", type="password", col="col-md-6",
+                 help="Optional. Leave empty to create a lead; the client can register or reset later.") }}
+      </div>
+      <button class="btn btn-primary" type="submit">Create client</button>
+      <a class="btn btn-link" href="/admin/clients">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

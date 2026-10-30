@@ -1,0 +1,109 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, empty, post_button %}
+{% block page_title %}{{ ("Automation: " ~ rule.name) if rule else "New automation rule" }}{% endblock %}
+{% block content %}
+{% set chosen_trigger = rule.trigger if rule else "inactive" %}
+{% set chosen_action = rule.action if rule else "notify_staff" %}
+{% set f = rule.filters if rule else {} %}
+{% macro input(prefix, key, name, spec, current) -%}
+  {% set label, kind, default = spec %}
+  {% set value = current.get(name, default) if current is not none else default %}
+  {% set id = prefix ~ "_" ~ key ~ "_" ~ name %}
+  <div class="col-md-{{ 12 if kind == 'text' else 4 }} mb-3">
+    <label class="form-label small" for="{{ id }}">{{ label }}</label>
+    {% if kind == "text" %}<textarea class="form-control form-control-sm" id="{{ id }}" name="{{ id }}" rows="3">{{ value }}</textarea>
+    {% elif kind == "style" %}<select class="form-select form-select-sm" id="{{ id }}" name="{{ id }}">
+      {% for k, l in styles.items() %}<option value="{{ k }}" {% if value == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+    {% elif kind == "group" %}<select class="form-select form-select-sm" id="{{ id }}" name="{{ id }}"><option value="">Choose…</option>
+      {% for g in groups %}<option value="{{ g.id }}" {% if value|string == g.id|string %}selected{% endif %}>{{ g.name }} ({{ g.mt5_group }}{{ ", demo" if g.is_demo }})</option>{% endfor %}</select>
+    {% else %}<input class="form-control form-control-sm" id="{{ id }}" name="{{ id }}" value="{{ value }}"
+             {% if kind in ("int", "dec") %}type="number" min="0" step="{{ '1' if kind == 'int' else 'any' }}"{% endif %}>{% endif %}
+  </div>
+{%- endmacro %}
+
+<form method="post" action="{{ '/admin/automation/' ~ rule.id if rule else '/admin/automation/new' }}" class="mw-lg" data-toggle-scope>
+  {{ csrf_input(csrf) }}
+  <div class="card mb-3"><div class="card-body row">
+    <div class="col-md-6 mb-3"><label class="form-label" for="f-name">Name <span class="text-danger">*</span></label>
+      <input class="form-control" id="f-name" name="name" value="{{ rule.name if rule else '' }}" required maxlength="64"></div>
+    <div class="col-md-6 mb-3 small text-muted">{% if rule %}{% if rule.enabled %}<span class="badge text-bg-success">enabled</span>{% else %}<span class="badge text-bg-secondary">disabled</span>{% endif %}
+      {% if rule.last_run_at %}last run {{ rule.last_run_at|dt }}: {{ rule.last_result }}{% else %}not run yet{% endif %}{% else %}New rules start disabled.{% endif %}</div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-header">When</div><div class="card-body">
+    <select class="form-select mb-3" name="trigger" aria-label="Trigger">
+      {% for k, t in triggers.items() %}<option value="{{ k }}" {% if k == chosen_trigger %}selected{% endif %}>{{ t[0] }}</option>{% endfor %}
+    </select>
+    {% for k, t in triggers.items() %}
+    <div class="row" data-show-when="trigger={{ k }}">
+      <p class="small text-muted col-12">{{ t[3] }}{% if t[1] == "client" %} Finds clients.{% endif %}</p>
+      {% for name, spec in t[2].items() %}{{ input("t", k, name, spec, rule.params if rule and rule.trigger == k else none) }}{% endfor %}
+    </div>
+    {% endfor %}
+    <div class="row border-top pt-3">
+      <div class="col-md-8 mb-2"><label class="form-label small" for="f-groups">Only MT5 groups (account triggers)</label>
+        <input class="form-control form-control-sm mono" id="f-groups" name="groups" value="{{ f.get('groups', '') }}" placeholder="all, or e.g. real\*, !real\vip"></div>
+      <div class="col-md-4 mb-2"><label class="form-label small" for="f-kind">Accounts</label>
+        <select class="form-select form-select-sm" id="f-kind" name="kind">
+          {% for k, l in kinds.items() %}<option value="{{ k }}" {% if f.get('kind', 'live') == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    </div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-header">Then</div><div class="card-body">
+    <select class="form-select mb-3" name="action" aria-label="Action">
+      {% for k, a in actions.items() %}<option value="{{ k }}" {% if k == chosen_action %}selected{% endif %}>{{ a[0] }}</option>{% endfor %}
+    </select>
+    {% for k, a in actions.items() %}
+    <div class="row" data-show-when="action={{ k }}">
+      {% if a[1] == "account" %}<p class="small text-muted col-12">Works on trading accounts, and is written to MT5.</p>{% endif %}
+      {% for name, spec in a[2].items() %}{{ input("a", k, name, spec, rule.action_params if rule and rule.action == k else none) }}{% endfor %}
+    </div>
+    {% endfor %}
+    <p class="small text-muted mb-2">Messages can use <span class="mono">{client}</span>, <span class="mono">{email}</span>, <span class="mono">{login}</span>,
+      <span class="mono">{group}</span>, <span class="mono">{rule}</span> and <span class="mono">{detail}</span> (what was found).</p>
+    <div class="row"><div class="col-md-4"><label class="form-label small" for="f-cooldown">Act on the same target again after (hours)</label>
+      <input class="form-control form-control-sm" id="f-cooldown" name="cooldown_hours" type="number" min="0" value="{{ rule.cooldown_hours if rule else 24 }}">
+      <div class="form-text">0 = once per account or client, ever.</div></div></div>
+  </div></div>
+
+  <button class="btn btn-primary" type="submit">Save</button>
+  <a class="btn btn-link" href="/admin/automation">Back</a>
+</form>
+
+{% if rule %}
+<div class="d-flex flex-wrap gap-2 my-3 mw-lg">
+  <a class="btn btn-outline-secondary btn-sm" href="/admin/automation/{{ rule.id }}?preview=1"><i class="bi bi-eye"></i> Preview: who matches now</a>
+  {{ post_button("/admin/automation/" ~ rule.id ~ "/run", '<i class="bi bi-play"></i> Run now', csrf, "btn-outline-primary btn-sm",
+                 confirm="Do the action now for everyone this rule matches (outside their cooldown)?", ok="Run now") }}
+  {{ post_button("/admin/automation/" ~ rule.id ~ "/toggle", "Disable" if rule.enabled else "Enable", csrf,
+                 "btn-outline-secondary btn-sm" if rule.enabled else "btn-success btn-sm") }}
+  <span class="ms-auto">{{ post_button("/admin/automation/" ~ rule.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf,
+                 "btn-outline-danger btn-sm", confirm="Delete rule " ~ rule.name ~ " and its run log?", danger=True) }}</span>
+</div>
+
+{% if preview %}
+<div class="card mb-3 mw-lg"><div class="card-header">Preview: {{ preview.total }} match now, {{ preview.due }} would be acted on
+  <span class="small text-muted fw-normal">(nothing was done)</span></div>
+  <div class="table-responsive"><table class="table table-sm mb-0 small">
+    <thead><tr><th>Target</th><th>Found</th><th></th></tr></thead>
+    <tbody>{% for m in preview.matches %}
+      <tr><td>{% if m.login %}<a href="/admin/accounts/{{ m.login }}">{{ m.login }}</a>{% else %}<a href="/admin/clients/{{ m.client_id }}">client {{ m.client_id }}</a>{% endif %}</td>
+        <td>{{ m.detail }}</td><td>{% if m.cooling %}<span class="badge text-bg-light border">cooldown</span>{% endif %}</td></tr>
+    {% else %}{{ empty(3, "Nothing matches now.") }}{% endfor %}</tbody>
+  </table></div>
+  {% if preview.total > preview.matches|length %}<div class="card-body small text-muted">The first {{ preview.matches|length }} are listed.</div>{% endif %}
+</div>
+{% endif %}
+
+<h2 class="h6 mw-lg">Run log</h2>
+<div class="card mw-lg"><div class="table-responsive"><table class="table table-sm mb-0 small">
+  <thead><tr><th>When</th><th>Target</th><th>Outcome</th><th>Message</th></tr></thead>
+  <tbody>{% for x in runs %}
+    <tr><td>{{ x.at|dt }}</td>
+      <td>{% if x.login %}<a href="/admin/accounts/{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
+      <td>{% if x.outcome == "done" %}<span class="badge text-bg-success">done</span>{% else %}<span class="badge text-bg-danger">failed</span>{% endif %}</td>
+      <td>{{ x.message }}</td></tr>
+  {% else %}{{ empty(4, "Nothing done yet.") }}{% endfor %}</tbody>
+</table></div></div>
+{% endif %}
+{% endblock %}

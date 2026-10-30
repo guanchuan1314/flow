@@ -1,0 +1,113 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import alert, csrf_input, field, select, post_button %}
+{% block page_title %}{{ "Symbol " ~ s.name if s else "New symbol" }}{% endblock %}
+{% block content %}
+{{ alert(mt5_warning) }}
+{% set new = s is none %}
+{% set same = "same as the copied symbol" %}
+{% macro num(name, label, help=None, step="any", col="col-md-3") -%}
+  {{ field(name, label, "" if new else s[name]|num, type="number", step=step, col=col, help=help,
+           placeholder=same if new else "") }}
+{%- endmacro %}
+{% macro text(name, label, help=None, col="col-md-3", placeholder="") -%}
+  {{ field(name, label, "" if new else s[name], col=col, help=help, placeholder=(same if new else placeholder)) }}
+{%- endmacro %}
+{% macro choice(name, label, options, col="col-md-3") -%}
+  {{ select(name, label, options.items(), selected=(none if new else s[name]), blank=("(" ~ same ~ ")") if new else none, col=col) }}
+{%- endmacro %}
+
+<form method="post" action="{{ '/admin/symbols/new' if new else '/admin/symbols/' ~ s.id }}" class="mw-lg">
+  {{ csrf_input(csrf) }}
+  <div class="card mb-3"><div class="card-header">Symbol on <strong>{{ server.name if server else "—" }}</strong></div><div class="card-body"><div class="row">
+    {% if new %}
+      <input type="hidden" name="server_id" value="{{ server.id if server else '' }}">
+      {{ field("name", "Symbol name", "", required=True, col="col-md-4", placeholder="e.g. EURUSD.ecn",
+               help="As traders will see it. It can't be renamed later.") }}
+      <div class="col-md-5 mb-3">
+        <label class="form-label" for="f-template">Copy settings from <span class="text-danger">*</span></label>
+        <select class="form-select" id="f-template" name="template" required>
+          <option value="">Choose a symbol…</option>
+          {% for t in templates %}<option value="{{ t.name }}">{{ t.name }}{% if t.description %} — {{ t.description }}{% endif %}</option>{% endfor %}
+        </select>
+        <div class="form-text">MT5 creates symbols by copying one: trading sessions, margin rates and flags come from it.
+          {% if not templates %}<strong>Sync this server's symbols first.</strong>{% endif %}</div>
+      </div>
+    {% else %}
+      <div class="col-md-4 mb-3"><div class="form-label">Symbol name</div><div class="mono fs-5">{{ s.name }}</div></div>
+      <div class="col-md-8 mb-3 small text-muted">Synced from MT5 {{ s.synced_at|dt }}. Saving writes the changes to MT5 first;
+        the CRM keeps them only once MT5 has accepted them.</div>
+    {% endif %}
+    {{ text("path", "Folder and name (path)", "Where the symbol sits in MT5, e.g. Forex\\EURUSD.ecn.", "col-md-6",
+            "Forex\\EURUSD") }}
+    {{ text("description", "Description", col="col-md-6") }}
+    {{ text("source", "Quotes from symbol", "Optional: the symbol whose quotes this one uses (e.g. EURUSD for EURUSD.ecn).") }}
+    {{ text("currency_base", "Base currency") }}
+    {{ text("currency_profit", "Profit currency") }}
+    {{ text("currency_margin", "Margin currency") }}
+    {{ num("digits", "Digits", step="1") }}
+    {{ num("contract_size", "Contract size") }}
+    {{ choice("calc_mode", "Margin and profit calculation", calc_modes, "col-md-6") }}
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Trading</div><div class="card-body"><div class="row">
+    {{ choice("trade_mode", "Trading", trade_modes) }}
+    {{ choice("exec_mode", "Execution", exec_modes) }}
+    {{ num("spread", "Spread (points)", "0 = floating spread from the feed.", step="1") }}
+    {{ num("stops_level", "Stops level (points)", step="1") }}
+    {{ num("volume_min", "Minimum volume (lots)") }}
+    {{ num("volume_max", "Maximum volume (lots)") }}
+    {{ num("volume_step", "Volume step (lots)") }}
+    {{ num("freeze_level", "Freeze level (points)", step="1") }}
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Swaps and margin</div><div class="card-body"><div class="row">
+    {{ choice("swap_mode", "Swap type", swap_modes) }}
+    {{ num("swap_long", "Swap long") }}
+    {{ num("swap_short", "Swap short") }}
+    {{ choice("swap_3day", "Triple swap on", weekdays) }}
+    {{ num("margin_initial", "Initial margin", "0 = calculated from the contract size.") }}
+    {{ num("margin_maintenance", "Maintenance margin") }}
+    {{ num("margin_hedged", "Hedged margin") }}
+  </div></div></div>
+
+  {% if not new and s.sessions %}{# without MT5's sessions, an empty table would close every day #}
+  <div class="card mb-3"><div class="card-header">Sessions <span class="small text-muted">(server time)</span></div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Day</th>{% for kind, label in session_kinds.items() %}<th>{{ label }} sessions
+        <div class="d-flex flex-wrap gap-2 small fw-normal mt-1">
+          <button type="button" class="btn btn-link btn-sm p-0" data-session-fill="{{ kind }}" data-fill="weekdays">Monday to Tue–Fri</button>
+          <button type="button" class="btn btn-link btn-sm p-0" data-session-fill="{{ kind }}" data-fill="24x5">24 h Mon–Fri</button>
+          <button type="button" class="btn btn-link btn-sm p-0" data-session-fill="{{ kind }}" data-fill="24x7">24 h every day</button>
+          {% if kind == "trade" %}<button type="button" class="btn btn-link btn-sm p-0" data-session-fill="trade" data-fill="quote">Same as quotes</button>{% endif %}
+        </div></th>{% endfor %}</tr></thead>
+      <tbody>
+      {% set shown = {} %}{% for kind in session_kinds %}{% set _ = shown.update({kind: format_sessions((s.sessions or {}).get(kind, []))}) %}{% endfor %}
+      {% for day, label in weekdays.items() %}
+        <tr><td class="small">{{ label }}</td>
+          {% for kind in session_kinds %}<td><input class="form-control form-control-sm mono" name="{{ kind }}" value="{{ shown[kind][day] }}"
+            data-sessions="{{ kind }}" data-day="{{ day }}"
+            placeholder="closed" aria-label="{{ session_kinds[kind] }} sessions on {{ label }}"></td>{% endfor %}</tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="card-body pt-2 small text-muted">When quotes are accepted and trading is allowed, in server time. A day can have several
+      sessions (e.g. 01:00–22:15 and 22:30–24:00); an end of 00:00 means midnight at the end of the day; no session = closed that day.
+      Holidays are set in MT5 Administrator.</div>
+  </div>
+  {% endif %}
+
+  <button class="btn btn-primary" type="submit">{{ "Create on MT5" if new else "Save to MT5" }}</button>
+  <a class="btn btn-link" href="/admin/symbols?server={{ server.id if server else '' }}">Cancel</a>
+</form>
+
+{% if not new %}
+<div class="card mw-lg border-danger mt-4"><div class="card-body d-flex justify-content-between align-items-center gap-2">
+  <div class="small text-muted">Deleting removes {{ s.name }} from the MT5 server and from the CRM.
+    {% set busy = usage.values()|sum %}{% if busy %}<br><strong class="text-danger">It can't be deleted while it has
+    {% for k, v in usage.items() if v %}{{ v }} {{ k }}{{ " and " if not loop.last }}{% endfor %}.</strong>{% endif %}
+    Groups whose symbol list names it stop offering it.</div>
+  {{ post_button("/admin/symbols/" ~ s.id ~ "/delete", '<i class="bi bi-trash"></i> Delete symbol', csrf, "btn-outline-danger btn-sm",
+                 confirm="Delete " ~ s.name ~ " on the MT5 server " ~ server.name ~ "? Traders can no longer see or trade it.", danger=True) }}
+</div></div>
+{% endif %}
+{% endblock %}

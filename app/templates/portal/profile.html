@@ -1,0 +1,52 @@
+{% extends "portal/layout.html" %}
+{% from "macros.html" import field, csrf_input, secret %}
+{% block page_title %}Profile &amp; security{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card mb-4"><div class="card-header">Personal details</div><div class="card-body">
+      <dl class="row mb-3 small">
+        <dt class="col-4">Name</dt><dd class="col-8">{{ client.full_name }}</dd>
+        <dt class="col-4">Email</dt><dd class="col-8">{{ client.email }}</dd>
+        <dt class="col-4">Country</dt><dd class="col-8">{{ client.country or "—" }}</dd>
+        <dt class="col-4">Client ID</dt><dd class="col-8">{{ client.id }}</dd>
+      </dl>
+      <form method="post" action="/portal/profile">
+        {{ csrf_input(csrf) }}
+        {{ field("phone", "Phone", client.phone) }}
+        {{ field("city", "City", client.city) }}
+        {{ field("address", "Address", client.address) }}
+        <button class="btn btn-primary" type="submit">Save</button>
+        <div class="form-text">To change your name, email or country, contact support (identity checks apply).</div>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-4"><div class="card-header">Password</div><div class="card-body">
+      <form method="post" action="/portal/profile/password">
+        {{ csrf_input(csrf) }}
+        {{ field("current_password", "Current password", type="password", required=True) }}
+        {{ field("new_password", "New password", type="password", required=True) }}
+        <button class="btn btn-primary" type="submit">Change password</button>
+      </form>
+    </div></div>
+    <div class="card"><div class="card-header">Two-factor authentication</div><div class="card-body">
+      {% if client.totp_enabled %}
+        <p><span class="badge text-bg-success">On</span> Your account is protected with an authenticator app.</p>
+        <form method="post" action="/portal/profile/2fa/disable" data-confirm="Turn off two-factor authentication?">
+          {{ csrf_input(csrf) }}{{ field("code", "Current code", required=True) }}
+          <button class="btn btn-outline-danger" type="submit">Turn off</button></form>
+      {% elif enroll %}
+        <p>Scan with your authenticator app, then enter the 6-digit code.</p>
+        <img class="qr mb-3" src="{{ enroll.qr }}" alt="QR code">
+        {{ secret("Or enter this key", enroll.secret) }}
+        <form method="post" action="/portal/profile/2fa/confirm">{{ csrf_input(csrf) }}
+          {{ field("code", "Code", required=True) }}<button class="btn btn-primary" type="submit">Turn on</button></form>
+      {% else %}
+        <p class="text-muted">Add a second step at sign-in for much stronger protection.</p>
+        <form method="post" action="/portal/profile/2fa/start">{{ csrf_input(csrf) }}<button class="btn btn-primary" type="submit">Set up 2FA</button></form>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

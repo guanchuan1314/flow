@@ -1,0 +1,48 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import badge, empty, pagination %}
+{% block page_title %}Clients{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <form class="row g-2 align-items-center" method="get">
+      <div class="col-md-5"><input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Search name, email, phone, client ID or MT5 login"></div>
+      <div class="col-md-2">
+        <select class="form-select form-select-sm" name="status" data-autosubmit>
+          <option value="">Any status</option>
+          {% for s in statuses %}<option value="{{ s }}" {% if s == status %}selected{% endif %}>{{ s|label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <select class="form-select form-select-sm" name="kyc" data-autosubmit>
+          <option value="">Any KYC</option>
+          {% for s in kyc_statuses %}<option value="{{ s }}" {% if s == kyc %}selected{% endif %}>{{ s|label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-auto"><button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-search"></i> Search</button></div>
+      {% if staff.has_perm("clients.manage") %}
+      <div class="col-md text-md-end"><a class="btn btn-sm btn-success" href="/admin/clients/new"><i class="bi bi-plus-lg"></i> New client</a></div>
+      {% endif %}
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Country</th><th>Status</th><th>KYC</th><th>Sales</th><th>Registered</th></tr></thead>
+      <tbody>
+      {% for c in page.items %}
+        <tr>
+          <td>{{ c.id }}</td>
+          <td><a href="/admin/clients/{{ c.id }}">{{ c.full_name }}</a></td>
+          <td>{{ c.email }}</td>
+          <td>{{ c.country or "" }}</td>
+          <td>{{ badge(c.status) }}</td>
+          <td>{{ badge(c.kyc_status) }}</td>
+          <td>{{ staff_names.get(c.sales_staff_id, "") }}</td>
+          <td>{{ c.created_at|dt }}</td>
+        </tr>
+      {% else %}{{ empty(8, "No clients match your search.") }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ pagination(page, request) }}
+</div>
+{% endblock %}

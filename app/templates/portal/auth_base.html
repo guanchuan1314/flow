@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "macros.html" import flashes as show_flashes %}
+{% block head %}<link rel="stylesheet" href="/static/site.css">{% endblock %}
+{% block body_class %}s-area{% endblock %}
+{% block body %}
+<div class="a-auth">
+  <div class="a-auth-art d-flex">
+    <a class="s-brand s-brand-light" href="/"><span class="brand-mark s-mark-glow">{{ brand().initials }}</span>{{ brand().app_name }}</a>
+    <div>
+      <h2>Trade forex, gold, indices &amp; crypto on MetaTrader 5</h2>
+      <p class="a-auth-tag">{{ brand().brand_tagline }}.</p>
+      <ul class="s-check fs-6">
+        <li>Open live and demo accounts in seconds</li>
+        <li>Instant transfers between wallet and accounts</li>
+        <li>Copy top traders or invest in PAMM funds</li>
+        <li>Two-factor authentication keeps your account safe</li>
+      </ul>
+    </div>
+    <div class="a-auth-risk">CFDs are complex instruments with a high risk of losing money rapidly due to leverage.<br>&copy; {{ brand().company_legal_name }}</div>
+  </div>
+  <div class="a-auth-form">
+    <div class="inner {% block card_class %}{% endblock %}">
+      <a class="d-flex d-lg-none s-brand mb-4" href="/"><span class="brand-mark">{{ brand().initials }}</span>{{ brand().app_name }}</a>
+      <h1 class="h3 fw-bold mb-1">{% block subtitle %}{% endblock %}</h1>
+      <p class="text-muted mb-4">{% block lead %}Welcome to the client area.{% endblock %}</p>
+      {{ show_flashes(flashes) }}
+      {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+      {% block form %}{% endblock %}
+      <p class="small text-muted mt-4 mb-0 d-lg-none">CFDs are complex instruments with a high risk of losing money rapidly due to leverage.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

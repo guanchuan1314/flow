@@ -1,0 +1,254 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, select, csrf_input, badge, empty, pnl, post_button %}
+{% block page_title %}{{ c.full_name }}{% endblock %}
+{% block content %}
+{% set can_manage = staff.has_perm("clients.manage") %}
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  {{ badge(c.status) }} <span class="text-muted small">KYC</span> {{ badge(c.kyc_status) }}
+  <span class="text-muted small ms-2">#{{ c.id }} · {{ c.email }} · registered {{ c.created_at|dt }}</span>
+  <div class="ms-auto d-flex gap-2">
+    {% if staff.has_perm("finance.create") %}<a class="btn btn-sm btn-outline-primary" href="/admin/payments/new?client_id={{ c.id }}"><i class="bi bi-cash-coin"></i> New payment</a>{% endif %}
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+  {% for t, label in [("overview","Overview"),("accounts","MT5 accounts (" ~ accounts|length ~ ")"),("kyc","KYC"),("finance","Wallet & payments"),("notes","Notes"),("activity","Activity")] %}
+    <li class="nav-item"><a class="nav-link {% if tab == t %}active{% endif %}" href="?tab={{ t }}">{{ label }}</a></li>
+  {% endfor %}
+</ul>
+
+{% if c.mt5_sync_error %}
+  <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 small">
+    <span><i class="bi bi-exclamation-triangle me-1"></i>The latest profile changes could not be written to MT5 ({{ c.mt5_sync_error }}).
+      The worker retries every minute.</span>
+    {% if can_manage %}<span class="ms-auto">{{ post_button("/admin/clients/" ~ c.id ~ "/push-mt5", "Retry now", csrf, "btn-outline-dark btn-sm") }}</span>{% endif %}
+  </div>
+{% endif %}
+{% if tab == "overview" %}
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span>Profile</span>
+      {% if accounts %}<span class="small text-muted" title="Name, email, phone, address and status are written to every MT5 account of this client">
+        <i class="bi bi-arrow-left-right"></i> synced to {{ accounts|length }} MT5 account(s){% if c.mt5_synced_at %} · {{ c.mt5_synced_at|dt }}{% endif %}</span>{% endif %}</div>
+      <div class="card-body">
+      <form method="post" action="/admin/clients/{{ c.id }}/edit">
+        {{ csrf_input(csrf) }}
+        <fieldset {% if not can_manage %}disabled{% endif %}>
+        <div class="row">
+          {{ field("email", "Email", c.email, type="email", required=True, col="col-md-12",
+                   help="Imported MT5 users without an email have an address ending in @import.invalid: set the real one." if c.email.endswith("@import.invalid") else None) }}
+          {{ field("first_name", "First name", c.first_name, required=True, col="col-md-6") }}
+          {{ field("last_name", "Last name", c.last_name, required=True, col="col-md-6") }}
+          {{ field("phone", "Phone", c.phone, col="col-md-6") }}
+          {{ field("country", "Country", c.country, col="col-md-2") }}
+          {{ field("city", "City", c.city, col="col-md-4") }}
+          {{ field("address", "Address", c.address, col="col-md-8") }}
+          {{ field("date_of_birth", "Date of birth", c.date_of_birth, type="date", col="col-md-4") }}
+          {{ select("status", "Status", statuses|map("string")|zip(statuses|map("replace", "_", " "))|list, c.status.value, col="col-md-4") }}
+        </div>
+        {% if can_manage %}<button class="btn btn-primary" type="submit">Save profile</button>{% endif %}
+        </fieldset>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card mb-4"><div class="card-header">Ownership</div><div class="card-body">
+      <form method="post" action="/admin/clients/{{ c.id }}/assign">
+        {{ csrf_input(csrf) }}
+        <fieldset {% if not can_manage %}disabled{% endif %}>
+        {{ select("sales_staff_id", "Sales", staff_options, c.sales_staff_id, blank="— unassigned —") }}
+        {{ select("account_manager_id", "Account manager", staff_options, c.account_manager_id, blank="— unassigned —") }}
+        {% if can_manage %}<button class="btn btn-outline-primary" type="submit">Save assignment</button>{% endif %}
+        </fieldset>
+      </form>
+    </div></div>
+    <div class="card"><div class="card-header">Marketing</div>
+      <ul class="list-group list-group-flush">
+        <li class="list-group-item d-flex justify-content-between"><span>Referral code</span><span class="mono">{{ c.referral_code }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Referred by</span>
+          <span>{% if referrer %}<a href="/admin/clients/{{ referrer.id }}">{{ referrer.full_name }}</a>{% else %}—{% endif %}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Clients referred</span><span>{{ referred_count }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>IB</span>
+          <span>{% if ib %}<a href="/admin/ibs/{{ ib.id }}">IB #{{ ib.id }}</a> {{ badge(ib.status) }}{% else %}No{% endif %}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Lead source</span><span>{{ c.lead_source|label if c.lead_source else "—" }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>UTM</span>
+          <span class="small">{{ [c.utm_source, c.utm_medium, c.utm_campaign]|select|join(" / ") or "—" }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Portal 2FA</span><span>{{ "On" if c.totp_enabled else "Off" }}</span></li>
+        <li class="list-group-item d-flex justify-content-between"><span>Last login</span><span>{{ c.last_login_at|dt }}</span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+{% elif tab == "accounts" %}
+<div class="card mb-4">
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead><tr><th>Login</th><th>Type</th><th>Group</th><th>Leverage</th><th>Status</th><th class="num">Balance</th><th class="num">Credit</th><th class="num">Equity</th><th>Synced</th></tr></thead>
+      <tbody>
+      {% for a in accounts %}
+        <tr>
+          <td><a href="/admin/accounts/{{ a.login }}">{{ a.login }}</a> {% if a.is_demo %}<span class="badge text-bg-info">demo</span>{% endif %}
+            {% if a.purpose.value != "trading" %}<span class="badge text-bg-dark">{{ a.purpose|label }}</span>{% endif %}</td>
+          <td>{{ a.account_group.name if a.account_group else "" }}</td>
+          <td class="mono small">{{ a.group }}</td>
+          <td>1:{{ a.leverage }}</td>
+          <td>{{ badge(a.status) }}{% if not a.trading_enabled %} <span class="badge text-bg-danger">trading off</span>{% endif %}</td>
+          <td class="num">{{ a.balance|money }}</td><td class="num">{{ a.credit|money }}</td><td class="num">{{ a.equity|money }}</td>
+          <td class="small">{{ a.last_synced_at|dt }}</td>
+        </tr>
+      {% else %}{{ empty(9, "No MT5 accounts yet.") }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% if staff.has_perm("accounts.manage") %}
+<div class="card mw-sm">
+  <div class="card-header">Open new MT5 account</div>
+  <div class="card-body">
+    {% if not account_groups %}<p class="text-muted mb-0">No account groups are enabled. <a href="/admin/account-groups">Configure account groups</a>.</p>
+    {% else %}
+    <form method="post" action="/admin/clients/{{ c.id }}/accounts" data-confirm="Create a new MT5 account for {{ c.full_name }}?">
+      {{ csrf_input(csrf) }}
+      <div class="row">
+        {{ select("account_group_id", "Account group", account_groups|map(attribute="id")|zip(account_groups|map(attribute="name"))|list, col="col-md-7") }}
+        {{ field("leverage", "Leverage (blank = default)", type="number", col="col-md-5") }}
+      </div>
+      {% if c.kyc_status.value != "approved" and settings().live_requires_kyc %}
+        <div class="alert alert-warning py-2 small">KYC is not approved: only demo accounts can be opened.</div>
+      {% endif %}
+      <button class="btn btn-primary" type="submit">Open account</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% elif tab == "kyc" %}
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">Documents</div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead><tr><th>Type</th><th>File</th><th>Uploaded</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+          {% for d in docs %}
+            <tr>
+              <td>{{ d.doc_type|label }}</td>
+              <td>{% if staff.has_perm("kyc.review") %}<a href="/admin/kyc/{{ d.id }}/file"><i class="bi bi-download"></i> {{ d.original_name }}</a>{% else %}{{ d.original_name }}{% endif %}</td>
+              <td>{{ d.created_at|dt }}</td>
+              <td>{{ badge(d.status) }}{% if d.reject_reason %}<div class="small text-danger">{{ d.reject_reason }}</div>{% endif %}</td>
+              <td class="text-end">
+                {% if d.status.value == "pending" and staff.has_perm("kyc.review") %}
+                <form method="post" action="/admin/kyc/{{ d.id }}/review" class="d-flex gap-1 justify-content-end">
+                  {{ csrf_input(csrf) }}
+                  <input class="form-control form-control-sm w-reason" name="reason" placeholder="Reason (if rejecting)">
+                  <button class="btn btn-sm btn-success" name="decision" value="approve">Approve</button>
+                  <button class="btn btn-sm btn-outline-danger" name="decision" value="reject">Reject</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}{{ empty(5, "No documents uploaded.") }}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    {% if staff.has_perm("kyc.review") %}
+    <div class="card mb-4"><div class="card-header">Verification decision</div><div class="card-body">
+      <form method="post" action="/admin/clients/{{ c.id }}/kyc-status">
+        {{ csrf_input(csrf) }}
+        {{ select("status", "KYC status", kyc_statuses|zip(kyc_statuses|map("replace", "_", " "))|list, c.kyc_status.value) }}
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+    </div></div>
+    {% endif %}
+    {% if can_manage %}
+    <div class="card"><div class="card-header">Upload on behalf of client</div><div class="card-body">
+      <form method="post" action="/admin/clients/{{ c.id }}/kyc/upload" enctype="multipart/form-data">
+        {{ csrf_input(csrf) }}
+        {{ select("doc_type", "Document type", doc_types|zip(doc_types|map("replace", "_", " "))|list) }}
+        <div class="mb-3"><input class="form-control" type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required>
+          <div class="form-text">PDF, JPG or PNG, max 10 MB.</div></div>
+        <button class="btn btn-outline-primary" type="submit">Upload</button>
+      </form>
+    </div></div>
+    {% endif %}
+  </div>
+</div>
+
+{% elif tab == "finance" %}
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card kpi mb-4"><div class="card-body">
+      <div class="kpi-label">Wallet balance</div><div class="kpi-value">{{ wallet.balance|money }} {{ wallet.currency }}</div>
+    </div></div>
+    <div class="card">
+      <div class="card-header">Payments</div>
+      <div class="table-responsive"><table class="table">
+        <thead><tr><th>#</th><th>Type</th><th class="num">Amount</th><th>Target</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for p in payments %}
+          <tr><td><a href="/admin/payments/{{ p.id }}">{{ p.id }}</a></td><td>{{ p.kind|label }}</td>
+            <td class="num">{{ p.amount|money }}</td><td>{{ p.trading_login or "Wallet" }}</td><td>{{ badge(p.status) }}</td></tr>
+        {% else %}{{ empty(5, "No payments.") }}{% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">Wallet ledger</div>
+      <div class="table-responsive"><table class="table">
+        <thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+        <tbody>
+        {% for t in txs %}
+          <tr><td class="small">{{ t.created_at|dt }}</td><td>{{ t.kind|label }}</td><td class="small">{{ t.comment }}</td>
+            <td class="num">{{ pnl(t.amount) }}</td><td class="num">{{ t.balance_after|money }}</td></tr>
+        {% else %}{{ empty(5, "No wallet activity.") }}{% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+{% elif tab == "notes" %}
+<div class="row g-4">
+  <div class="col-lg-8">
+    {% for n in notes %}
+      <div class="card mb-2"><div class="card-body py-2">
+        <div class="small text-muted">{{ staff_names.get(n.staff_id, "?") if n.staff_id else "Website enquiry" }} · {{ n.created_at|dt }}</div>
+        <div class="pre-wrap">{{ n.body }}</div>
+      </div></div>
+    {% else %}<p class="text-muted">No notes yet.</p>{% endfor %}
+  </div>
+  {% if can_manage %}
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <form method="post" action="/admin/clients/{{ c.id }}/notes">
+        {{ csrf_input(csrf) }}
+        <textarea class="form-control mb-2" name="body" rows="5" placeholder="Call summary, follow-up…" required></textarea>
+        <button class="btn btn-primary" type="submit">Add note</button>
+      </form>
+    </div></div>
+  </div>
+  {% endif %}
+</div>
+
+{% elif tab == "activity" %}
+<div class="card"><div class="table-responsive"><table class="table">
+  <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th><th>IP</th></tr></thead>
+  <tbody>
+  {% for e in events %}
+    <tr><td class="small">{{ e.created_at|dt }}</td>
+      <td class="small">{{ e.actor_type }}{% if e.actor_type == "staff" %}: {{ staff_names.get(e.actor_id, e.actor_id) }}{% endif %}</td>
+      <td class="mono small">{{ e.action }}</td><td class="small">{{ e.entity }} {{ e.entity_id }}</td>
+      <td class="small mono text-break">{{ e.details|tojson }}</td><td class="small">{{ e.ip or "" }}</td></tr>
+  {% else %}{{ empty(6, "No activity recorded.") }}{% endfor %}
+  </tbody>
+</table></div></div>
+{% endif %}
+{% endblock %}

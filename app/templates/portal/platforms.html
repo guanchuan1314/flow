@@ -1,0 +1,38 @@
+{% extends "portal/layout.html" %}
+{% block page_title %}Trade{% endblock %}
+{% block content %}
+<div class="row g-4 mb-4">
+  {% for icon, title, text, href, cta in [
+    ("globe2", "Web terminal", "Trade in your browser right now.", settings().mt5_webterminal_url, "Open web terminal"),
+    ("windows", "MetaTrader 5 for Windows", "Full desktop terminal with Expert Advisors.", settings().mt5_download_windows, "Download"),
+    ("android2", "Android app", "Trade on the go.", settings().mt5_download_android, "Google Play"),
+    ("apple", "iPhone & iPad", "Native iOS app.", settings().mt5_download_ios, "App Store"),
+  ] %}
+  <div class="col-md-6 col-xl-3"><div class="a-card a-card-b h-100 d-flex flex-column">
+    <div class="s-icon"><i class="bi bi-{{ icon }}"></i></div>
+    <div class="fw-bold">{{ title }}</div><p class="text-muted small flex-grow-1">{{ text }}</p>
+    <a class="btn {{ 'btn-accent' if loop.first else 'btn-outline-dark' }}" href="{{ href }}" target="_blank" rel="noopener">{{ cta }}</a>
+  </div></div>
+  {% endfor %}
+</div>
+<div class="a-card">
+  <div class="a-card-h">Your login details</div>
+  <div class="a-card-b">
+    <p class="small text-muted">In MetaTrader 5 choose <strong>File → Login to trade account</strong> and enter the details below.
+      Forgot a password? Reset it on <a href="/portal/accounts">My accounts</a>.</p>
+    <div class="table-responsive"><table class="table align-middle">
+      <thead><tr><th>Login</th><th>Server</th><th>Type</th><th>Leverage</th><th class="text-end">Equity</th></tr></thead>
+      <tbody>
+      {% for a in accounts %}
+        <tr><td class="mono fw-bold">{{ a.login }} <button class="btn btn-sm btn-link p-0 ms-1" type="button" data-copy="{{ a.login }}"><i class="bi bi-clipboard"></i></button></td>
+          <td><span class="badge text-bg-dark">{{ a.server.display_name }}</span></td>
+          <td><span class="a-tag {% if a.is_demo %}demo{% endif %}">{{ "Demo" if a.is_demo else "Live" }}</span> {{ a.account_group.name if a.account_group else "" }}</td>
+          <td>1:{{ a.leverage }}</td><td class="text-end">{{ a.equity|money }} {{ a.currency }}</td></tr>
+      {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">No accounts yet. <a href="/portal/accounts">Open one</a>.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+# Flow's database in Docker (setup.ps1 creates and starts it; Docker Desktop on Windows).
+#   db  PostgreSQL 16, data in the "flow_pgdata" volume, reachable from this machine only (127.0.0.1).
+# The CRM itself runs on Windows, not in a container: the MT5 Manager API is a Windows-only library.
+# Caddy (HTTPS) also runs on Windows: Docker Desktop hides the visitor's real IP address from containers,
+# which IP rules, rate limits and the audit log depend on.
+#
+#   docker compose up -d       start (setup.ps1 and run-demo.ps1 do this)
+#   docker compose ps          status
+#   docker compose down        stop (data is kept; `down -v` deletes it)
+# Settings come from .env (POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB / POSTGRES_PORT).
+name: flow
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-flow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set in .env - run setup.ps1}
+      POSTGRES_DB: ${POSTGRES_DB:-flow}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:

@@ -1,0 +1,16 @@
+{% extends "portal/auth_base.html" %}
+{% from "macros.html" import csrf_input %}
+{% block title %}Reset password · {{ brand().app_name }}{% endblock %}
+{% block subtitle %}Reset your password{% endblock %}
+{% block form %}
+{% if sent %}
+  <div class="alert alert-success">If that email is registered, we've sent a link to reset your password. It expires in {{ settings().password_reset_minutes }} minutes.</div>
+{% else %}
+<form method="post" action="/portal/forgot-password">
+  {{ csrf_input(csrf) }}
+  <div class="mb-3"><label class="form-label">Email</label><input class="form-control" type="email" name="email" required autofocus></div>
+  <button class="btn btn-accent btn-lg w-100" type="submit">Send reset link</button>
+</form>
+{% endif %}
+<div class="text-center mt-3 small a-auth-alt"><a href="/portal/login">Back to sign in</a></div>
+{% endblock %}

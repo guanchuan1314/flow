@@ -1,0 +1,44 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty, pagination, pnl %}
+{% block page_title %}Deals{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <form class="row g-2" method="get">
+      <div class="col-md-2"><input class="form-control form-control-sm" name="login" value="{{ login }}" placeholder="MT5 login"></div>
+      <div class="col-md-2"><input class="form-control form-control-sm" name="symbol" value="{{ symbol }}" placeholder="Symbol"></div>
+      <div class="col-md-2"><select class="form-select form-select-sm" name="kind">
+        <option value="">All deals</option>
+        <option value="trades" {% if kind == "trades" %}selected{% endif %}>Trades only</option>
+        <option value="balance" {% if kind == "balance" %}selected{% endif %}>Balance &amp; credit</option>
+      </select></div>
+      <div class="col-md-2"><input class="form-control form-control-sm" type="date" name="date_from" value="{{ date_from }}"></div>
+      <div class="col-md-2"><input class="form-control form-control-sm" type="date" name="date_to" value="{{ date_to }}"></div>
+      <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button></div>
+    </form>
+  </div>
+  <div class="table-responsive"><table class="table table-hover">
+    <thead><tr><th>Time</th><th>Ticket</th><th>Login</th><th>Client</th><th>Type</th><th>Symbol</th><th class="num">Lots</th><th class="num">Price</th><th class="num">Commission</th><th class="num">Swap</th><th class="num">Profit</th><th>Position</th><th>Comment</th></tr></thead>
+    <tbody>
+    {% for d in page.items %}
+      {% set owner = owners.get(d.login) %}
+      <tr>
+        <td class="small">{{ d.time|dt }}</td><td class="mono">{{ d.ticket }}</td>
+        <td><a href="/admin/accounts/{{ d.login }}">{{ d.login }}</a></td>
+        <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
+        <td>{{ d.action|side }}{% if d.action < 2 %} <span class="text-muted small">{{ ["in", "out", "in/out", "out by"][d.entry] if d.entry < 4 else "" }}</span>{% endif %}</td>
+        <td>{{ d.symbol }}</td>
+        <td class="num">{{ d.volume|money if d.action < 2 else "" }}</td>
+        <td class="num">{{ d.price|price(d.digits) if d.action < 2 else "" }}</td>
+        <td class="num">{{ d.commission|money if d.commission else "" }}</td>
+        <td class="num">{{ d.swap|money if d.swap else "" }}</td>
+        <td class="num">{{ pnl(d.profit) }}</td>
+        <td class="mono small">{{ d.position_id or "" }}</td>
+        <td class="small">{{ d.comment }}</td>
+      </tr>
+    {% else %}{{ empty(14, "No deals found.") }}{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, request) }}
+</div>
+{% endblock %}

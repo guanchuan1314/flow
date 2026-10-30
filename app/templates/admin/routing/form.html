@@ -1,0 +1,101 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, field, post_button %}
+{% block page_title %}{{ "Routing rule " ~ r.name if r else "New routing rule" }}{% endblock %}
+{% block content %}
+{% set new = r is none %}
+{% set types_on = r.types if r else 255 %}
+{% set action = preset_action %}
+<form method="post" action="{{ '/admin/routing/new' if new else '/admin/routing/' ~ r.id }}" class="mw-lg">
+  {{ csrf_input(csrf) }}
+  <input type="hidden" name="other_requests" value="{{ other_requests }}">
+  <div class="card mb-3"><div class="card-header">Rule on <strong>{{ server.name if server else "—" }}</strong></div><div class="card-body"><div class="row">
+    {% if new %}
+      <input type="hidden" name="server_id" value="{{ server.id if server else '' }}">
+      {{ field("name", "Name", "", required=True, col="col-md-6", placeholder="e.g. Real accounts to LMAX",
+               help="It can't be renamed later.") }}
+      <div class="col-md-6 mb-3 align-self-end"><div class="form-check">
+        <input class="form-check-input" type="checkbox" name="at_top" id="f-top" checked>
+        <label class="form-check-label" for="f-top">Put it at the top, before the existing rules</label></div>
+        <div class="form-text">Otherwise it goes to the bottom, where a broader rule above may catch the requests first.</div></div>
+    {% else %}
+      <div class="col-md-6 mb-3"><div class="form-label">Name</div><div class="fs-5">{{ r.name }}</div></div>
+      <div class="col-md-6 mb-3 small text-muted">Position {{ r.position + 1 }} on MT5, synced {{ r.synced_at|dt }}.
+        Saving writes the rule to MT5 first.</div>
+    {% endif %}
+    <div class="col-12 mb-2"><div class="form-check">
+      <input class="form-check-input" type="checkbox" name="enabled" id="f-enabled" {% if new or r.enabled %}checked{% endif %}>
+      <label class="form-check-label" for="f-enabled">Enabled</label></div></div>
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Which requests</div><div class="card-body">
+    <div class="form-label">Order types</div>
+    <div class="mb-3">{% for bit, label in order_types.items() %}
+      <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="order_type" value="{{ bit }}" id="t-{{ bit }}"
+        {% if types_on|int // bit % 2 %}checked{% endif %}><label class="form-check-label" for="t-{{ bit }}">{{ label }}</label></div>
+    {% endfor %}</div>
+    <div class="form-label">Requests</div>
+    <div class="form-check"><input class="form-check-input" type="radio" name="request_mode" value="all" id="rq-all" {% if request_all %}checked{% endif %}>
+      <label class="form-check-label" for="rq-all">All requests (clients', stop outs and dealers')</label></div>
+    <div class="form-check mb-1"><input class="form-check-input" type="radio" name="request_mode" value="chosen" id="rq-some" {% if not request_all %}checked{% endif %}>
+      <label class="form-check-label" for="rq-some">Only these:</label></div>
+    <div class="ms-4">{% for bit, label in request_kinds.items() %}
+      <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="request_kind" value="{{ bit }}" id="rk-{{ bit }}"
+        {% if bit in requests_on and not request_all %}checked{% endif %}><label class="form-check-label small" for="rk-{{ bit }}">{{ label }}</label></div>
+    {% endfor %}</div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-header">Conditions <span class="small text-muted">(all must hold; none = every request above)</span></div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Condition</th><th>Comparison</th><th>Value</th></tr></thead>
+      <tbody>
+      {% set rows = (r.conditions if r else []) + [{}, {}, {}] %}
+      {% for c in rows %}
+        <tr>
+          <td><select class="form-select form-select-sm" name="cond" aria-label="Condition {{ loop.index }}">
+            <option value="">—</option>
+            {% for code, spec in conditions.items() %}<option value="{{ code }}" {% if c.condition == code %}selected{% endif %}>{{ spec[0] }}</option>{% endfor %}
+            {% if c.condition is defined and c.condition not in conditions %}<option value="{{ c.condition }}" selected>{{ condition_label(c.condition) }} (set in MT5)</option>{% endif %}
+          </select></td>
+          <td><select class="form-select form-select-sm" name="cond_rule" aria-label="Comparison {{ loop.index }}">
+            {% for code, op in rules_ops.items() %}<option value="{{ code }}" {% if c.rule == code %}selected{% endif %}>{{ op }}</option>{% endfor %}
+          </select></td>
+          <td><input class="form-control form-control-sm mono" name="cond_value" value="{{ c.value if c.value is defined else '' }}"
+            aria-label="Value {{ loop.index }}"></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="card-body pt-2 small text-muted">Values: {% for spec in conditions.values() %}{{ spec[0]|lower }} — {{ spec[2] }}{{ "; " if not loop.last }}{% endfor %}.
+      Several masks in one value are separated by commas. Need more rows? Save, and three empty ones appear again.</div>
+  </div>
+
+  <div class="card mb-3"><div class="card-header">Then</div><div class="card-body"><div class="row">
+    <div class="col-md-6 mb-3"><label class="form-label" for="f-action">Action</label>
+      <select class="form-select" id="f-action" name="action" required>
+        {% for code, label in actions.items() %}<option value="{{ code }}" {% if action == code %}selected{% endif %}>{{ label }}{% if code in intermediate %} (then the next rule){% endif %}</option>{% endfor %}
+        {% if action not in actions %}<option value="{{ action }}" selected>Action {{ action }} (set in MT5)</option>{% endif %}
+      </select></div>
+    {{ field("param", "Delay", r.param if r else "", type="number", col="col-md-3", help="For the delay actions only.") }}
+    <div class="col-md-6 mb-3"><label class="form-label" for="f-target">Gateway</label>
+      <select class="form-select" id="f-target" name="target">
+        <option value="">—</option>
+        {% for g in gateways %}<option value="{{ g.id }}" {% if target == g.id %}selected{% endif %}>{{ g.name }}{% if not g.enabled %} (disabled){% endif %}</option>{% endfor %}
+      </select>
+      <div class="form-text">For "Send to a gateway or dealer": orders go to this LP.
+        {% if not gateways %}This server has no gateway yet: <a href="/admin/liquidity/new?server={{ server.id if server else '' }}&kind=gateway">add one</a>.{% endif %}</div></div>
+    {{ field("dealer_logins", "And / or dealer logins", other_logins, col="col-md-6", placeholder="e.g. 1001 1002",
+             help="Manager logins that handle the requests by hand, separated by spaces.") }}
+  </div></div></div>
+
+  <button class="btn btn-primary" type="submit">{{ "Create on MT5" if new else "Save to MT5" }}</button>
+  <a class="btn btn-link" href="/admin/routing?server={{ server.id if server else '' }}">Cancel</a>
+</form>
+
+{% if not new %}
+<div class="card mw-lg border-danger mt-4"><div class="card-body d-flex justify-content-between align-items-center gap-2">
+  <div class="small text-muted">Deleting removes the rule from the MT5 server and from the CRM; the requests it caught then go to the rules below it.</div>
+  {{ post_button("/admin/routing/" ~ r.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
+                 confirm="Delete routing rule " ~ r.name ~ " on the MT5 server " ~ server.name ~ "?", danger=True) }}
+</div></div>
+{% endif %}
+{% endblock %}

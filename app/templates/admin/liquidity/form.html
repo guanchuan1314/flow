@@ -1,0 +1,156 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import alert, csrf_input, field, post_button %}
+{% set label = kinds[kind] %}
+{% block page_title %}{{ label ~ " " ~ c.name if c else "New " ~ label|lower }}{% endblock %}
+{% block content %}
+{{ alert(mt5_warning) }}
+{% set new = c is none %}
+
+{% if new and not module %}
+{# step 1: choose the module #}
+<div class="card mw-lg"><div class="card-header">New {{ label|lower }} on <strong>{{ server.name if server else "—" }}</strong>:
+  choose who to connect to</div><div class="card-body">
+  <form method="get" action="/admin/liquidity/new">
+    <input type="hidden" name="server" value="{{ server.id if server else '' }}">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <p class="small text-muted">Each one is a module (connector) installed on the MT5 server{% if modules %}: this server has {{ modules|length }}{% endif %}.
+      {% if kind == "gateway" %}Gateways send orders to the LP and most also bring its quotes.{% else %}Data feeds bring in quotes or news.{% endif %}</p>
+    {% for group, mods in grouped %}
+    <fieldset class="mb-3"><legend class="fs-6 fw-semibold">{{ group }}</legend><div class="row g-2">
+      {% for m in mods %}
+      <div class="col-md-6"><label class="border rounded p-2 d-flex gap-2 h-100 module-choice">
+        <input class="form-check-input mt-1" type="radio" name="module" value="{{ m.module }}" required>
+        <span><strong>{{ m.name }}</strong>{% if m.version %} <span class="small text-muted">build {{ m.version }}</span>{% endif %}
+          <span class="d-block small text-muted">{{ m.description|truncate(140) }}</span>
+          {% if m.server %}<span class="d-block small mono">{{ m.server }}</span>{% endif %}</span>
+      </label></div>
+      {% endfor %}
+    </div></fieldset>
+    {% endfor %}
+    {% if not modules and not mt5_warning %}<div class="form-text text-danger">The server reported no {{ label|lower }} modules.</div>{% endif %}
+    <button class="btn btn-primary mt-2" type="submit">Next</button>
+    <a class="btn btn-link mt-2" href="/admin/liquidity?server={{ server.id if server else '' }}&kind={{ kind }}">Cancel</a>
+  </form>
+</div></div>
+{% else %}
+{% set src = c %}
+{% set m = module %}
+{% macro val(name, default="") -%}{{ src[name] if src else default }}{%- endmacro %}
+<form method="post" action="{{ '/admin/liquidity/new' if new else '/admin/liquidity/' ~ c.id }}" class="mw-lg">
+  {{ csrf_input(csrf) }}
+  <input type="hidden" name="other_flags" value="{{ other_flags }}">
+  <div class="card mb-3"><div class="card-header">{{ label }} on <strong>{{ server.name }}</strong></div><div class="card-body"><div class="row">
+    {% if new %}
+      <input type="hidden" name="server_id" value="{{ server.id }}"><input type="hidden" name="kind" value="{{ kind }}">
+      <input type="hidden" name="module" value="{{ m.module }}">
+      {{ field("name", "Name", m.name, required=True, col="col-md-5", help="It can't be renamed later.") }}
+      <div class="col-md-7 mb-3"><div class="form-label">Module</div><div><strong>{{ m.name }}</strong> <span class="mono small">{{ m.module }}</span></div>
+        <div class="form-text">{{ m.description }}</div></div>
+    {% else %}
+      <div class="col-md-5 mb-3"><div class="form-label">Name</div><div class="fs-5">{{ c.name }}</div></div>
+      <div class="col-md-7 mb-3"><div class="form-label">Module</div>
+        <div class="mono small">{{ c.module }}{% if c.gateway_type %} · {{ c.gateway_type }}{% endif %}{% if c.mt5_id %} · ID {{ c.mt5_id }}{% endif %}</div>
+        <div class="small mt-1">{% if not c.enabled %}<span class="badge text-bg-secondary">disabled</span>
+          {% elif c.state.connected %}<span class="badge text-bg-success">connected</span>{% else %}<span class="badge text-bg-warning">not connected</span>{% endif %}
+          {% if c.state.ticks is defined %}<span class="text-muted ms-2">{{ "{:,}".format(c.state.ticks) }} ticks received{% if c.state.trades is defined %},
+            {{ c.state.trades }} trades{% endif %}</span>{% endif %}</div></div>
+    {% endif %}
+    {{ field("lp_server", "LP server address", val("lp_server", m.server if m else ""), col="col-md-5", placeholder="host:port") }}
+    {{ field("lp_login", "LP login", val("lp_login", m.login if m else ""), col="col-md-3") }}
+    {{ field("password", "LP password", "", type="password", col="col-md-4",
+             help="Written to MT5, never stored in the CRM." ~ ("" if new else " Leave blank to keep the current one.")) }}
+    <div class="col-12 mb-3"><div class="form-check">
+      <input class="form-check-input" type="checkbox" name="enabled" id="f-enabled" {% if new or c.enabled %}checked{% endif %}>
+      <label class="form-check-label" for="f-enabled">Enabled</label></div></div>
+    <div class="col-12 mb-2">
+      {% for bit, text in flags.items() %}
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" name="flag" value="{{ bit }}" id="flag-{{ bit }}" {% if bit in flags_on %}checked{% endif %}>
+        <label class="form-check-label" for="flag-{{ bit }}">{{ text }}</label></div>
+      {% endfor %}
+    </div>
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Symbols{% if kind == "gateway" %} and groups{% endif %}</div><div class="card-body"><div class="row">
+    <div class="col-md-{{ 6 if kind == 'gateway' else 12 }} mb-3">
+      <label class="form-label" for="f-symbols">Symbols served</label>
+      <textarea class="form-control mono" id="f-symbols" name="symbols" rows="3">{{ (src.symbols if src else ["*"])|join("\n") }}</textarea>
+      <div class="form-text">One mask per line, e.g. <span class="mono">*</span> or <span class="mono">Forex\*</span>.</div>
+    </div>
+    {% if kind == "gateway" %}
+    <div class="col-md-6 mb-3">
+      <label class="form-label" for="f-groups">Groups</label>
+      <textarea class="form-control mono" id="f-groups" name="groups" rows="3">{{ (src.groups if src else [])|join("\n") }}</textarea>
+      <div class="form-text">One group mask per line; empty = all groups.</div>
+    </div>
+    {% else %}
+    {{ field("keywords", "News keywords", val("keywords"), col="col-md-6") }}
+    {{ field("categories", "News categories", val("categories"), col="col-md-6") }}
+    {% endif %}
+    <div class="col-12 mb-3">
+      <label class="form-label" for="f-translations">Symbol translations</label>
+      <textarea class="form-control mono" id="f-translations" name="translations" rows="5" placeholder="EURUSD, EURUSD.ecn, 5, 0, 0">
+{%- for t in (src.translations if src else []) %}{{ t.source }}, {{ t.symbol }}, {{ t.digits }}, {{ t.bid_markup }}, {{ t.ask_markup }}
+{% endfor %}</textarea>
+      <div class="form-text">One per line: <span class="mono">LP symbol, MT5 symbol, digits, bid markup, ask markup</span>
+        (markups in points; the last three are optional).</div>
+      {% if new %}<div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" name="map_symbols" id="f-map" checked>
+        <label class="form-check-label" for="f-map">If left empty, translate every symbol on this server to the LP symbol of the same name
+          (edit afterwards for the ones the LP names differently)</label></div>{% endif %}
+    </div>
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Module parameters</div><div class="card-body">
+    <textarea class="form-control mono" name="params" rows="8" aria-label="Module parameters">
+{%- for k, v in (src.params if src else m.params).items() %}{{ k }} = {{ v }}
+{% endfor %}</textarea>
+    <div class="form-text">One per line as <span class="mono">Name = Value</span>; the names are the module's (see its documentation).
+      {% if secrets %}<br><i class="bi bi-shield-lock"></i> Passwords and tokens ({{ secrets|join(", ") }}) are written to MT5 and never stored
+      in the CRM, so they show empty here: leave them empty to keep MT5's value, or type a new one.{% endif %}</div>
+  </div></div>
+
+  {% if new and kind == "gateway" %}
+  <div class="card mb-3"><div class="card-header">Route orders to this gateway</div><div class="card-body"><div class="row">
+    <p class="small text-muted">Optional: in the same step, add a routing rule at the top of the server's rules that sends these groups' orders here.
+      Leave the groups empty to set routing later (MT5 → Routing).</p>
+    <div class="col-md-6 mb-2"><label class="form-label" for="f-rgroups">Groups</label>
+      <textarea class="form-control mono" id="f-rgroups" name="route_groups" rows="2" placeholder="real\*"></textarea>
+      <div class="form-text">Group masks, one per line.</div></div>
+    <div class="col-md-6 mb-2"><label class="form-label" for="f-rsymbols">Only these symbols</label>
+      <textarea class="form-control mono" id="f-rsymbols" name="route_symbols" rows="2" placeholder="all symbols"></textarea>
+      <div class="form-text">Symbol masks, one per line; empty = all.</div></div>
+  </div></div></div>
+  {% endif %}
+
+  {% if not new and kind == "gateway" %}
+  <div class="card mb-3"><div class="card-body d-flex justify-content-between align-items-center gap-2">
+    <div class="small">{% if routes %}Routing rules sending orders here: <strong>{{ routes|join(", ") }}</strong>
+      {% else %}<span class="text-warning-emphasis">No routing rule sends orders to this gateway yet.</span>{% endif %}</div>
+    <a class="btn btn-outline-primary btn-sm" href="/admin/routing/new?server={{ server.id }}&gateway={{ c.id }}"><i class="bi bi-signpost-split"></i> Route orders here</a>
+  </div></div>
+  {% endif %}
+
+  <div class="card mb-3"><div class="card-header">Advanced</div><div class="card-body"><div class="row">
+    {{ field("gateway_server", "Module process address", val("gateway_server"), col="col-md-4",
+             placeholder="filled in automatically" if new else "", help="Where the MT5 server reaches the module process (usually 127.0.0.1:port).") }}
+    {{ field("gateway_login", "Module process login", val("gateway_login"), type="number", col="col-md-2", placeholder="auto" if new else "") }}
+    {{ field("timeout_reconnect", "Reconnect after (s)", val("timeout_reconnect"), type="number", col="col-md-2") }}
+    {{ field("timeout_sleep", "Pause after failures (s)", val("timeout_sleep"), type="number", col="col-md-2") }}
+    {{ field("timeout_attempts", "Attempts before pause", val("timeout_attempts"), type="number", col="col-md-2") }}
+  </div></div></div>
+
+  <button class="btn btn-primary" type="submit">{{ "Create on MT5" if new else "Save to MT5" }}</button>
+  <a class="btn btn-link" href="/admin/liquidity?server={{ server.id }}&kind={{ kind }}">Cancel</a>
+</form>
+{% endif %}
+
+{% if not new %}
+<div class="card mw-lg border-danger mt-4"><div class="card-body d-flex justify-content-between align-items-center gap-2">
+  <div class="small text-muted">Deleting removes this {{ label|lower }} from the MT5 server and from the CRM.
+    {% if kind == "gateway" %}It can't be deleted while routing rules send orders to it.{% else %}Symbols priced only by it stop receiving quotes.{% endif %}</div>
+  {{ post_button("/admin/liquidity/" ~ c.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
+                 confirm="Delete " ~ label|lower ~ " " ~ c.name ~ " on the MT5 server " ~ server.name ~ "?", danger=True) }}
+</div></div>
+{% endif %}
+{% endblock %}

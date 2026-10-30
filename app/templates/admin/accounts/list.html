@@ -1,0 +1,55 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import badge, empty, pagination %}
+{% block page_title %}Trading accounts{% endblock %}
+{% block content %}
+<form id="sync-accounts" method="post" action="/admin/accounts/sync" class="d-none"
+      data-confirm="Import all accounts from the MT5 server now?"><input type="hidden" name="_csrf" value="{{ csrf }}"></form>
+<div class="card">
+  <div class="card-header">
+    <form class="row g-2" method="get">
+      <div class="col-md-3"><input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="MT5 login"></div>
+      <div class="col-md-2"><select class="form-select form-select-sm" name="status" data-autosubmit>
+        <option value="">Any status</option>
+        {% for s in statuses %}<option value="{{ s.value }}" {% if s.value == status %}selected{% endif %}>{{ s|label }}</option>{% endfor %}
+      </select></div>
+      <div class="col-md-2"><select class="form-select form-select-sm" name="kind" data-autosubmit>
+        <option value="">Live &amp; demo</option>
+        <option value="live" {% if kind == "live" %}selected{% endif %}>Live</option>
+        <option value="demo" {% if kind == "demo" %}selected{% endif %}>Demo</option>
+      </select></div>
+      <div class="col-md-2"><select class="form-select form-select-sm" name="origin" data-autosubmit>
+        <option value="">Any origin</option>
+        <option value="mt5" {% if origin == "mt5" %}selected{% endif %}>Imported from MT5</option>
+        <option value="missing" {% if origin == "missing" %}selected{% endif %}>No longer on MT5</option>
+      </select></div>
+      <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-search"></i></button></div>
+      {% if staff.has_perm("accounts.manage") %}
+      <div class="col text-end"><button class="btn btn-sm btn-outline-primary" type="submit" form="sync-accounts"><i class="bi bi-arrow-repeat"></i> Sync from MT5</button></div>
+      {% endif %}
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead><tr><th>Login</th><th>Client</th><th>Type</th><th>Leverage</th><th>Status</th><th class="num">Balance</th><th class="num">Equity</th><th class="num">Margin level</th><th>Synced</th></tr></thead>
+      <tbody>
+      {% for a in page.items %}
+        <tr>
+          <td><a href="/admin/accounts/{{ a.login }}">{{ a.login }}</a> {% if a.is_demo %}<span class="badge text-bg-info">demo</span>{% endif %}
+            {% if a.source == "mt5" %}<span class="badge text-bg-light border" title="Imported from MT5">imported</span>{% endif %}
+            {% if not a.on_server %}<span class="badge text-bg-danger" title="Not found on the MT5 server at the last import">not on MT5</span>{% endif %}</td>
+          <td><a href="/admin/clients/{{ a.client_id }}">{{ clients[a.client_id].full_name }}</a></td>
+          <td>{{ a.account_group.name if a.account_group else a.group }}</td>
+          <td>1:{{ a.leverage }}</td>
+          <td>{{ badge(a.status) }}</td>
+          <td class="num">{{ a.balance|money }}</td>
+          <td class="num">{{ a.equity|money }}</td>
+          <td class="num">{{ (a.margin_level|money ~ "%") if a.margin else "—" }}</td>
+          <td class="small">{{ a.last_synced_at|dt }}</td>
+        </tr>
+      {% else %}{{ empty(10, "No accounts found.") }}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ pagination(page, request) }}
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, empty %}
+{% block page_title %}Departments{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-6"><div class="card"><div class="table-responsive"><table class="table">
+    <thead><tr><th>Department</th><th class="num">Staff</th></tr></thead>
+    <tbody>{% for d in rows %}<tr><td>{{ d.name }}</td><td class="num">{{ counts.get(d.id, 0) }}</td></tr>
+    {% else %}{{ empty(2, "No departments yet.") }}{% endfor %}</tbody>
+  </table></div></div></div>
+  {% if staff.has_perm("staff.manage") %}
+  <div class="col-lg-4"><div class="card"><div class="card-body">
+    <form method="post" action="/admin/departments" class="d-flex gap-2">
+      {{ csrf_input(csrf) }}
+      <input class="form-control" name="name" placeholder="Sales, Finance, Dealing…" required>
+      <button class="btn btn-primary" type="submit">Add</button>
+    </form>
+  </div></div></div>
+  {% endif %}
+</div>
+{% endblock %}

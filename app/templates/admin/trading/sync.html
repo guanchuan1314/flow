@@ -1,0 +1,76 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import post_button, empty, badge, csrf_input %}
+{% block page_title %}Trade sync{% endblock %}
+{% block content %}
+<div class="row g-3 mb-4">
+  <div class="col-md-3"><div class="card kpi"><div class="card-body">
+    <div class="kpi-label">MT5 servers</div>
+    <div class="kpi-value">{{ servers|selectattr("enabled")|list|length }} <small class="fs-6 text-muted">enabled</small></div>
+  </div></div></div>
+  <div class="col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Tracked accounts</div><div class="kpi-value">{{ tracked }}</div></div></div></div>
+  <div class="col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Deals / orders stored</div><div class="kpi-value">{{ deal_count }} <small class="fs-6 text-muted">/ {{ order_count }}</small></div></div></div></div>
+  <div class="col-md-3"><div class="card kpi"><div class="card-body">
+    <div class="kpi-label">Last sync</div>
+    <div class="small">Deals: {{ last_deals|dt }}<br>Positions: {{ last_positions|dt }}<br>Orders: {{ last_orders|dt }}</div>
+  </div></div></div>
+</div>
+{% if staff.has_perm("trading.sync") %}
+<div class="mb-3">{{ post_button("/admin/sync", '<i class="bi bi-arrow-repeat"></i> Run full sync now', csrf, "btn-primary") }}
+  <span class="small text-muted ms-2">The background worker syncs automatically every {{ settings().sync_interval_seconds }} s and receives deals in real time.</span></div>
+{% endif %}
+<div class="card mb-4">
+  <div class="card-header">Sync missing history (background task)</div>
+  {% if staff.has_perm("trading.sync") %}
+  <div class="card-body border-bottom">
+    <p class="small text-muted">Re-reads deals and orders from MT5 for a period and adds whatever the CRM is missing
+      (nothing is duplicated), then refreshes open positions, open orders and balances. It runs in the background:
+      you can leave this page and come back.</p>
+    <form method="post" action="/admin/sync/jobs" class="row g-2 align-items-end">
+      {{ csrf_input(csrf) }}
+      <div class="col-md-3"><label class="form-label small" for="job-logins">Accounts</label>
+        <input class="form-control form-control-sm" id="job-logins" name="logins" placeholder="All, or logins: 500123, 500124"></div>
+      <div class="col-md-2"><label class="form-label small" for="job-from">From</label>
+        <input class="form-control form-control-sm" id="job-from" type="date" name="date_from" required value="{{ (today.replace(day=1)).isoformat() }}"></div>
+      <div class="col-md-2"><label class="form-label small" for="job-to">To</label>
+        <input class="form-control form-control-sm" id="job-to" type="date" name="date_to" value="{{ today.isoformat() }}"></div>
+      <div class="col-md-auto"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="include_orders" id="job-orders" checked>
+        <label class="form-check-label small" for="job-orders">Orders too</label></div></div>
+      <div class="col-md-auto"><button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-cloud-download"></i> Start sync</button></div>
+    </form>
+  </div>
+  {% endif %}
+  {% include "admin/trading/sync_jobs.html" %}
+</div>
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between">Servers
+    {% if staff.has_perm("mt5_servers.manage") %}<a class="small fw-normal" href="/admin/configuration">Configuration</a>{% endif %}</div>
+  <div class="table-responsive"><table class="table">
+    <thead><tr><th>Server</th><th>Type</th><th>Address</th><th class="num">Accounts</th><th>Connection (this process)</th><th>Worker status</th><th>Last checked</th></tr></thead>
+    <tbody>
+    {% for s in servers %}
+      <tr class="{% if not s.enabled %}text-muted{% endif %}">
+        <td class="fw-semibold">{{ s.name }}{% if s.is_price_feed %} <span class="badge text-bg-light border">price feed</span>{% endif %}</td>
+        <td>{{ "Simulator" if s.kind.value == "simulator" else "Manager API" }} · {{ "demo" if s.is_demo else "live" }}</td>
+        <td class="mono small">{{ s.address or "—" }}</td>
+        <td class="num">{{ usage.get(s.id, {}).get("accounts", 0) }}</td>
+        <td>{% if not s.enabled %}<span class="badge text-bg-secondary">disabled</span>{% elif connected[s.id] %}<span class="badge text-bg-success">connected</span>{% else %}<span class="badge text-bg-warning">not connected</span>{% endif %}</td>
+        <td>{{ badge(s.last_status) }}
+          {% if s.last_error %}<div class="small text-danger">{{ s.last_error }}</div>{% endif %}</td>
+        <td class="small">{{ s.last_checked_at|dt }}</td>
+      </tr>
+    {% else %}{{ empty(7, "No MT5 servers configured yet.") }}{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<div class="card">
+  <div class="card-header">Accounts with sync errors</div>
+  <div class="table-responsive"><table class="table">
+    <thead><tr><th>Login</th><th>Last successful deal sync</th><th>Error</th></tr></thead>
+    <tbody>
+    {% for e in errors %}
+      <tr><td><a href="/admin/accounts/{{ e.login }}">{{ e.login }}</a></td><td>{{ e.last_deal_sync_at|dt }}</td><td class="small text-danger">{{ e.last_error }}</td></tr>
+    {% else %}{{ empty(3, "No sync errors.") }}{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

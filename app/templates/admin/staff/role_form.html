@@ -1,0 +1,36 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, csrf_input %}
+{% block page_title %}{{ ("Role: " ~ r.name) if r else "New role" }}{% endblock %}
+{% block content %}
+{% set locked = (r and r.name == "Admin") or not staff.has_perm("staff.manage") %}
+{% set modules = [] %}{% for p in permissions %}{% set m = p.split(".")[0] %}{% if m not in modules %}{% set _ = modules.append(m) %}{% endif %}{% endfor %}
+<div class="card mw-md"><div class="card-body">
+  <form method="post" action="/admin/roles/{{ r.id if r else 'new' }}">
+    {{ csrf_input(csrf) }}
+    <fieldset {% if locked %}disabled{% endif %}>
+    <div class="row">
+      {% if r %}<div class="col-md-4 mb-3"><div class="form-label">Name</div><div class="form-control-plaintext fw-semibold">{{ r.name }}</div></div>
+      {% else %}{{ field("name", "Name", required=True, col="col-md-4") }}{% endif %}
+      {{ field("description", "Description", r.description if r else "", col="col-md-8") }}
+    </div>
+    {% if r and r.name == "Admin" %}<div class="alert alert-info small">The Admin role always has every permission and cannot be edited.</div>{% endif %}
+    <div class="row">
+    {% for m in modules %}
+      <div class="col-md-6 col-xl-4 mb-3"><div class="border rounded p-2 h-100">
+        <div class="form-check fw-semibold"><input class="form-check-input" type="checkbox" name="permissions" value="{{ m }}.*" id="p-{{ m }}"
+          {% if r and (m ~ ".*" in r.permissions or "*" in r.permissions) %}checked{% endif %}>
+          <label class="form-check-label text-capitalize" for="p-{{ m }}">{{ m|label }} (all)</label></div>
+        {% for p, desc in permissions.items() if p.startswith(m ~ ".") %}
+          <div class="form-check ms-2"><input class="form-check-input" type="checkbox" name="permissions" value="{{ p }}" id="p-{{ p }}"
+            {% if r and p in r.permissions %}checked{% endif %}>
+            <label class="form-check-label small" for="p-{{ p }}">{{ desc }} <span class="text-muted mono">{{ p }}</span></label></div>
+        {% endfor %}
+      </div></div>
+    {% endfor %}
+    </div>
+    {% if not locked %}<button class="btn btn-primary" type="submit">Save role</button>{% endif %}
+    <a class="btn btn-link" href="/admin/roles">Back</a>
+    </fieldset>
+  </form>
+</div></div>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% for q in quotes[:6] %}
+<div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom small">
+  <span><span class="fw-semibold">{{ q.symbol }}</span> <span class="text-muted d-none d-sm-inline">{{ q.name }}</span></span>
+  <span class="s-price {{ 'q-up' if q.direction == 'up' else 'q-down' if q.direction == 'down' else '' }}" data-q="{{ q.symbol }}" data-f="bid">{{ q.bid }}</span> <i class="bi q-caret {{ 'bi-caret-up-fill' if q.direction == 'up' else 'bi-caret-down-fill' if q.direction == 'down' else '' }}" data-qc="{{ q.symbol }}"></i>
+</div>
+{% else %}
+<div class="px-3 py-3 small text-muted">Live prices are temporarily unavailable.</div>
+{% endfor %}

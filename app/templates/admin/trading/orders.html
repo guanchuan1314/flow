@@ -1,0 +1,44 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty, pagination %}
+{% block page_title %}Orders{% endblock %}
+{% block content %}
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link {% if status != 'history' %}active{% endif %}" href="?status=open&login={{ login }}&symbol={{ symbol }}">Open (pending)</a></li>
+  <li class="nav-item"><a class="nav-link {% if status == 'history' %}active{% endif %}" href="?status=history&login={{ login }}&symbol={{ symbol }}">History</a></li>
+</ul>
+<div class="card">
+  <div class="card-header">
+    <form class="row g-2" method="get">
+      <input type="hidden" name="status" value="{{ status }}">
+      <div class="col-md-2"><input class="form-control form-control-sm" name="login" value="{{ login }}" placeholder="MT5 login"></div>
+      <div class="col-md-2"><input class="form-control form-control-sm" name="symbol" value="{{ symbol }}" placeholder="Symbol"></div>
+      <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button></div>
+    </form>
+  </div>
+  <div class="table-responsive"><table class="table table-hover">
+    <thead><tr><th>Placed</th><th>Ticket</th><th>Login</th><th>Client</th><th>Type</th><th>Symbol</th><th class="num">Lots</th>
+      <th class="num">Price</th><th class="num">S/L</th><th class="num">T/P</th><th>State</th>{% if status == "history" %}<th>Done</th>{% endif %}<th>Position</th><th>Comment</th></tr></thead>
+    <tbody>
+    {% for o in page.items %}
+      {% set owner = owners.get(o.login) %}
+      <tr>
+        <td class="small">{{ o.time_setup|dt }}</td><td class="mono">{{ o.ticket }}</td>
+        <td><a href="/admin/accounts/{{ o.login }}">{{ o.login }}</a></td>
+        <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
+        <td>{{ types.get(o.type, o.type) }}</td>
+        <td>{{ o.symbol }}</td>
+        <td class="num">{{ o.volume_initial|money }}{% if o.volume_current and o.volume_current != o.volume_initial %} <span class="text-muted small">({{ o.volume_current|money }} left)</span>{% endif %}</td>
+        <td class="num">{{ o.price_order|price }}</td>
+        <td class="num">{{ o.sl|price if o.sl else "" }}</td>
+        <td class="num">{{ o.tp|price if o.tp else "" }}</td>
+        <td>{{ states.get(o.state, o.state) }}</td>
+        {% if status == "history" %}<td class="small">{{ o.time_done|dt }}</td>{% endif %}
+        <td class="mono small">{{ o.position_id or "" }}</td>
+        <td class="small">{{ o.comment }}</td>
+      </tr>
+    {% else %}{{ empty(15, "No pending orders." if status != "history" else "No orders in the history yet.") }}{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, request) }}
+</div>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "macros.html" import flashes as show_flashes %}
+{% block head %}<link rel="stylesheet" href="/static/site.css">
+<meta name="description" content="{{ brand().app_name }} – {{ brand().brand_tagline }}">{% endblock %}
+{% block title %}{% block page_title %}{{ brand().brand_tagline }}{% endblock %} | {{ brand().app_name }}{% endblock %}
+{% block body_class %}s-site{% endblock %}
+
+{% macro navlink(href, text) -%}
+  <li class="nav-item"><a class="nav-link {% if path == href or (href != '/' and path.startswith(href)) %}active{% endif %}" href="{{ href }}">{{ text }}</a></li>
+{%- endmacro %}
+
+{% block body %}
+<div class="s-topbar d-none d-md-block">
+  <div class="container d-flex justify-content-between py-2">
+    <span><i class="bi bi-shield-check me-1"></i>Segregated client funds · Negative balance protection · 24/5 support</span>
+    <span><a href="mailto:{{ brand().support_email }}"><i class="bi bi-envelope me-1"></i>{{ brand().support_email }}</a>
+      {% if brand().support_phone %}<span class="ms-3"><i class="bi bi-telephone me-1"></i>{{ brand().support_phone }}</span>{% endif %}</span>
+  </div>
+</div>
+<header class="s-header">
+  <nav class="navbar navbar-expand-lg container">
+    <a class="navbar-brand s-brand" href="/"><span class="brand-mark">{{ brand().initials }}</span>{{ brand().app_name }}</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#snav" aria-controls="snav" aria-expanded="false" aria-label="Menu"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="snav">
+      <ul class="navbar-nav mx-auto">
+        {{ navlink("/markets", "Markets") }}
+        {{ navlink("/accounts", "Accounts") }}
+        {{ navlink("/platforms", "Platforms") }}
+        {{ navlink("/copy-trading", "Copy trading") }}
+        {{ navlink("/promotions", "Promotions") }}
+        {{ navlink("/partners", "Partners") }}
+        {{ navlink("/about", "About") }}
+      </ul>
+      <div class="d-flex gap-2 py-2 py-lg-0">
+        {% if signed_in %}
+          <a class="btn btn-accent" href="/portal"><i class="bi bi-person-circle me-1"></i>My account</a>
+        {% else %}
+          <a class="btn btn-outline-dark" href="/portal/login">Sign in</a>
+          <a class="btn btn-accent" href="/portal/register">Open account</a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="s-ticker s-light" data-quotes-view="ticker">
+  {% with quotes = live_quotes() %}{% include "site/_ticker.html" %}{% endwith %}
+</div>
+
+{% if flashes %}<div class="container pt-4">{{ show_flashes(flashes) }}</div>{% endif %}
+{% block content %}{% endblock %}
+
+<footer class="s-footer">
+  <div class="container">
+    <div class="row g-4">
+      <div class="col-lg-4 pe-lg-5">
+        <div class="s-brand s-brand-light mb-3"><span class="brand-mark">{{ brand().initials }}</span>{{ brand().app_name }}</div>
+        <p>{{ brand().brand_tagline }}. Forex, metals, indices and crypto CFDs on MetaTrader 5.</p>
+        <a class="btn btn-accent d-inline-block" href="/portal/register">Open an account</a>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2"><h6>Trading</h6>
+        <a href="/markets">Markets</a><a href="/accounts">Account groups</a><a href="/platforms">MetaTrader 5</a><a href="/copy-trading">Copy trading &amp; PAMM</a></div>
+      <div class="col-6 col-md-3 col-lg-2"><h6>Company</h6>
+        <a href="/about">About us</a><a href="/partners">Partners (IB)</a><a href="/promotions">Promotions</a><a href="/contact">Contact</a></div>
+      <div class="col-6 col-md-3 col-lg-2"><h6>Legal</h6>
+        <a href="/legal/risk-disclosure">Risk disclosure</a><a href="/legal/terms">Terms</a><a href="/legal/privacy">Privacy</a><a href="/legal/aml">AML &amp; KYC</a></div>
+      <div class="col-6 col-md-3 col-lg-2"><h6>Clients</h6>
+        <a href="/portal/login">Client area</a><a href="/portal/register">Open account</a><a href="/portal/forgot-password">Reset password</a></div>
+    </div>
+    <div class="s-risk">
+      <p><strong>Risk warning:</strong> CFDs are complex instruments and come with a high risk of losing money rapidly due to leverage.
+        You should consider whether you understand how CFDs work and whether you can afford to take the high risk of losing your money.
+        Past performance, including that of copy-trading strategies and PAMM funds, is not a reliable indicator of future results.</p>
+      <p>{{ brand().regulatory_text }}</p>
+      <p class="mb-0">&copy; {{ brand().company_legal_name }}. All rights reserved. MetaTrader 5 is a product of MetaQuotes Ltd.</p>
+    </div>
+  </div>
+</footer>
+{% endblock %}

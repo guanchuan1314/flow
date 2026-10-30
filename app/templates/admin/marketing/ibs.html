@@ -1,0 +1,39 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import field, select, csrf_input, badge, empty %}
+{% block page_title %}Introducing brokers{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="card"><div class="table-responsive"><table class="table table-hover">
+      <thead><tr><th>IB</th><th>Client</th><th>Parent IB</th><th>Plan</th><th>Status</th><th class="num">Referred</th><th class="num">Pending</th><th class="num">Paid</th></tr></thead>
+      <tbody>
+      {% for ib in rows %}
+        <tr>
+          <td><a href="/admin/ibs/{{ ib.id }}">IB #{{ ib.id }}</a></td>
+          <td><a href="/admin/clients/{{ ib.client_id }}">{{ clients[ib.client_id].full_name }}</a></td>
+          <td>{% if ib.parent_ib_id %}<a href="/admin/ibs/{{ ib.parent_ib_id }}">IB #{{ ib.parent_ib_id }}</a>{% else %}—{% endif %}</td>
+          <td>{{ plan_names.get(ib.plan_id, "—") }}</td>
+          <td>{{ badge(ib.status) }}</td>
+          <td class="num">{{ referred.get(ib.client_id, 0) }}</td>
+          <td class="num">{{ totals.get((ib.id, "pending"), 0)|money }}</td>
+          <td class="num">{{ totals.get((ib.id, "paid"), 0)|money }}</td>
+        </tr>
+      {% else %}{{ empty(8, "No IBs yet.") }}{% endfor %}
+      </tbody>
+    </table></div></div>
+  </div>
+  {% if staff.has_perm("marketing.manage") %}
+  <div class="col-xl-4">
+    <div class="card"><div class="card-header">Make a client an IB</div><div class="card-body">
+      <form method="post" action="/admin/ibs">
+        {{ csrf_input(csrf) }}
+        {{ field("client_id", "Client ID", type="number", required=True) }}
+        {{ select("plan_id", "Commission plan", plans|map(attribute="id")|zip(plans|map(attribute="name")), blank="— none —") }}
+        {{ field("parent_ib_id", "Parent IB ID", type="number", help="Leave empty to use the IB who referred this client.") }}
+        <button class="btn btn-primary" type="submit">Create IB</button>
+      </form>
+    </div></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

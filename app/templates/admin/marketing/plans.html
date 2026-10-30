@@ -1,0 +1,24 @@
+{% extends "admin/layout.html" %}
+{% block page_title %}Commission plans{% endblock %}
+{% block content %}
+{% if staff.has_perm("marketing.manage") %}<div class="d-flex justify-content-end mb-3"><a class="btn btn-success btn-sm" href="/admin/plans/new"><i class="bi bi-plus-lg"></i> New plan</a></div>{% endif %}
+{% for p in rows %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between">
+    <span>{{ p.name }}</span>
+    <span class="small text-muted">Used by {{ usage.get(p.id, 0) }} IB(s) · pays on {{ p.trigger }} · min hold {{ p.min_hold_seconds }} s ·
+      level split {% for s in p.level_shares %}L{{ loop.index }} {{ (s * 100)|round(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</span>
+  </div>
+  <div class="table-responsive"><table class="table mb-0">
+    <thead><tr><th>Priority</th><th>Symbols</th><th>Account group</th><th>Rule</th><th class="num">Value</th></tr></thead>
+    <tbody>
+    {% for r in p.rules %}
+      <tr><td>{{ r.priority }}</td><td class="mono">{{ r.symbol_pattern }}</td><td>{{ groups.get(r.account_group_id, "Any") }}</td>
+        <td>{{ {"per_lot": "Fixed per lot", "spread_share": "Share of spread markup", "commission_pct": "% of MT5 commission"}[r.kind.value] }}</td>
+        <td class="num">{% if r.kind.value == "per_lot" %}{{ r.value|money }} {{ settings().base_currency }}/lot{% elif r.kind.value == "spread_share" %}{{ (r.value * 100)|money }}%{% else %}{{ r.value|money }}%{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}<p class="text-muted">No commission plans yet.</p>{% endfor %}
+{% endblock %}

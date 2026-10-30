@@ -1,0 +1,46 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import badge, empty, pagination, csrf_input %}
+{% block page_title %}Payments{% endblock %}
+{% block content %}
+<ul class="nav nav-pills mb-3">
+  {% for s, label in [("pending", "Pending approval"), ("approved", "Approved"), ("rejected", "Rejected"), ("failed", "Failed"), ("", "All")] %}
+    <li class="nav-item"><a class="nav-link {% if status == s %}active{% endif %}" href="?status={{ s }}&kind={{ kind }}">{{ label }}</a></li>
+  {% endfor %}
+  <li class="ms-auto"><form method="get"><input type="hidden" name="status" value="{{ status }}">
+    <select class="form-select form-select-sm" name="kind" data-autosubmit>
+      <option value="">Deposits &amp; withdrawals</option>
+      {% for k in kinds %}<option value="{{ k.value }}" {% if k.value == kind %}selected{% endif %}>{{ k|label }}s</option>{% endfor %}
+    </select></form></li>
+</ul>
+<div class="card"><div class="table-responsive"><table class="table table-hover">
+  <thead><tr><th>#</th><th>Requested</th><th>Client</th><th>Type</th><th class="num">Amount</th><th>Target</th><th>Method / ref</th><th>Maker</th><th>Status</th>
+    {% if status == "pending" and staff.has_perm("finance.approve") %}<th class="text-end">Decision</th>{% endif %}</tr></thead>
+  <tbody>
+  {% for p in page.items %}
+    <tr>
+      <td><a href="/admin/payments/{{ p.id }}">{{ p.id }}</a></td>
+      <td class="small">{{ p.created_at|dt }}</td>
+      <td><a href="/admin/clients/{{ p.client_id }}?tab=finance">{{ clients[p.client_id].full_name }}</a></td>
+      <td>{{ p.kind|label }}{% if p.promo_code %} <span class="badge text-bg-info">{{ p.promo_code }}</span>{% endif %}</td>
+      <td class="num fw-semibold">{{ p.amount|money }} {{ p.currency }}</td>
+      <td>{{ p.trading_login or "Wallet" }}</td>
+      <td class="small">{{ p.method|label }}{% if p.external_ref %}<br><span class="mono">{{ p.external_ref }}</span>{% endif %}</td>
+      <td class="small">{{ staff_names.get(p.created_by_staff_id, "Client") }}</td>
+      <td>{{ badge(p.status) }}</td>
+      {% if status == "pending" and staff.has_perm("finance.approve") %}
+      <td>
+        {% if p.created_by_staff_id == staff.id %}
+          <span class="small text-muted">Needs another approver</span>
+        {% else %}
+        <form method="post" action="/admin/payments/{{ p.id }}/approve" class="d-inline" data-confirm="Approve {{ p.kind|label|lower }} of {{ p.amount|money }} {{ p.currency }} for {{ clients[p.client_id].full_name }}?">
+          {{ csrf_input(csrf) }}<button class="btn btn-sm btn-success">Approve</button></form>
+        <a class="btn btn-sm btn-outline-danger" href="/admin/payments/{{ p.id }}">Reject…</a>
+        {% endif %}
+      </td>
+      {% endif %}
+    </tr>
+  {% else %}{{ empty(10, "No payments in this view.") }}{% endfor %}
+  </tbody>
+</table></div>
+{{ pagination(page, request) }}</div>
+{% endblock %}
