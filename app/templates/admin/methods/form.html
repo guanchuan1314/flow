@@ -86,6 +86,14 @@
         Changing it needs the {{ 'finance.approve' if scope == 'payment' else 'kyc.review' }} permission too.</div>
     </div>
     {{ field("signature_header", "Signature header", m.signature_header if m else "X-Signature", col="col-md-6") }}
+    <div class="col-12 mb-3">
+      <label class="form-label" for="f-callback_ips">Callback IP whitelist</label>
+      <textarea class="form-control mono" id="f-callback_ips" name="callback_ips" rows="2"
+                placeholder="*">{{ (m.callback_ips if m and m.callback_ips else ["*"]) | join("\n") }}</textarea>
+      <div class="form-text">Addresses allowed to call the callback URL: one IP or range per line (e.g.
+        <span class="mono">203.0.113.7</span> or <span class="mono">203.0.113.0/24</span>). <span class="mono">*</span>
+        allows any address. Calls from other addresses are refused (and listed under Recent callbacks).</div>
+    </div>
     {{ field("ref_field", "Reference field", m.ref_field if m else "reference", col="col-md-4") }}
     {{ field("status_field", "Status field", m.status_field if m else "status", col="col-md-4") }}
     {{ field("reason_field", "Reason field", m.reason_field if m else "reason", col="col-md-4") }}

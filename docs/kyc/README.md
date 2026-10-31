@@ -111,6 +111,7 @@ sequenceDiagram
    - Type: **Custom**
    - Provider API URL: `http://127.0.0.1:9002/start`
    - Shared secret: the same value as `FLOW_SECRET`
+   - Callback IP whitelist: keep `*` (any address) for the test
    - Save, then **Activate** it. Only one KYC method is active at a time.
 4. Log in to the client area as a client who isn't verified yet (in the demo: `noah.kim@example.com` /
    `Client-Pass1`). Open **Verification**, start it, and choose **Approve** or **Reject** on the demo page.
@@ -149,6 +150,15 @@ const sig = require("crypto").createHmac("sha256", secret).update(rawBody).diges
 // PHP
 $sig = hash_hmac('sha256', $rawBody, $secret);
 ```
+
+#### Callback IP whitelist
+
+Each custom method has a **Callback IP whitelist** (in the method's *Provider: result callback* section).
+By default it holds a single rule, `*`, which allows any address. List your mini program's server
+addresses instead, one IP or CIDR range per line (e.g. `203.0.113.7`, `203.0.113.0/24`, IPv6 works too),
+and Flow refuses callbacks from anywhere else with HTTP 403, before even checking the signature. Refused
+calls are still listed under **Recent callbacks**. The whitelist adds to the signature, it doesn't replace
+it: a listed address must still sign every callback.
 
 #### 1. Flow → mini program: create a verification
 
@@ -204,6 +214,7 @@ callback unchanged.
 |---|---|---|
 | 200 | `client approved`, `client rejected`, `noted, still pending` | Done. |
 | 200 | `ignored: session already approved`, `ignored: client already approved` | Done. Repeats and late results are safe. |
+| 403 | `IP ... is not on the callback whitelist` | The call came from an address not listed in the method's **Callback IP whitelist**. |
 | 401 | `invalid signature` | Wrong secret, or the body changed after signing. |
 | 404 | `unknown reference ...` / `unknown callback URL` | Wrong `reference`, or the method's callback URL was replaced. |
 
@@ -235,6 +246,7 @@ Decide on the provider's **server-to-server webhook**, never on the client's bro
 
 - [ ] Serve the mini program over **https** behind your reverse proxy, e.g. `https://kyc.yourbroker.com`.
 - [ ] Use a long random shared secret (at least 32 characters), kept out of source control.
+- [ ] Set the method's **Callback IP whitelist** to your mini program's server address(es) instead of `*`.
 - [ ] Set `FLOW_URL` to your real Flow address.
 - [ ] Verify your provider's webhook signature in `parse_webhook`.
 - [ ] Replace `sessions.json` with a database if you run more than one instance.

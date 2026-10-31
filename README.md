@@ -337,7 +337,9 @@ Rules live in Flow only and are created **switched off**.
   - **Custom provider:** Flow creates a unique reference and gets a payment URL, either by POSTing signed JSON
     to the provider's API or from a URL template. Withdrawals are paid out by finance.
 - **Provider callbacks:** each method has its own unguessable callback URL (regenerate it if it leaks), signed
-  with the shared secret (`X-Signature`, hex HMAC-SHA256 of the body). Every callback is logged on the method.
+  with the shared secret (`X-Signature`, hex HMAC-SHA256 of the body). An optional **callback IP whitelist**
+  (IPs / CIDR ranges; the default rule `*` allows any address) refuses calls from other addresses. Every callback
+  is logged on the method. KYC methods have the same callback settings.
 - **Auto-credit rules:** with auto-credit on, a "paid" callback for the **exact amount** (and the same currency,
   when the provider sends a `currency` field) credits the deposit at once. A missing or different amount or
   currency is **held for finance**. Auto-credit requires the amount field. Callbacks after a staff decision or
@@ -597,7 +599,7 @@ app/
   api/           JSON API routers under /api
   workers/       runner.py (worker threads), __main__.py (standalone worker with supervisor)
   templates/     Jinja2 templates (admin, portal, site); static/ holds CSS / JS (Bootstrap, htmx, vendored)
-migrations/      Alembic schema history (0001-0016)
+migrations/      Alembic schema history (0001-0017)
 deploy/          Caddyfile, windows\install-services.ps1, windows\backup.ps1
 docker-compose.yml   the PostgreSQL container (setup.ps1 / run-demo.ps1 start it)
 setup.ps1, run-demo.ps1

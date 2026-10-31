@@ -48,6 +48,7 @@ def _apply(m: KycMethod, fields: dict) -> None:
         m.api_key_enc = encrypt_secret(api_key)
     if m.kind not in (MANUAL, CUSTOM):
         raise ServiceError("Type must be manual or custom")
+    m.callback_ips = integrations.clean_ips(m.callback_ips if m.callback_ips is not None else [integrations.ANY_IP])
     unknown = set(m.required_documents or []) - set(CATEGORIES)
     if unknown:
         raise ServiceError(f"Unknown document categories: {sorted(unknown)}")
@@ -221,6 +222,8 @@ def handle_callback(db: Session, token: str, raw: bytes, headers, content_type: 
         db.commit()
         return code, result
 
+    if not integrations.callback_ip_allowed(m, ip):
+        return done(403, f"IP {ip} is not on the callback whitelist")
     if not ok:
         return done(401, "invalid signature")
     session = db.scalar(select(KycSession).where(KycSession.reference == str(ref), KycSession.method_id == m.id)

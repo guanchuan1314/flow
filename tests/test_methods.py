@@ -186,6 +186,75 @@ def test_custom_kyc_provider_round_trip(api, db, provider):
     assert db.get(Client, c["id"]).kyc_status == KycStatus.approved
 
 
+# ---------------------------------------------------------------- callback IP whitelist
+def _callback(handler, db, m, body: dict, ip: str):
+    """A signed provider callback arriving from `ip`."""
+    raw = json.dumps(body).encode()
+    return handler(db, m.callback_token, raw, {"X-Signature": integrations.sign(SECRET, raw)}, "application/json", ip)
+
+
+def test_callback_ip_whitelist_values():
+    with pytest.raises(ServiceError, match="is empty"):
+        integrations.clean_ips(" \n ")
+    with pytest.raises(ServiceError, match="not an IP address"):
+        integrations.clean_ips("203.0.113.7\nprovider.example")
+    assert integrations.clean_ips("203.0.113.7, 10.1.2.3/24\n10.1.2.3/24") == ["203.0.113.7", "10.1.2.0/24"]
+    assert integrations.clean_ips("203.0.113.7\n*") == ["*"]  # "*" allows any address anyway
+    assert integrations.clean_ips(["2001:db8::/32"]) == ["2001:db8::/32"]
+
+
+def test_payment_callbacks_only_from_whitelisted_ips(api, db, provider):
+    m = payment_methods.create_method(db, None, name="Card", kind="custom", api_url="https://psp.example/api",
+                                      url_field="data.checkout", secret=SECRET)
+    assert m.callback_ips == ["*"]  # default: any address
+    payment_methods.update_method(db, None, m, {"callback_ips": "203.0.113.0/24\n198.51.100.7"})
+    client = _client(api, db, "ipcheck@x.com")
+    form_post(api, "/portal/wallet", "/portal/wallet/deposit", {"method_id": m.id, "amount": "100"})
+    req = db.scalar(select(PaymentRequest).where(PaymentRequest.client_id == client.id))
+    paid = {"reference": req.gateway_ref, "status": "paid", "amount": "100.00"}
+
+    r = _signed(api, f"/callbacks/payment/{m.callback_token}", paid)  # the test client is not on the list
+    assert r.status_code == 403 and "not on the callback whitelist" in r.json()["result"]
+    assert _callback(payment_methods.handle_callback, db, m, paid, "192.0.2.10")[0] == 403
+    db.expire_all()
+    assert req.status == PaymentStatus.pending and wallet.get_wallet(db, client.id).balance == 0
+    refused = db.scalars(select(ProviderCallback).where(ProviderCallback.method_id == m.id)).all()
+    assert len(refused) == 2 and all("whitelist" in c.outcome for c in refused)  # still logged on the method
+
+    assert _callback(payment_methods.handle_callback, db, m, paid, "203.0.113.50") == (200, "paid and credited")
+    db.expire_all()
+    assert wallet.get_wallet(db, client.id).balance == Decimal("100")
+
+
+def test_kyc_callbacks_only_from_whitelisted_ips(api, db, provider):
+    m = kyc_methods.create_method(db, None, name="IDV", kind="custom", api_url="https://kyc.example/api",
+                                  url_field="data.checkout", secret=SECRET, callback_ips="198.51.100.7")
+    kyc_methods.activate(db, None, m)
+    c = register(api, "kycip@x.com")
+    web_login(api, "kycip@x.com", STRONG, base="/portal")
+    form_post(api, "/portal/verification", "/portal/verification/start", {})
+    approved = {"reference": provider[0]["body"]["reference"], "status": "approved"}
+    assert _callback(kyc_methods.handle_callback, db, m, approved, "198.51.100.8")[0] == 403
+    db.expire_all()
+    assert db.get(Client, c["id"]).kyc_status == KycStatus.pending
+    assert _callback(kyc_methods.handle_callback, db, m, approved, "198.51.100.7")[0] == 200
+    db.expire_all()
+    assert db.get(Client, c["id"]).kyc_status == KycStatus.approved
+
+
+def test_callback_ip_whitelist_in_the_method_form(admin_web, db):
+    r = form_post(admin_web, "/admin/kyc-methods/new", "/admin/kyc-methods/new", {
+        "name": "IDV", "kind": "custom", "api_url": "https://kyc.example/api", "secret": "s3cret",
+        "callback_ips": "203.0.113.9\nnot-an-ip"})
+    assert "is not an IP address" in r.text
+    r = form_post(admin_web, "/admin/kyc-methods/new", "/admin/kyc-methods/new", {
+        "name": "IDV", "kind": "custom", "api_url": "https://kyc.example/api", "secret": "s3cret",
+        "callback_ips": "203.0.113.9\n198.51.100.0/24"})
+    m = db.scalar(select(kyc_methods.KycMethod).where(kyc_methods.KycMethod.name == "IDV"))
+    assert m.callback_ips == ["203.0.113.9", "198.51.100.0/24"]
+    assert "198.51.100.0/24" in admin_web.get(f"/admin/kyc-methods/{m.id}").text
+
+
 # ---------------------------------------------------------------- account group deletion with accounts
 @pytest.fixture
 def group_with_accounts(db, gw, account_groups):

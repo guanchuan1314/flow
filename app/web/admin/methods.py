@@ -32,6 +32,8 @@ def _provider_fields(f: dict) -> dict:
     for k, default in (("url_field", "url"), ("signature_header", "X-Signature"), ("ref_field", "reference"),
                        ("status_field", "status"), ("reason_field", "reason")):
         out[k] = out[k] or default
+    if "callback_ips" in f:
+        out["callback_ips"] = integrations.clean_ips(f["callback_ips"])
     if f.get("secret"):
         out["secret"] = f["secret"]
     if f.get("api_key"):

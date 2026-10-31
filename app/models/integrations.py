@@ -39,6 +39,8 @@ class ProviderSettings:
     success_values: Mapped[str] = mapped_column(String(255), default="success,paid,completed,approved")
     failure_values: Mapped[str] = mapped_column(String(255), default="failed,cancelled,declined,expired,rejected")
     reason_field: Mapped[str] = mapped_column(String(64), default="reason")
+    # Addresses allowed to send callbacks: IPs or CIDR ranges, "*" = any (the default)
+    callback_ips: Mapped[list] = mapped_column(JSON, default=lambda: ["*"])
 
     @property
     def is_custom(self) -> bool:

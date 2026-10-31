@@ -114,6 +114,7 @@ sequenceDiagram
    - Type: **Custom**
    - Provider API URL: `http://127.0.0.1:9001/start`
    - Shared secret: the same value as `FLOW_SECRET`
+   - Callback IP whitelist: keep `*` (any address) for the test
    - Leave the other fields at their defaults and save.
 4. Log in to the client area, deposit with the new method, click **Pay**, then **Pay now** on the demo page.
    You land back in Flow with *"Your deposit of ... has been credited"*. **Cancel** shows the failure path.
@@ -152,6 +153,15 @@ const sig = require("crypto").createHmac("sha256", secret).update(rawBody).diges
 // PHP
 $sig = hash_hmac('sha256', $rawBody, $secret);
 ```
+
+#### Callback IP whitelist
+
+Each custom method has a **Callback IP whitelist** (in the method's *Provider: result callback* section).
+By default it holds a single rule, `*`, which allows any address. List your mini program's server
+addresses instead, one IP or CIDR range per line (e.g. `203.0.113.7`, `203.0.113.0/24`, IPv6 works too),
+and Flow refuses callbacks from anywhere else with HTTP 403, before even checking the signature. Refused
+calls are still listed under **Recent callbacks**. The whitelist adds to the signature, it doesn't replace
+it: a listed address must still sign every callback.
 
 #### 1. Flow → mini program: create a payment
 
@@ -211,6 +221,7 @@ callback unchanged.
 |---|---|---|
 | 200 | `paid and credited`, `paid, waiting for finance approval`, `marked failed`, `noted, still pending`, `already approved`, ... | Done. Repeating a callback is safe. |
 | 200 | `paid amount 240.00 differs from 250.00: held for review` | Done. Finance reviews it in **Payments**. |
+| 403 | `IP ... is not on the callback whitelist` | The call came from an address not listed in the method's **Callback IP whitelist**. |
 | 401 | `invalid signature` | Wrong secret, or the body changed after signing. |
 | 404 | `unknown reference ...` / `unknown callback URL` | Wrong `reference`, or the method's callback URL was replaced. |
 
@@ -244,6 +255,7 @@ proves a payment.
 
 - [ ] Serve the mini program over **https** behind your reverse proxy, e.g. `https://pay.yourbroker.com`.
 - [ ] Use a long random shared secret (at least 32 characters), kept out of source control.
+- [ ] Set the method's **Callback IP whitelist** to your mini program's server address(es) instead of `*`.
 - [ ] Set `FLOW_URL` to your real Flow address.
 - [ ] Verify your provider's webhook signature in `parse_webhook`.
 - [ ] Replace `sessions.json` with a database if you run more than one instance.

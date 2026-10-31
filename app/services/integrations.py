@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.errors import Forbidden, ServiceError
-from app.core.security import decrypt_secret
+from app.core.security import decrypt_secret, ip_allowed
 from app.db import utcnow
 from app.models import ProviderCallback
 from app.models.integrations import ProviderSettings
@@ -43,7 +43,9 @@ PROVIDER_DEFAULTS = dict(
     kind="manual", description="", instructions="", api_url="", redirect_template="", url_field="url",
     api_key_enc="", secret_enc="", signature_header="X-Signature", ref_field="reference", status_field="status",
     success_values="success,paid,completed,approved", failure_values="failed,cancelled,declined,expired,rejected",
-    reason_field="reason")
+    reason_field="reason", callback_ips=["*"])
+ANY_IP = "*"
+MAX_CALLBACK_IPS = 50
 
 
 def new_token() -> str:
@@ -166,6 +168,35 @@ def parse_body(raw: bytes, content_type: str) -> dict:
         except ValueError:
             return {}
     return dict(parse_qsl(raw.decode("utf-8", "replace")))
+
+
+def clean_ips(value) -> list[str]:
+    """The callback IP whitelist from the form (text, one entry per line or comma-separated) or a list:
+    IPv4 / IPv6 addresses and CIDR ranges, or "*" for any address."""
+    items = value if isinstance(value, list) else str(value or "").replace(";", ",").replace("\n", ",").split(",")
+    out = []
+    for item in (str(i).strip() for i in items):
+        if not item:
+            continue
+        if item != ANY_IP:
+            try:
+                net = ipaddress.ip_network(item, strict=False)
+                item = str(net.network_address) if net.num_addresses == 1 else str(net)
+            except ValueError:
+                raise ServiceError(f"Callback IP whitelist: {item!r} is not an IP address or range (e.g. 203.0.113.7 "
+                                   "or 203.0.113.0/24), or * for any address") from None
+        if item not in out:
+            out.append(item)
+    if not out:
+        raise ServiceError("Callback IP whitelist is empty: enter the provider's addresses, or * to allow any address")
+    if len(out) > MAX_CALLBACK_IPS:
+        raise ServiceError(f"Callback IP whitelist: at most {MAX_CALLBACK_IPS} entries")
+    return [ANY_IP] if ANY_IP in out else out
+
+
+def callback_ip_allowed(method: ProviderSettings, ip: str | None) -> bool:
+    allowed = method.callback_ips or [ANY_IP]
+    return ANY_IP in allowed or ip_allowed(ip, allowed)
 
 
 def signature_ok(method: ProviderSettings, raw: bytes, headers) -> bool:
