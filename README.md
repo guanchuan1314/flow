@@ -342,6 +342,8 @@ Rules live in Flow only and are created **switched off**.
   when the provider sends a `currency` field) credits the deposit at once. A missing or different amount or
   currency is **held for finance**. Auto-credit requires the amount field. Callbacks after a staff decision or
   repeated callbacks change nothing. Setting the secret or turning auto-credit on also needs `finance.approve`.
+- **Your own provider:** [docs/payment](docs/payment/) explains manual and custom methods (with a video) and has a
+  ready-to-run sample mini program to connect any payment provider.
 
 ### KYC methods
 
@@ -351,6 +353,8 @@ Clients → KYC methods: several can be configured, **exactly one is active**.
   queue.
 - **Custom provider:** same integration settings as payment methods. The signed callback approves or rejects the
   client. Setting the secret or activating it also needs `kyc.review`.
+  [docs/kyc](docs/kyc/) explains manual and custom methods (with a video) and has a ready-to-run sample mini
+  program to connect any verification provider.
 
 ### Copy trading, PAMM, IBs and marketing
 

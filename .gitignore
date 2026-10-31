@@ -26,3 +26,6 @@ logs/
 # Editors
 .idea/
 .vscode/
+
+# Sample mini programs: their local session store
+docs/**/sessions.json
