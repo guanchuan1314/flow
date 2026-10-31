@@ -65,10 +65,13 @@ def test_custom_payment_provider_round_trip(api, db, provider):
     assert callback == f"/callbacks/payment/{m.callback_token}"
 
     assert _signed(api, callback, {"reference": req.gateway_ref, "status": "paid"}, secret="wrong").status_code == 401
-    r = _signed(api, callback, {"reference": req.gateway_ref, "status": "paid", "amount": "250.00"})
+    r = _signed(api, callback, {"reference": req.gateway_ref, "status": "paid", "amount": "250.00",
+                                "transaction_id": "PSP-998877"})
     assert r.status_code == 200 and r.json()["result"] == "paid and credited"
     db.expire_all()
     assert req.status == PaymentStatus.approved and wallet.get_wallet(db, client.id).balance == Decimal("250")
+    # what the provider reported is kept for reconciliation, also when the deposit is credited at once
+    assert (req.gateway_status, req.external_ref) == ("paid", "PSP-998877") and req.paid_at is not None
     r = _signed(api, callback, {"reference": req.gateway_ref, "status": "paid", "amount": "250.00"})
     assert r.json()["result"] == "already approved"  # provider retries are harmless
     assert wallet.get_wallet(db, client.id).balance == Decimal("250")

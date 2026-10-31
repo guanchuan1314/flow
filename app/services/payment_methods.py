@@ -205,6 +205,7 @@ def handle_callback(db: Session, token: str, raw: bytes, headers, content_type: 
               {"expected": req.amount, "paid": paid, "currency": currency, "problem": problem})
         return done(200, f"{problem}: held for review")
     req.gateway_status = "paid"
+    db.flush()  # approve_paid reloads the row: keep the provider's details (transaction id, paid time)
     if not m.auto_credit:
         audit(db, None, "payment.paid", "payment", req.id, {"method": m.name})
         return done(200, "paid, waiting for finance approval")

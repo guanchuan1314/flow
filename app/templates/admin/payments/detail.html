@@ -20,7 +20,7 @@
       <li class="list-group-item d-flex justify-content-between"><span>Notes</span><span>{{ p.details or "—" }}</span></li>
       <li class="list-group-item d-flex justify-content-between"><span>Created</span><span>{{ p.created_at|dt }} by {{ staff_names.get(p.created_by_staff_id, "client") }}</span></li>
       {% if p.reviewed_at %}
-      <li class="list-group-item d-flex justify-content-between"><span>Reviewed</span><span>{{ p.reviewed_at|dt }} by {{ staff_names.get(p.reviewed_by_staff_id, "?") }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Reviewed</span><span>{{ p.reviewed_at|dt }} by {{ staff_names.get(p.reviewed_by_staff_id, "?") if p.reviewed_by_staff_id else "the system (provider confirmation)" }}</span></li>
       <li class="list-group-item d-flex justify-content-between"><span>Review comment</span><span>{{ p.review_comment or "—" }}</span></li>
       {% endif %}
       {% if p.mt5_deal_ticket %}<li class="list-group-item d-flex justify-content-between"><span>MT5 deal</span><span class="mono">{{ p.mt5_deal_ticket }}</span></li>{% endif %}
