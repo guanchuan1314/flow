@@ -88,21 +88,23 @@ def _pending_orders(db_login: int, rng: random.Random) -> None:
 
 
 def demo_trader(stop: threading.Event, every: int = 45) -> None:
-    """Opens/closes trades on master accounts so copy trading and PAMM visibly work."""
+    """Opens/closes trades on master accounts so copy trading and PAMM visibly work.
+    Simulator only: on a real MT5 server it never trades."""
     from app.db import SessionLocal
     from app.devseed import demo_masters
-    from app.mt5 import routed
 
     rng = random.Random()
     while not stop.wait(every):
         try:
+            gw = simulator()
+            if gw is None:  # a real server: the demo never trades there
+                continue
             with SessionLocal() as db:
-                masters = demo_masters(db)
+                masters = [login for login in demo_masters(db) if login in gw.users]
             if not masters:
                 continue
             login = rng.choice(masters)
             _pending_orders(db_login=login, rng=rng)
-            gw = routed()
             mine = [p for p in gw.get_positions([login])]
             if len(mine) >= 3 or (mine and rng.random() < 0.45):
                 p = rng.choice(mine)
