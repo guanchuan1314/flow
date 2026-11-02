@@ -6,7 +6,7 @@
 <div class="card mb-3">
   <div class="card-header d-flex justify-content-between">
     <span>{{ p.name }}</span>
-    <span class="small text-muted">Used by {{ usage.get(p.id, 0) }} IB(s) · pays on {{ p.trigger }} · min hold {{ p.min_hold_seconds }} s ·
+    <span class="small text-muted">Used by {{ usage.get(p.id, 0) }} IB(s) · pays on {{ {"close": "closing deals", "open": "opening deals", "both": "opening and closing deals"}.get(p.trigger, p.trigger|label) }} · min hold {{ p.min_hold_seconds }} s ·
       level split {% for s in p.level_shares %}L{{ loop.index }} {{ (s * 100)|round(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</span>
   </div>
   <div class="table-responsive"><table class="table mb-0">

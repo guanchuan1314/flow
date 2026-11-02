@@ -8,7 +8,7 @@
   {% for r in rows %}
     <tr><td><a href="/admin/roles/{{ r.id }}">{{ r.name }}</a>{% if r.is_system %} <span class="badge text-bg-light border">default</span>{% endif %}</td>
       <td class="small">{{ r.description }}</td>
-      <td class="small">{% for p in r.permissions %}<span class="badge text-bg-light border me-1 mono">{{ p }}</span>{% endfor %}</td></tr>
+      <td class="small">{% for p in r.permissions %}<span class="badge text-bg-light border me-1"{% if p in permissions %} title="{{ permissions[p] }}"{% endif %}>{{ perm_label(p) }}</span>{% endfor %}</td></tr>
   {% endfor %}
   </tbody>
 </table></div></div>

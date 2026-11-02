@@ -3,11 +3,11 @@
 {% block page_title %}My accounts{% endblock %}
 {% block content %}
 {% set can_live = client.kyc_status.value == "approved" or not settings().live_requires_kyc %}
-<div class="row g-4">
-  <div class="col-xl-8">
-    <div class="row g-3">
+<div data-tabs>
+  <section data-tab="My accounts" data-tab-count="{{ accounts|length }}" id="accounts">
+    <div class="row g-3 mb-4">
     {% for a in accounts %}
-    <div class="col-md-6">
+    <div class="col-md-6 col-xl-4">
       <div class="a-acc {% if a.is_demo %}demo{% endif %}">
         <div class="d-flex justify-content-between align-items-start mb-2">
           <div><span class="a-tag {% if a.is_demo %}demo{% endif %}">{{ "Demo" if a.is_demo else "Live" }}</span>
@@ -38,12 +38,13 @@
       </div>
     </div>
     {% else %}
-      <div class="col"><div class="a-card a-card-b text-muted">You have no trading accounts yet. Open one on the right.</div></div>
+      <div class="col"><div class="a-card a-card-b text-muted">You have no trading accounts yet. Open one under “Open an account”.</div></div>
     {% endfor %}
     </div>
-  </div>
-  <div class="col-xl-4">
-    <div class="a-card">
+  </section>
+
+  <section data-tab="Open an account" id="open">
+    <div class="a-card mw-sm mb-4">
       <div class="a-card-h">Open a new account</div>
       <div class="a-card-b">
       {% if groups %}
@@ -69,6 +70,6 @@
       {% else %}<p class="text-muted mb-0">No account groups are available right now.</p>{% endif %}
       </div>
     </div>
-  </div>
+  </section>
 </div>
 {% endblock %}

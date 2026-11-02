@@ -21,6 +21,18 @@
   </div>
 {%- endmacro %}
 
+{% if rule %}
+<div class="d-flex flex-wrap gap-2 mb-3 mw-lg">
+  {{ post_button("/admin/automation/" ~ rule.id ~ "/run", '<i class="bi bi-play"></i> Run now', csrf, "btn-outline-primary btn-sm",
+                 confirm="Do the action now for everyone this rule matches (outside their cooldown)?", ok="Run now") }}
+  {{ post_button("/admin/automation/" ~ rule.id ~ "/toggle", "Disable" if rule.enabled else "Enable", csrf,
+                 "btn-outline-secondary btn-sm" if rule.enabled else "btn-success btn-sm") }}
+  <span class="ms-auto">{{ post_button("/admin/automation/" ~ rule.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf,
+                 "btn-outline-danger btn-sm", confirm="Delete rule " ~ rule.name ~ " and its run log?", danger=True) }}</span>
+</div>
+<div data-tabs class="mw-lg">
+  <section data-tab="Rule" id="rule">
+{% endif %}
 <form method="post" action="{{ '/admin/automation/' ~ rule.id if rule else '/admin/automation/new' }}" class="mw-lg" data-toggle-scope>
   {{ csrf_input(csrf) }}
   <div class="card mb-3"><div class="card-body row">
@@ -69,41 +81,38 @@
   <button class="btn btn-primary" type="submit">Save</button>
   <a class="btn btn-link" href="/admin/automation">Back</a>
 </form>
-
 {% if rule %}
-<div class="d-flex flex-wrap gap-2 my-3 mw-lg">
-  <a class="btn btn-outline-secondary btn-sm" href="/admin/automation/{{ rule.id }}?preview=1"><i class="bi bi-eye"></i> Preview: who matches now</a>
-  {{ post_button("/admin/automation/" ~ rule.id ~ "/run", '<i class="bi bi-play"></i> Run now', csrf, "btn-outline-primary btn-sm",
-                 confirm="Do the action now for everyone this rule matches (outside their cooldown)?", ok="Run now") }}
-  {{ post_button("/admin/automation/" ~ rule.id ~ "/toggle", "Disable" if rule.enabled else "Enable", csrf,
-                 "btn-outline-secondary btn-sm" if rule.enabled else "btn-success btn-sm") }}
-  <span class="ms-auto">{{ post_button("/admin/automation/" ~ rule.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf,
-                 "btn-outline-danger btn-sm", confirm="Delete rule " ~ rule.name ~ " and its run log?", danger=True) }}</span>
-</div>
+  </section>
 
-{% if preview %}
-<div class="card mb-3 mw-lg"><div class="card-header">Preview: {{ preview.total }} match now, {{ preview.due }} would be acted on
-  <span class="small text-muted fw-normal">(nothing was done)</span></div>
-  <div class="table-responsive"><table class="table table-sm mb-0 small">
-    <thead><tr><th>Target</th><th>Found</th><th></th></tr></thead>
-    <tbody>{% for m in preview.matches %}
-      <tr><td>{% if m.login %}<a href="/admin/accounts/{{ m.login }}">{{ m.login }}</a>{% else %}<a href="/admin/clients/{{ m.client_id }}">client {{ m.client_id }}</a>{% endif %}</td>
-        <td>{{ m.detail }}</td><td>{% if m.cooling %}<span class="badge text-bg-light border">cooldown</span>{% endif %}</td></tr>
-    {% else %}{{ empty(3, "Nothing matches now.") }}{% endfor %}</tbody>
-  </table></div>
-  {% if preview.total > preview.matches|length %}<div class="card-body small text-muted">The first {{ preview.matches|length }} are listed.</div>{% endif %}
-</div>
-{% endif %}
+  <section data-tab="Preview" id="preview">
+    <div class="mb-3"><a class="btn btn-outline-secondary btn-sm" href="/admin/automation/{{ rule.id }}?preview=1"><i class="bi bi-eye"></i> Preview: who matches now</a></div>
+    {% if preview %}
+    <div class="card"><div class="card-header">Preview: {{ preview.total }} match now, {{ preview.due }} would be acted on
+      <span class="small text-muted fw-normal">(nothing was done)</span></div>
+      <div class="table-responsive"><table class="table table-sm mb-0 small">
+        <thead><tr><th>Target</th><th>Found</th><th></th></tr></thead>
+        <tbody>{% for m in preview.matches %}
+          <tr><td>{% if m.login %}<a href="/admin/accounts/{{ m.login }}">{{ m.login }}</a>{% else %}<a href="/admin/clients/{{ m.client_id }}">client {{ m.client_id }}</a>{% endif %}</td>
+            <td>{{ m.detail }}</td><td>{% if m.cooling %}<span class="badge text-bg-light border">cooldown</span>{% endif %}</td></tr>
+        {% else %}{{ empty(3, "Nothing matches now.") }}{% endfor %}</tbody>
+      </table></div>
+      {% if preview.total > preview.matches|length %}<div class="card-body small text-muted">The first {{ preview.matches|length }} are listed.</div>{% endif %}
+    </div>
+    {% endif %}
+  </section>
 
-<h2 class="h6 mw-lg">Run log</h2>
-<div class="card mw-lg"><div class="table-responsive"><table class="table table-sm mb-0 small">
-  <thead><tr><th>When</th><th>Target</th><th>Outcome</th><th>Message</th></tr></thead>
-  <tbody>{% for x in runs %}
-    <tr><td>{{ x.at|dt }}</td>
-      <td>{% if x.login %}<a href="/admin/accounts/{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
-      <td>{% if x.outcome == "done" %}<span class="badge text-bg-success">done</span>{% else %}<span class="badge text-bg-danger">failed</span>{% endif %}</td>
-      <td>{{ x.message }}</td></tr>
-  {% else %}{{ empty(4, "Nothing done yet.") }}{% endfor %}</tbody>
-</table></div></div>
+  <section data-tab="Run log" data-tab-count="{{ runs|length }}" id="runs">
+    <h2 class="h6">Run log</h2>
+    <div class="card"><div class="table-responsive"><table class="table table-sm mb-0 small">
+      <thead><tr><th>When</th><th>Target</th><th>Outcome</th><th>Message</th></tr></thead>
+      <tbody>{% for x in runs %}
+        <tr><td>{{ x.at|dt }}</td>
+          <td>{% if x.login %}<a href="/admin/accounts/{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
+          <td>{% if x.outcome == "done" %}<span class="badge text-bg-success">done</span>{% else %}<span class="badge text-bg-danger">failed</span>{% endif %}</td>
+          <td>{{ x.message }}</td></tr>
+      {% else %}{{ empty(4, "Nothing done yet.") }}{% endfor %}</tbody>
+    </table></div></div>
+  </section>
+</div>
 {% endif %}
 {% endblock %}

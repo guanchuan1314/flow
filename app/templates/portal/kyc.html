@@ -22,9 +22,9 @@
     {% endif %}
   </div></div>
 {% else %}
-<div class="row g-4">
-  <div class="col-lg-5">
-    <div class="card"><div class="card-header">Upload a document</div><div class="card-body">
+<div data-tabs>
+  <section data-tab="Upload" id="upload">
+    <div class="card mw-sm mb-4"><div class="card-body">
       {% if checklist %}
         <ul class="list-unstyled small mb-3">
           {% for item in checklist %}
@@ -43,15 +43,16 @@
         <button class="btn btn-primary" type="submit">Upload</button>
       </form>
     </div></div>
-  </div>
-  <div class="col-lg-7">
-    <div class="card"><div class="card-header">Your documents</div><div class="table-responsive"><table class="table">
+  </section>
+
+  <section data-tab="My documents" data-tab-count="{{ docs|length }}" id="documents">
+    <div class="card mb-4"><div class="table-responsive"><table class="table">
       <thead><tr><th>Type</th><th>File</th><th>Uploaded</th><th>Status</th></tr></thead>
       <tbody>{% for d in docs %}<tr><td>{{ d.doc_type|label }}</td><td class="small">{{ d.original_name }}</td><td class="small">{{ d.created_at|dt }}</td>
         <td>{{ badge(d.status) }}{% if d.reject_reason %}<div class="small text-danger">{{ d.reject_reason }}</div>{% endif %}</td></tr>
       {% else %}{{ empty(4, "No documents uploaded yet.") }}{% endfor %}</tbody>
     </table></div></div>
-  </div>
+  </section>
 </div>
 {% endif %}
 {% endblock %}

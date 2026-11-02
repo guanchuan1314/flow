@@ -19,11 +19,11 @@
       <div class="col-md-6 col-xl-4 mb-3"><div class="border rounded p-2 h-100">
         <div class="form-check fw-semibold"><input class="form-check-input" type="checkbox" name="permissions" value="{{ m }}.*" id="p-{{ m }}"
           {% if r and (m ~ ".*" in r.permissions or "*" in r.permissions) %}checked{% endif %}>
-          <label class="form-check-label text-capitalize" for="p-{{ m }}">{{ m|label }} (all)</label></div>
+          <label class="form-check-label" for="p-{{ m }}">{{ group_label(m) if group_label is defined else m|label }} (all)</label></div>
         {% for p, desc in permissions.items() if p.startswith(m ~ ".") %}
           <div class="form-check ms-2"><input class="form-check-input" type="checkbox" name="permissions" value="{{ p }}" id="p-{{ p }}"
             {% if r and p in r.permissions %}checked{% endif %}>
-            <label class="form-check-label small" for="p-{{ p }}">{{ desc }} <span class="text-muted mono">{{ p }}</span></label></div>
+            <label class="form-check-label small" for="p-{{ p }}">{{ desc }}</label></div>
         {% endfor %}
       </div></div>
     {% endfor %}

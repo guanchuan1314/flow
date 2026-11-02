@@ -1,17 +1,18 @@
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, Request
-from sqlalchemy import func, select, text
+from sqlalchemy import String, cast, false, func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.errors import ServiceError, get_or_404
 from app.db import get_db, utcnow
 from app.models import (
-    ORDER_STATES, ORDER_TYPES, Client, Deal, MT5Server, Order, Position, Staff, SyncJob, SyncState, TradingAccount,
+    ORDER_STATES, ORDER_TYPES, AccountGroup, Client, Deal, MT5Server, Order, Position, Staff, SyncJob, SyncState,
+    TradingAccount,
 )
 from app.mt5 import peek
 from app.services import servers as server_svc
-from app.services import sync, sync_jobs
+from app.services import sync, sync_jobs, trader_styles
 from app.services.clients import visible_logins
 from app.web.common import Page, attempt, opt_int, render, staff_perm
 
@@ -43,36 +44,70 @@ def _owners(db: Session, logins) -> dict:
     return {login: (cid, f"{fn} {ln}") for login, cid, fn, ln in rows}
 
 
+def wildcard(pattern: str) -> str | None:
+    """A LIKE pattern for `*` (any text) and `?` (one character) searches, e.g. *EUR* contains EUR, EUR* starts
+    with it, *EUR ends with it; None when the text has no wildcard (then it's an exact match)."""
+    if "*" not in pattern and "?" not in pattern:
+        return None
+    escaped = pattern.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return escaped.replace("*", "%").replace("?", "_")
+
+
+def _filters(db: Session, query, model, login: str, symbol: str, group: str, style: str):
+    """The shared filters of the positions, deals and orders lists. Login and symbol accept * and ? wildcards."""
+    login, symbol = login.strip(), symbol.strip().upper()
+    if login:
+        like = wildcard(login)
+        if like is not None:
+            query = query.where(cast(model.login, String).like(like, escape="\\"))
+        elif login.isdigit():
+            query = query.where(model.login == int(login))
+        else:
+            query = query.where(false())  # not a login and no wildcard: nothing matches
+    if symbol:
+        like = wildcard(symbol)
+        query = query.where(func.upper(model.symbol).like(like, escape="\\") if like is not None
+                            else model.symbol == symbol)
+    if group.isdigit():
+        query = query.where(model.login.in_(select(TradingAccount.login)
+                                            .where(TradingAccount.account_group_id == int(group))))
+    if style:
+        query = query.where(model.login.in_(trader_styles.logins_with_style(db, style) or {-1}))
+    return query
+
+
+def _filter_ctx(db: Session, **values) -> dict:
+    """What the filter bars need: the choices and the current values."""
+    return {"groups": db.execute(select(AccountGroup.id, AccountGroup.name).order_by(AccountGroup.name)).all(),
+            "styles": trader_styles.filter_options(db), **values}
+
+
 @router.get("/positions")
-def positions(request: Request, login: str = "", symbol: str = "", server: str = "", page: int = 1, partial: int = 0,
-              me: Staff = Depends(staff_perm("trading.view")), db: Session = Depends(get_db)):
+def positions(request: Request, login: str = "", symbol: str = "", server: str = "", group: str = "", style: str = "",
+              page: int = 1, partial: int = 0, me: Staff = Depends(staff_perm("trading.view")),
+              db: Session = Depends(get_db)):
     query = select(Position).where(Position.is_open.is_(True), Position.login.in_(visible_logins(me)))
     if server.isdigit():
         query = query.where(Position.server_id == int(server))
-    if login.strip().isdigit():
-        query = query.where(Position.login == int(login))
-    if symbol.strip():
-        query = query.where(Position.symbol == symbol.strip().upper())
+    query = _filters(db, query, Position, login, symbol, group, style)
     pg = Page(db, query.order_by(Position.time_create.desc()), page, per_page=100)
     totals = db.execute(query.with_only_columns(func.coalesce(func.sum(Position.volume), 0),
                                                 func.coalesce(func.sum(Position.profit), 0))).one()
-    ctx = dict(page=pg, owners=_owners(db, [p.login for p in pg.items]), login=login, symbol=symbol,
-               server=server, servers=_servers(db), total_lots=totals[0], total_profit=totals[1])
+    ctx = dict(page=pg, owners=_owners(db, [p.login for p in pg.items]), server=server, servers=_servers(db),
+               total_lots=totals[0], total_profit=totals[1],
+               **_filter_ctx(db, login=login, symbol=symbol, group=group, style=style))
     # htmx polls ?partial=1 to refresh only the table
     return render(request, "admin/trading/positions_table.html" if partial else "admin/trading/positions.html", **ctx)
 
 
 @router.get("/deals")
 def deals(request: Request, login: str = "", symbol: str = "", kind: str = "", date_from: str = "", date_to: str = "",
-          server: str = "", page: int = 1, me: Staff = Depends(staff_perm("trading.view")),
-          db: Session = Depends(get_db)):
+          server: str = "", group: str = "", style: str = "", page: int = 1,
+          me: Staff = Depends(staff_perm("trading.view")), db: Session = Depends(get_db)):
     query = select(Deal).where(Deal.login.in_(visible_logins(me)))
     if server.isdigit():
         query = query.where(Deal.server_id == int(server))
-    if login.strip().isdigit():
-        query = query.where(Deal.login == int(login))
-    if symbol.strip():
-        query = query.where(Deal.symbol == symbol.strip().upper())
+    query = _filters(db, query, Deal, login, symbol, group, style)
     if kind == "trades":
         query = query.where(Deal.action.in_((0, 1)))
     elif kind == "balance":
@@ -86,24 +121,22 @@ def deals(request: Request, login: str = "", symbol: str = "", kind: str = "", d
             query = query.where(Deal.time >= d if op == ">=" else Deal.time <= d.replace(hour=23, minute=59, second=59))
     pg = Page(db, query.order_by(Deal.time.desc(), Deal.ticket.desc()), page, per_page=100)
     return render(request, "admin/trading/deals.html", page=pg, owners=_owners(db, [d.login for d in pg.items]),
-                  login=login, symbol=symbol, kind=kind, date_from=date_from, date_to=date_to, server=server,
-                  servers=_servers(db))
+                  kind=kind, date_from=date_from, date_to=date_to, server=server, servers=_servers(db),
+                  **_filter_ctx(db, login=login, symbol=symbol, group=group, style=style))
 
 
 @router.get("/orders")
 def orders(request: Request, login: str = "", symbol: str = "", status: str = "open", server: str = "",
-           page: int = 1, me: Staff = Depends(staff_perm("trading.view")), db: Session = Depends(get_db)):
+           group: str = "", style: str = "", page: int = 1, me: Staff = Depends(staff_perm("trading.view")),
+           db: Session = Depends(get_db)):
     query = select(Order).where(Order.login.in_(visible_logins(me)), Order.is_open.is_(status != "history"))
     if server.isdigit():
         query = query.where(Order.server_id == int(server))
-    if login.strip().isdigit():
-        query = query.where(Order.login == int(login))
-    if symbol.strip():
-        query = query.where(Order.symbol == symbol.strip().upper())
+    query = _filters(db, query, Order, login, symbol, group, style)
     pg = Page(db, query.order_by(Order.time_setup.desc().nulls_last(), Order.ticket.desc()), page, per_page=100)
     return render(request, "admin/trading/orders.html", page=pg, owners=_owners(db, [o.login for o in pg.items]),
-                  login=login, symbol=symbol, status=status, types=ORDER_TYPES, states=ORDER_STATES,
-                  server=server, servers=_servers(db))
+                  status=status, types=ORDER_TYPES, states=ORDER_STATES, server=server, servers=_servers(db),
+                  **_filter_ctx(db, login=login, symbol=symbol, group=group, style=style))
 
 
 @router.get("/sync")

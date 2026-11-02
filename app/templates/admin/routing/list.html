@@ -13,43 +13,49 @@
     <a class="btn btn-success btn-sm" href="/admin/routing/new?server={{ server.id }}"><i class="bi bi-plus-lg"></i> New rule</a>
   </div>{% endif %}
 </div>
-<div class="card"><div class="table-responsive"><table class="table table-hover align-middle">
-  <thead><tr><th class="num">#</th><th>Rule</th><th>Applies to</th><th>Then</th><th>Status</th><th class="text-end">Order</th></tr></thead>
-  <tbody>
-  {% for r, d in rows %}
-    <tr class="{% if not r.enabled %}text-muted{% endif %}">
-      <td class="num">{{ loop.index }}</td>
-      <td><a href="/admin/routing/{{ r.id }}">{{ r.name }}</a></td>
-      <td class="small">{{ d.what }}{% for c in d.conditions %}<br><span class="mono">{{ c }}</span>{% endfor %}</td>
-      <td class="small">{{ d.action }}{% if not d.final %} <span class="badge text-bg-light border">then next rule</span>{% endif %}</td>
-      <td>{{ post_button("/admin/routing/" ~ r.id ~ "/toggle", "enabled" if r.enabled else "disabled", csrf,
-                         "btn-sm " ~ ("btn-success" if r.enabled else "btn-outline-secondary"),
-                         confirm=("Disable" if r.enabled else "Enable") ~ " rule " ~ r.name ~ " on MT5?") }}</td>
-      <td class="text-end text-nowrap">
-        {% if not loop.first %}{{ post_button("/admin/routing/" ~ r.id ~ "/move", '<i class="bi bi-arrow-up"></i><span class="visually-hidden">Move up</span>', csrf, fields={"direction": "up"}) }}{% endif %}
-        {% if not loop.last %}{{ post_button("/admin/routing/" ~ r.id ~ "/move", '<i class="bi bi-arrow-down"></i><span class="visually-hidden">Move down</span>', csrf, fields={"direction": "down"}) }}{% endif %}
-      </td>
-    </tr>
-  {% else %}{{ empty(6, "No routing rules yet. Use Sync from MT5 to import this server's rules, or create one.") }}{% endfor %}
-  </tbody>
-</table></div></div>
+<div data-tabs>
+  <section data-tab="Rules" data-tab-count="{{ rows|length }}" id="rules">
+    <div class="card"><div class="table-responsive"><table class="table table-hover align-middle">
+      <thead><tr><th class="num">#</th><th>Rule</th><th>Applies to</th><th>Then</th><th>Status</th><th class="text-end">Order</th></tr></thead>
+      <tbody>
+      {% for r, d in rows %}
+        <tr class="{% if not r.enabled %}text-muted{% endif %}">
+          <td class="num">{{ loop.index }}</td>
+          <td><a href="/admin/routing/{{ r.id }}">{{ r.name }}</a></td>
+          <td class="small">{{ d.what }}{% for c in d.conditions %}<br><span class="mono">{{ c }}</span>{% endfor %}</td>
+          <td class="small">{{ d.action }}{% if not d.final %} <span class="badge text-bg-light border">then next rule</span>{% endif %}</td>
+          <td>{{ post_button("/admin/routing/" ~ r.id ~ "/toggle", "enabled" if r.enabled else "disabled", csrf,
+                             "btn-sm " ~ ("btn-success" if r.enabled else "btn-outline-secondary"),
+                             confirm=("Disable" if r.enabled else "Enable") ~ " rule " ~ r.name ~ " on MT5?") }}</td>
+          <td class="text-end text-nowrap">
+            {% if not loop.first %}{{ post_button("/admin/routing/" ~ r.id ~ "/move", '<i class="bi bi-arrow-up"></i><span class="visually-hidden">Move up</span>', csrf, fields={"direction": "up"}) }}{% endif %}
+            {% if not loop.last %}{{ post_button("/admin/routing/" ~ r.id ~ "/move", '<i class="bi bi-arrow-down"></i><span class="visually-hidden">Move down</span>', csrf, fields={"direction": "down"}) }}{% endif %}
+          </td>
+        </tr>
+      {% else %}{{ empty(6, "No routing rules yet. Use Sync from MT5 to import this server's rules, or create one.") }}{% endfor %}
+      </tbody>
+    </table></div></div>
+  </section>
 
-{% if server %}
-<div class="card mt-4"><div class="card-header">Reduce the server's load</div><div class="card-body">
-  <p class="small text-muted">Ready-made rules that cut the requests a busy server handles. Each is added at the <strong>top, switched off</strong>:
-    it changes nothing until you enable it above. Closing a position is never refused by them.</p>
-  {% for key, p in presets.items() %}
-  <form method="post" action="/admin/routing/preset" class="row g-2 align-items-end border-top pt-2 mt-2">
-    <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="server_id" value="{{ server.id }}">
-    <input type="hidden" name="key" value="{{ key }}">
-    <div class="col-lg-7"><div class="fw-semibold small">{{ p.name }}{% if p.name in added %} <span class="badge text-bg-light border">added</span>{% endif %}</div>
-      <div class="small text-muted">{{ p.about }}</div></div>
-    <div class="col-sm-6 col-lg-3"><label class="form-label small mb-0" for="p-{{ key }}">{{ p.param[0] }}</label>
-      <input class="form-control form-control-sm" id="p-{{ key }}" name="value" value="{{ p.param[1] }}" inputmode="decimal"></div>
-    <div class="col-sm-6 col-lg-2"><button class="btn btn-sm btn-outline-primary w-100" type="submit" {% if p.name in added %}disabled{% endif %}>Add, switched off</button></div>
-  </form>
-  {% endfor %}
-  <p class="small text-muted mt-3 mb-0">"Deals today" and "Placed by an Expert Advisor" are MT5's own routing conditions; they can also be used in any rule.</p>
-</div></div>
-{% endif %}
+  {% if server %}
+  <section data-tab="Load presets" id="presets">
+    <div class="card"><div class="card-header">Reduce the server's load</div><div class="card-body">
+      <p class="small text-muted">Ready-made rules that cut the requests a busy server handles. Each is added at the <strong>top, switched off</strong>:
+        it changes nothing until you enable it under Rules. Closing a position is never refused by them.</p>
+      {% for key, p in presets.items() %}
+      <form method="post" action="/admin/routing/preset" class="row g-2 align-items-end border-top pt-2 mt-2">
+        <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="server_id" value="{{ server.id }}">
+        <input type="hidden" name="key" value="{{ key }}">
+        <div class="col-lg-7"><div class="fw-semibold small">{{ p.name }}{% if p.name in added %} <span class="badge text-bg-light border">added</span>{% endif %}</div>
+          <div class="small text-muted">{{ p.about }}</div></div>
+        <div class="col-sm-6 col-lg-3"><label class="form-label small mb-0" for="p-{{ key }}">{{ p.param[0] }}</label>
+          <input class="form-control form-control-sm" id="p-{{ key }}" name="value" value="{{ p.param[1] }}" inputmode="decimal"></div>
+        <div class="col-sm-6 col-lg-2"><button class="btn btn-sm btn-outline-primary w-100" type="submit" {% if p.name in added %}disabled{% endif %}>Add, switched off</button></div>
+      </form>
+      {% endfor %}
+      <p class="small text-muted mt-3 mb-0">"Deals today" and "Placed by an Expert Advisor" are MT5's own routing conditions; they can also be used in any rule.</p>
+    </div></div>
+  </section>
+  {% endif %}
+</div>
 {% endblock %}

@@ -5,6 +5,8 @@ PERMISSIONS = {
     "staff.manage": "Create/update staff, roles and departments",
     "clients.view": "View assigned clients",
     "clients.view_all": "View all clients (not only assigned)",
+    "clients.referrals": "Business development: a referral link; sees the clients who signed up with it and everyone "
+                         "they referred, at any depth (an IB's whole downline)",
     "clients.manage": "Create/update clients, notes, assignments",
     "clients.change_email": "Change a client's email address (their login; the old address is notified)",
     "kyc.review": "Approve or reject KYC documents",
@@ -41,6 +43,7 @@ DEFAULT_ROLES = {
     "Manager": ["staff.view", "clients.*", "kyc.review", "accounts.*", "finance.view", "trading.*",
                 "copy.*", "marketing.*", "security.view", "mt5_health.view"],
     "Sales": ["clients.view", "clients.manage", "accounts.view", "marketing.view"],
+    "Business Development": ["clients.view", "clients.referrals", "accounts.view", "trading.view"],
     "Finance": ["clients.view", "clients.view_all", "accounts.view", "finance.*", "marketing.payout"],
     "Support": ["clients.view", "clients.view_all", "kyc.review", "accounts.view", "accounts.manage", "trading.view"],
     "Dealer": ["accounts.view", "trading.*", "copy.view", "symbols.manage", "routing.manage", "mt5_health.view"],

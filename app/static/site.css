@@ -470,3 +470,14 @@ body.s-area, body.s-error { background: var(--s-bg); }
 @keyframes q-tick { from { background: rgba(var(--brand-rgb), .18); } to { background: transparent; } }
 .q-caret { font-size: .7em; }
 @media (prefers-reduced-motion: reduce) { .q-tick { animation: none; } }
+
+/* tabs built from <section data-tab> (app.js) */
+.crm-tabs { margin-bottom: 1.25rem; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.crm-tabs::-webkit-scrollbar { display: none; }
+.crm-tabs .nav-link { white-space: nowrap; }
+.crm-tab-pane[hidden] { display: none !important; }
+
+/* Scrolling tables contain their positioned children (e.g. .visually-hidden button labels), so they can't widen the page */
+.table-responsive { position: relative; }
+/* The widest gutters are wider than a phone's page padding: narrow them on small screens */
+@media (max-width: 575.98px) { .row.g-5, .row.gx-5 { --bs-gutter-x: 1.5rem; } }

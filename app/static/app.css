@@ -513,7 +513,6 @@ body.crm-auth {
 .mw-sm { max-width: 640px; }
 .mw-md { max-width: 880px; }
 .mw-lg { max-width: 1100px; }
-.mw-details { max-width: 420px; }
 .w-reason { max-width: 220px; }
 .w-amount { width: 110px; }
 .w-priority { width: 90px; }
@@ -569,3 +568,14 @@ body.crm-auth {
 .drag-handle { cursor: grab; color: var(--ui-faint, #9aa3af); font-size: 1.1rem; }
 .drag-handle:hover { color: var(--ui-text-2, #4b5563); }
 [data-sortable] > tr.dragging { opacity: .5; background: rgba(var(--brand-rgb), .06); }
+
+/* ---------------------------------------------------------------- tabs built from <section data-tab> (app.js) */
+.crm-tabs { margin-bottom: 1.25rem; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.crm-tabs::-webkit-scrollbar { display: none; }
+.crm-tabs .nav-link { white-space: nowrap; }
+.crm-tab-pane[hidden] { display: none !important; }
+
+/* Scrolling tables contain their positioned children (e.g. .visually-hidden button labels), so they can't widen the page */
+.table-responsive { position: relative; }
+/* The widest gutters are wider than a phone's page padding: narrow them on small screens */
+@media (max-width: 575.98px) { .row.g-5, .row.gx-5 { --bs-gutter-x: 1.5rem; } }

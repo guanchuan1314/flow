@@ -36,6 +36,14 @@
   <span class="badge text-bg-{{ value|badge }}">{{ value|label }}</span>
 {%- endmacro %}
 
+{# An account's trader style and tags (services.trader_styles.badges); nothing when it has none. #}
+{% macro trader_style(info) -%}
+  {% if info %}<span class="d-inline-flex flex-wrap gap-1">
+    {%- if info.style %}<span class="badge text-bg-{{ info.style[1] }}">{{ info.style[0] }}</span>{% endif %}
+    {%- for name, color in info.tags %}<span class="badge text-bg-{{ color }} bg-opacity-75 fw-normal">{{ name }}</span>{% endfor %}
+  </span>{% endif %}
+{%- endmacro %}
+
 {% macro pnl(value) -%}
   <span class="{{ 'profit-pos' if value and value > 0 else ('profit-neg' if value and value < 0 else '') }}">{{ value|money }}</span>
 {%- endmacro %}

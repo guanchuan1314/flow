@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Sets up Flow (broker CRM with the MT5 Manager API) on Windows, from a fresh copy of the project:
-  installs what is missing (Python, Docker Desktop), creates the PostgreSQL database in Docker, the Python
+  installs what is missing (the Python in .python-version, Docker Desktop), creates the PostgreSQL database in Docker, the Python
   environment and .env (with generated secrets), migrates the database and, in production, creates the
   first admin and the Windows services. Safe to run again: finished steps are skipped and existing
   settings in .env are never overwritten (except the ones you pass as parameters).
@@ -85,29 +85,87 @@ function Install-Package($id, $what) {
 }
 
 # ---------------------------------------------------------------- 1. Python
+# .python-version names the Python Flow is built and tested on (e.g. 3.12). It is installed when missing (winget,
+# or the official installer from python.org where winget is not available, e.g. Windows Server), and .venv is
+# created again when it runs another version (after an update that moves to a newer Python).
 Step "Python"
+$pythonVersion = (Get-Content (Join-Path $PSScriptRoot ".python-version") -TotalCount 1 -ErrorAction Stop).Trim()
+if ($pythonVersion -notmatch '^3\.\d+$') { throw ".python-version must hold a version like 3.12 (found '$pythonVersion')." }
 $venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $venvPython)) {
-    function Find-Python {
-        foreach ($candidate in @(@("py", "-3.12"), @("py", "-3.13"), @("py", "-3.11"), @("python"))) {
-            if (-not (Get-Command $candidate[0] -ErrorAction SilentlyContinue)) { continue }
-            $extra = @($candidate | Select-Object -Skip 1)
-            $version = Get-Output { & $candidate[0] @extra -c "import sys; print('%d.%d' % sys.version_info[:2])" }
-            if ($version -and [version]$version -ge [version]"3.11") { return , $candidate }
-        }
-        return $null
+
+function Get-PythonVersion([string[]]$python) {
+    $extra = @($python | Select-Object -Skip 1)
+    return Get-Output { & $python[0] @extra -c "import sys; print('%d.%d' % sys.version_info[:2])" }
+}
+function Find-Python {
+    # The py launcher first, then the folders the installer uses (machine-wide, then this user), then "python"
+    # on PATH. Each must run exactly this version (the Microsoft Store placeholder runs nothing).
+    $folder = "Python" + $pythonVersion.Replace(".", "")
+    $candidates = @(
+        @("py", "-$pythonVersion"),
+        @(Join-Path $env:ProgramFiles "$folder\python.exe"),
+        @(Join-Path $env:LOCALAPPDATA "Programs\Python\$folder\python.exe"),
+        @("python"))
+    foreach ($candidate in $candidates) {
+        if (-not (Get-Command $candidate[0] -ErrorAction SilentlyContinue)) { continue }
+        if ((Get-PythonVersion $candidate) -eq $pythonVersion) { return , $candidate }
     }
+    return $null
+}
+function Install-Python {
+    if ($NoInstall) { throw "Python $pythonVersion is not installed. Install it from https://www.python.org and run this script again." }
+    # Production installs for all users: the services run under another account than the one running setup.
+    $scope = if ($Mode -eq "prod") { "machine" } else { "user" }
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Note "Installing Python $pythonVersion with winget (Windows may ask for permission)..."
+        winget install --id "Python.Python.$pythonVersion" --exact --silent --scope $scope --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -eq 0) { Update-Path; return }
+        Note "winget could not install Python (exit code $LASTEXITCODE); downloading it from python.org instead."
+    }
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $base = "https://www.python.org/ftp/python/"
+    # The newest release of this version that has a Windows installer (the last ones of an old version are
+    # source-only security releases).
+    $releases = (Invoke-WebRequest $base -UseBasicParsing).Links.href |
+        Where-Object { $_ -match ("^" + [regex]::Escape($pythonVersion) + "\.\d+/$") } |
+        ForEach-Object { [version]$_.TrimEnd("/") } | Sort-Object -Descending
+    $url = $null
+    foreach ($v in $releases) {
+        $candidate = "$base$v/python-$v-amd64.exe"
+        try { Invoke-WebRequest $candidate -Method Head -UseBasicParsing | Out-Null; $url = $candidate; break } catch { }
+    }
+    if (-not $url) { throw "No Windows installer for Python $pythonVersion found on python.org. Install it yourself and run this script again." }
+    $installer = Join-Path $env:TEMP (Split-Path $url -Leaf)
+    Note "Downloading $url ..."
+    Invoke-WebRequest $url -OutFile $installer -UseBasicParsing
+    $allUsers = if ($scope -eq "machine") { 1 } else { 0 }
+    Note "Installing Python $pythonVersion (Windows may ask for permission)..."
+    $p = Start-Process $installer -Wait -PassThru -ArgumentList "/quiet", "InstallAllUsers=$allUsers", "PrependPath=1",
+        "Include_launcher=1", "Include_test=0"
+    Remove-Item $installer -ErrorAction SilentlyContinue
+    if ($p.ExitCode -ne 0) { throw "The Python installer failed (exit code $($p.ExitCode))." }
+    Update-Path
+}
+
+$current = if (Test-Path $venvPython) { Get-PythonVersion @($venvPython) } else { $null }
+if ($current -eq $pythonVersion) {
+    Done ".venv already runs Python $pythonVersion"
+} else {
     $python = Find-Python
     if (-not $python) {
-        Install-Package "Python.Python.3.12" "Python 3.12"
+        Install-Python
         $python = Find-Python
-        if (-not $python) { throw "Python was installed but is not on PATH yet. Open a new PowerShell and run this script again." }
+        if (-not $python) { throw "Python $pythonVersion was installed but cannot be found yet. Open a new PowerShell and run this script again." }
+    }
+    if (Test-Path (Join-Path $PSScriptRoot ".venv")) {
+        Note $(if ($current) { "Python changed from $current to ${pythonVersion}: creating .venv again" } else { "Creating .venv again (it is broken)" })
+        Remove-Item (Join-Path $PSScriptRoot ".venv") -Recurse -Force -ErrorAction Stop  # fails while Flow is running
     }
     $extra = @($python | Select-Object -Skip 1)
     & $python[0] @extra -m venv .venv
     if ($LASTEXITCODE -ne 0) { throw "Could not create the Python environment (.venv)." }
-    Done "Created .venv"
-} else { Done ".venv already exists" }
+    Done "Created .venv with Python $pythonVersion"
+}
 
 # ---------------------------------------------------------------- 2. Dependencies
 Step "Python packages"

@@ -69,9 +69,9 @@ def test_bad_password_shows_error(api, admin):
 
 
 def test_csrf_required(admin_web):
-    r = admin_web.post("/admin/departments", data={"name": "Sales"})
+    r = admin_web.post("/admin/departments/new", data={"name": "Sales"})
     assert r.status_code == 403 and "session expired" in r.text
-    r = form_post(admin_web, "/admin/departments", "/admin/departments", {"name": "Sales"})
+    r = form_post(admin_web, "/admin/departments/new", "/admin/departments/new", {"name": "Sales"})
     assert r.status_code == 200 and "Department created" in r.text
 
 
@@ -204,7 +204,7 @@ def test_every_admin_page_renders(admin_web, db, gw, account_groups):
         "/admin/ibs", f"/admin/ibs/{ids['ib']}", "/admin/plans", "/admin/plans/new", "/admin/commissions",
         "/admin/commissions?status=", "/admin/campaigns", "/admin/sources", "/admin/staff", "/admin/staff/new",
         "/admin/staff/1", "/admin/roles", "/admin/roles/new", "/admin/roles/1", "/admin/departments", "/admin/audit",
-        "/admin/login-attempts", "/admin/me/security",
+        "/admin/departments/new", "/admin/referral-links", "/admin/login-attempts", "/admin/me/security",
     ]
     for url in pages:
         r = admin_web.get(url)
@@ -361,3 +361,59 @@ def test_portal_cannot_touch_other_clients_account(api, db, gw, account_groups):
     r = form_post(api, "/portal/accounts", f"/portal/accounts/{b_login}/password", {"which": "master"})
     assert r.status_code in (200, 403) and "does not belong" in r.text
 
+
+
+def test_audit_log_names_actions_and_shows_details_in_a_popup(admin_web, admin, db):
+    from app.core.audit import audit
+
+    c = register(admin_web, "audited@x.com")
+    audit(db, admin, "account.status", "trading_account", 500123,
+          {"before": "active", "after": "disabled", "logins": [1, 2], "sales": admin.id, "ok": True})
+    db.commit()
+    page = admin_web.get("/admin/audit").text
+    assert "Account status changed" in page and "Client registered" in page
+    assert "account.status" not in page and "client.register" not in page  # no raw codes
+    assert "Trading account 500123" in page
+    m = re.search(r'<template id="audit-(\d+)">(.*?)</template>', page, re.S)
+    assert m and 'data-details="audit-' in page
+    details = m.group(2)
+    assert "Before</dt>" in details and ">Active<" in details and ">Disabled<" in details
+    assert ">1, 2<" in details and ">Yes<" in details and admin.full_name in details
+    assert "{" not in details  # never JSON
+    # filter by area: only payment events
+    assert "Account status changed" not in admin_web.get("/admin/audit?action=payment").text
+    assert "Account status changed" in admin_web.get("/admin/audit?action=account").text
+    assert c["id"]
+
+
+def test_departments_create_rename_delete(admin_web, db):
+    from app.models import Department, Staff
+
+    page = admin_web.get("/admin/departments").text
+    assert 'href="/admin/departments/new"' in page
+    form_post(admin_web, "/admin/departments/new", "/admin/departments/new", {"name": "  Business   development "})
+    dep = db.scalar(select(Department).where(Department.name == "Business development"))
+    assert dep
+    admin = db.scalar(select(Staff).where(Staff.email == ADMIN[0]))
+    admin.department_id = dep.id
+    db.commit()
+    dep_id, admin_id = dep.id, admin.id
+    assert admin.full_name in admin_web.get(f"/admin/departments/{dep.id}").text
+    form_post(admin_web, f"/admin/departments/{dep.id}", f"/admin/departments/{dep.id}", {"name": "BD"})
+    db.expire_all()
+    assert db.get(Department, dep.id).name == "BD"
+    r = form_post(admin_web, f"/admin/departments/{dep.id}", f"/admin/departments/{dep.id}/delete", {})
+    assert "BD" in r.text and "deleted." in r.text
+    db.expire_all()
+    assert db.get(Department, dep_id) is None and db.get(Staff, admin_id).department_id is None
+    page = admin_web.get("/admin/audit").text
+    assert "Department renamed" in page and "Department deleted" in page
+
+
+def test_staff_and_security_pages_are_grouped_in_the_menu(admin_web):
+    page = admin_web.get("/admin/roles").text
+    tabs = page[page.index("crm-hub-tabs"):]
+    assert all(f'href="{u}"' in tabs[:600] for u in ("/admin/staff", "/admin/roles", "/admin/departments"))
+    page = admin_web.get("/admin/login-attempts").text
+    tabs = page[page.index("crm-hub-tabs"):]
+    assert all(f'href="{u}"' in tabs[:600] for u in ("/admin/audit", "/admin/login-attempts", "/admin/ip-rules"))

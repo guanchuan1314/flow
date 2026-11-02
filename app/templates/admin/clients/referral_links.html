@@ -1,0 +1,39 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, empty, post_button, secret %}
+{% block page_title %}Referral links{% endblock %}
+{% block content %}
+<p class="small text-muted mw-md">Clients and IBs who sign up with any of your links are yours, and so is everyone they refer
+  after them. Make a link for each place you share it (a website, an event, a partner): you see how many signed up with each.</p>
+
+<div class="card mw-md mb-4"><div class="card-body pb-1">
+  {{ secret("Your link (no tag)", untagged) }}
+</div></div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span>Tagged links</span>
+    <form method="post" action="/admin/referral-links/new" class="d-flex gap-2">
+      {{ csrf_input(csrf) }}
+      <input class="form-control form-control-sm" name="tag" maxlength="64" placeholder="Tag, e.g. Facebook group, Dubai expo" aria-label="Tag" required>
+      <button class="btn btn-success btn-sm text-nowrap" type="submit"><i class="bi bi-plus-lg"></i> New link</button>
+    </form>
+  </div>
+  <div class="table-responsive"><table class="table table-hover">
+    <thead><tr><th>Tag</th><th>Link</th><th class="num">Sign-ups</th><th>Last sign-up</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+    {% for x in links %}{% set n, last = stats.get(x.id, (0, None)) %}
+      <tr>
+        <td class="fw-semibold">{{ x.tag }}</td>
+        <td><span class="mono small text-break">{{ url(x.code) }}</span>
+          <button type="button" class="btn btn-outline-secondary btn-sm ms-1" data-copy="{{ url(x.code) }}" aria-label="Copy link"><i class="bi bi-clipboard"></i></button></td>
+        <td class="num">{% if n %}<a href="/admin/clients?link={{ x.id }}">{{ n }}</a>{% else %}0{% endif %}</td>
+        <td class="small">{{ last|dt if last else "—" }}</td>
+        <td class="small">{{ x.created_at|dt }}</td>
+        <td class="text-end">{% if not n %}{{ post_button("/admin/referral-links/" ~ x.id ~ "/delete", '<i class="bi bi-trash"></i>', csrf,
+              "btn-outline-danger btn-sm", confirm='Delete the link tagged "' ~ x.tag ~ '"? It stops working.', danger=True) }}{% endif %}</td>
+      </tr>
+    {% else %}{{ empty(6, "No tagged links yet: add one above.") }}{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

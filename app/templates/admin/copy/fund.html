@@ -9,7 +9,7 @@
     manager <a href="/admin/clients/{{ f.manager_client_id }}">{{ clients[f.manager_client_id].full_name }}</a> ·
     fees {{ f.performance_fee_pct|money }}% performance, {{ f.management_fee_pct_annual|money }}% / yr management</span>
   {% if manage %}
-  <div class="ms-auto d-flex gap-2">
+  <div class="ms-auto d-flex flex-wrap gap-2">
     {{ post_button("/admin/pamm/" ~ f.id ~ "/snapshot", "Record NAV", csrf) }}
     {{ post_button("/admin/pamm/" ~ f.id ~ "/settle-fees", "Settle fees now", csrf, "btn-outline-warning btn-sm", confirm="Crystallise performance and management fees now?") }}
     <form method="post" action="/admin/pamm/{{ f.id }}/status" class="d-flex gap-1">
@@ -24,15 +24,15 @@
 {% if live_error %}<div class="alert alert-warning">Could not read live equity from MT5: {{ live_error }}. Showing last recorded NAV.</div>{% endif %}
 
 <div class="row g-3 mb-4">
-  <div class="col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Equity</div><div class="kpi-value">{{ equity|money }}</div></div></div></div>
-  <div class="col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">NAV per unit</div><div class="kpi-value">{{ nav|money(4) }}</div></div></div></div>
-  <div class="col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Units outstanding</div><div class="kpi-value">{{ f.total_units|money }}</div></div></div></div>
-  <div class="col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Investors</div><div class="kpi-value">{{ invs|rejectattr("is_manager")|selectattr("units")|list|length }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Equity</div><div class="kpi-value">{{ equity|money }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">NAV per unit</div><div class="kpi-value">{{ nav|money(4) }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Units outstanding</div><div class="kpi-value">{{ f.total_units|money }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Investors</div><div class="kpi-value">{{ invs|rejectattr("is_manager")|selectattr("units")|list|length }}</div></div></div></div>
 </div>
 
-<div class="row g-4">
-  <div class="col-xl-8">
-    <div class="card mb-4"><div class="card-header">Investors</div><div class="table-responsive"><table class="table">
+<div data-tabs>
+  <section data-tab="Investors" data-tab-count="{{ invs|length }}" id="investors">
+    <div class="card"><div class="card-header">Investors</div><div class="table-responsive"><table class="table">
       <thead><tr><th>Client</th><th class="num">Units</th><th class="num">Share</th><th class="num">Value</th><th class="num">Net invested</th><th class="num">P/L</th><th class="num">HWM</th></tr></thead>
       <tbody>
       {% for i in invs %}
@@ -47,7 +47,9 @@
       {% else %}{{ empty(7, "No investors yet.") }}{% endfor %}
       </tbody>
     </table></div></div>
+  </section>
 
+  <section data-tab="Transactions" id="transactions">
     <div class="card"><div class="card-header">Transactions</div><div class="table-responsive"><table class="table">
       <thead><tr><th>Time</th><th>Client</th><th>Type</th><th class="num">Amount</th><th class="num">Units</th><th class="num">NAV</th></tr></thead>
       <tbody>
@@ -57,38 +59,44 @@
       {% else %}{{ empty(6, "No transactions yet.") }}{% endfor %}
       </tbody>
     </table></div></div>
-  </div>
-  <div class="col-xl-4">
-    {% if manage %}
-    <div class="card mb-3"><div class="card-header">Invest on behalf of client</div><div class="card-body">
-      <form method="post" action="/admin/pamm/{{ f.id }}/invest" data-confirm="Debit the client's wallet and invest in this fund?">
-        {{ csrf_input(csrf) }}
-        <div class="row">
-          {{ field("client_id", "Client ID", type="number", required=True, col="col-6") }}
-          {{ field("amount", "Amount", type="number", step="0.01", required=True, col="col-6") }}
-        </div>
-        <button class="btn btn-primary" type="submit">Invest</button>
-        <div class="form-text">Taken from the client's CRM wallet.</div>
-      </form>
-    </div></div>
-    <div class="card mb-3"><div class="card-header">Withdraw for client</div><div class="card-body">
-      <form method="post" action="/admin/pamm/{{ f.id }}/withdraw" data-confirm="Redeem from the fund to the client's wallet?">
-        {{ csrf_input(csrf) }}
-        <div class="row">
-          {{ field("client_id", "Client ID", type="number", required=True, col="col-6") }}
-          {{ field("amount", "Gross amount", type="number", step="0.01", col="col-6") }}
-        </div>
-        <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="all_units" id="all"><label class="form-check-label" for="all">Full exit (all units)</label></div>
-        <button class="btn btn-outline-primary" type="submit">Withdraw</button>
-        <div class="form-text">Performance fee on the redeemed portion is charged first.</div>
-      </form>
-    </div></div>
-    {% endif %}
-    <div class="card"><div class="card-header">NAV history</div><div class="table-responsive"><table class="table table-sm">
+  </section>
+
+  {% if manage %}
+  <section data-tab="Invest / withdraw" id="invest">
+    <div class="row g-3">
+      <div class="col-md-6"><div class="card h-100"><div class="card-header">Invest on behalf of client</div><div class="card-body">
+        <form method="post" action="/admin/pamm/{{ f.id }}/invest" data-confirm="Debit the client's wallet and invest in this fund?">
+          {{ csrf_input(csrf) }}
+          <div class="row">
+            {{ field("client_id", "Client ID", type="number", required=True, col="col-6") }}
+            {{ field("amount", "Amount", type="number", step="0.01", required=True, col="col-6") }}
+          </div>
+          <button class="btn btn-primary" type="submit">Invest</button>
+          <div class="form-text">Taken from the client's CRM wallet.</div>
+        </form>
+      </div></div></div>
+      <div class="col-md-6"><div class="card h-100"><div class="card-header">Withdraw for client</div><div class="card-body">
+        <form method="post" action="/admin/pamm/{{ f.id }}/withdraw" data-confirm="Redeem from the fund to the client's wallet?">
+          {{ csrf_input(csrf) }}
+          <div class="row">
+            {{ field("client_id", "Client ID", type="number", required=True, col="col-6") }}
+            {{ field("amount", "Gross amount", type="number", step="0.01", col="col-6") }}
+          </div>
+          <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="all_units" id="all"><label class="form-check-label" for="all">Full exit (all units)</label></div>
+          <button class="btn btn-outline-primary" type="submit">Withdraw</button>
+          <div class="form-text">Performance fee on the redeemed portion is charged first.</div>
+        </form>
+      </div></div></div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section data-tab="NAV history" id="nav">
+    <div class="card mw-sm"><div class="card-header">NAV history</div><div class="table-responsive"><table class="table table-sm">
       <thead><tr><th>Time</th><th class="num">Equity</th><th class="num">NAV</th></tr></thead>
       <tbody>{% for n in navs %}<tr><td class="small">{{ n.time|dt }}</td><td class="num">{{ n.equity|money }}</td><td class="num">{{ n.nav|money(4) }}</td></tr>
       {% else %}{{ empty(3, "No snapshots yet (recorded hourly by the worker).") }}{% endfor %}</tbody>
     </table></div></div>
-  </div>
+  </section>
 </div>
 {% endblock %}

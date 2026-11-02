@@ -1,5 +1,5 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import field, select, csrf_input, post_button %}
+{% from "macros.html" import field, select, csrf_input, post_button, secret %}
 {% block page_title %}{{ s.full_name if s else "New staff member" }}{% endblock %}
 {% block content %}
 {% set manage = staff.has_perm("staff.manage") %}
@@ -39,10 +39,23 @@
     <a class="btn btn-link" href="/admin/staff">Back</a>
     </fieldset>
   </form>
+  {% if referral_link %}
+  <hr>
+  {{ secret("Referral link (business development)", referral_link) }}
+  <p class="small text-muted">Clients and IBs who sign up with it are assigned to {{ s.full_name }}, and so is
+    everyone they refer.</p>
+  {% if tagged_links %}
+  <div class="form-label fw-semibold">Tagged links</div>
+  <ul class="list-group mb-3">{% for x, n in tagged_links %}
+    <li class="list-group-item d-flex justify-content-between align-items-center"><span>{{ x.tag }}</span>
+      <span>{% if n %}<a href="/admin/clients?link={{ x.id }}">{{ n }} sign-up{{ "s" if n != 1 }}</a>{% else %}<span class="text-muted">no sign-ups</span>{% endif %}</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
   {% if s and manage %}
   <hr>
   <div class="d-flex align-items-center gap-3">
-    <span>Two-factor authentication: {% if s.totp_enabled %}<span class="badge text-bg-success">enabled</span>{% else %}<span class="badge text-bg-secondary">not set up</span>{% endif %}</span>
+    <span>Two-factor authentication: {% if s.totp_enabled %}<span class="badge text-bg-success">Enabled</span>{% else %}<span class="badge text-bg-secondary">Not set up</span>{% endif %}</span>
     {% if s.totp_enabled %}{{ post_button("/admin/staff/" ~ s.id ~ "/reset-2fa", "Reset 2FA (lost device)", csrf, "btn-outline-warning btn-sm", confirm="Remove this person's 2FA? Verify their identity first.") }}{% endif %}
   </div>
   {% endif %}

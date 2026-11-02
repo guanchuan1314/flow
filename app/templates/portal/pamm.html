@@ -5,36 +5,41 @@
 <div class="alert alert-light border small">A PAMM fund pools investors' money in one account traded by a manager. Your share of profit and loss is proportional to your units.
   Wallet balance: <strong>{{ wallet.balance|money }} {{ wallet.currency }}</strong>.</div>
 
-<div class="card mb-4"><div class="card-header">My investments</div><div class="table-responsive"><table class="table">
-  <thead><tr><th>Fund</th><th class="num">Units</th><th class="num">NAV</th><th class="num">Value</th><th class="num">Invested</th><th class="num">P/L</th><th class="num">Share</th><th>Withdraw to wallet</th></tr></thead>
-  <tbody>
-  {% for s in statements %}
-    <tr><td>{{ s.fund.name }}</td><td class="num">{{ s.units|money(4) }}</td><td class="num">{{ s.nav|money(4) }}</td>
-      <td class="num">{{ s.value|money }}</td><td class="num">{{ s.net_invested|money }}</td><td class="num">{{ pnl(s.pnl) }}</td>
-      <td class="num">{{ (s.share_pct|money ~ "%") if s.share_pct is not none else "—" }}</td>
-      <td><form method="post" action="/portal/pamm/{{ s.fund.id }}/withdraw" class="d-flex gap-1 align-items-center" data-confirm="Withdraw from {{ s.fund.name }}? Any performance fee due is charged first.">
-        {{ csrf_input(csrf) }}
-        <input class="form-control form-control-sm w-amount" name="amount" type="number" step="0.01" placeholder="Amount">
-        <div class="form-check small mb-0"><input class="form-check-input" type="checkbox" name="all_units" id="all{{ s.fund.id }}"><label class="form-check-label" for="all{{ s.fund.id }}">all</label></div>
-        <button class="btn btn-sm btn-outline-primary">Withdraw</button></form></td></tr>
-  {% else %}{{ empty(8, "You have no PAMM investments yet.") }}{% endfor %}
-  </tbody>
-</table></div></div>
+<div data-tabs>
+  <section data-tab="My investments" data-tab-count="{{ statements|length }}" id="investments">
+    <div class="card mb-4"><div class="table-responsive"><table class="table">
+      <thead><tr><th>Fund</th><th class="num">Units</th><th class="num">NAV</th><th class="num">Value</th><th class="num">Invested</th><th class="num">P/L</th><th class="num">Share</th><th>Withdraw to wallet</th></tr></thead>
+      <tbody>
+      {% for s in statements %}
+        <tr><td>{{ s.fund.name }}</td><td class="num">{{ s.units|money(4) }}</td><td class="num">{{ s.nav|money(4) }}</td>
+          <td class="num">{{ s.value|money }}</td><td class="num">{{ s.net_invested|money }}</td><td class="num">{{ pnl(s.pnl) }}</td>
+          <td class="num">{{ (s.share_pct|money ~ "%") if s.share_pct is not none else "—" }}</td>
+          <td><form method="post" action="/portal/pamm/{{ s.fund.id }}/withdraw" class="d-flex gap-1 align-items-center" data-confirm="Withdraw from {{ s.fund.name }}? Any performance fee due is charged first.">
+            {{ csrf_input(csrf) }}
+            <input class="form-control form-control-sm w-amount" name="amount" type="number" step="0.01" placeholder="Amount">
+            <div class="form-check small mb-0"><input class="form-check-input" type="checkbox" name="all_units" id="all{{ s.fund.id }}"><label class="form-check-label" for="all{{ s.fund.id }}">all</label></div>
+            <button class="btn btn-sm btn-outline-primary">Withdraw</button></form></td></tr>
+      {% else %}{{ empty(8, "You have no PAMM investments yet.") }}{% endfor %}
+      </tbody>
+    </table></div></div>
+  </section>
 
-<h2 class="h6">Available funds</h2>
-<div class="row g-3">
-  {% for f in funds %}
-  <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-body d-flex flex-column">
-    <div class="h6">{{ f.name }}</div>
-    <p class="small text-muted flex-grow-1">{{ f.description or "No description." }}</p>
-    <div class="small mb-2">NAV {{ f.last_nav|money(4) }} · performance fee {{ f.performance_fee_pct|money }}% ·
-      management fee {{ f.management_fee_pct_annual|money }}%/yr · minimum {{ f.min_investment|money }}</div>
-    <form method="post" action="/portal/pamm/{{ f.id }}/invest" class="d-flex gap-2" data-confirm="Invest in {{ f.name }} from your wallet?">
-      {{ csrf_input(csrf) }}
-      <input class="form-control form-control-sm" name="amount" type="number" step="0.01" min="0" placeholder="Amount" required>
-      <button class="btn btn-sm btn-primary">Invest</button>
-    </form>
-  </div></div></div>
-  {% else %}<div class="col"><p class="text-muted">No funds are open for investment right now.</p></div>{% endfor %}
+  <section data-tab="Available funds" data-tab-count="{{ funds|length }}" id="funds">
+    <div class="row g-3 mb-4">
+      {% for f in funds %}
+      <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-body d-flex flex-column">
+        <div class="h6">{{ f.name }}</div>
+        <p class="small text-muted flex-grow-1">{{ f.description or "No description." }}</p>
+        <div class="small mb-2">NAV {{ f.last_nav|money(4) }} · performance fee {{ f.performance_fee_pct|money }}% ·
+          management fee {{ f.management_fee_pct_annual|money }}%/yr · minimum {{ f.min_investment|money }}</div>
+        <form method="post" action="/portal/pamm/{{ f.id }}/invest" class="d-flex gap-2" data-confirm="Invest in {{ f.name }} from your wallet?">
+          {{ csrf_input(csrf) }}
+          <input class="form-control form-control-sm" name="amount" type="number" step="0.01" min="0" placeholder="Amount" required>
+          <button class="btn btn-sm btn-primary">Invest</button>
+        </form>
+      </div></div></div>
+      {% else %}<div class="col"><p class="text-muted">No funds are open for investment right now.</p></div>{% endfor %}
+    </div>
+  </section>
 </div>
 {% endblock %}

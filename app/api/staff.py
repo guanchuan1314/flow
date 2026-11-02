@@ -46,6 +46,17 @@ def create_department(body: DepartmentIn, db: Session = Depends(get_db), me: Sta
     return svc.create_department(db, me, body.name)
 
 
+@router.put("/departments/{department_id}", response_model=DepartmentOut)
+def update_department(department_id: int, body: DepartmentIn, db: Session = Depends(get_db),
+                      me: Staff = Depends(require("staff.manage"))):
+    return svc.update_department(db, me, get_or_404(db, Department, department_id, "Department"), body.name)
+
+
+@router.delete("/departments/{department_id}", status_code=204)
+def delete_department(department_id: int, db: Session = Depends(get_db), me: Staff = Depends(require("staff.manage"))):
+    svc.delete_department(db, me, get_or_404(db, Department, department_id, "Department"))
+
+
 @router.get("/staff", response_model=list[StaffOut])
 def list_staff(active: bool | None = None, db: Session = Depends(get_db), _: Staff = Depends(require("staff.view"))):
     q = select(Staff).order_by(Staff.id)

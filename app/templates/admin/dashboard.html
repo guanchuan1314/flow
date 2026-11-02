@@ -1,5 +1,5 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import badge, empty, pnl %}
+{% from "macros.html" import badge, empty, pnl, secret %}
 {% block page_title %}Dashboard{% endblock %}
 
 {% macro tile(label, value, icon, href=None, warn=False) -%}
@@ -20,6 +20,14 @@
 {%- endmacro %}
 
 {% block content %}
+{% if referral_link %}
+<div class="card mb-4"><div class="card-body pb-1">
+  {{ secret("Your referral link", referral_link) }}
+  <p class="small text-muted">Clients and IBs who sign up with this link are yours, and so is everyone they refer
+    after them. You see their accounts, positions, deals and orders.
+    <a href="/admin/referral-links">Tagged links</a> show where each sign-up came from.</p>
+</div></div>
+{% endif %}
 <div class="row g-3 mb-4">
   {{ tile("Clients", kpi.clients, "people", "/admin/clients") }}
   {{ tile("New this week", kpi.new_clients, "person-plus") }}

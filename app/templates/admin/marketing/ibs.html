@@ -2,8 +2,8 @@
 {% from "macros.html" import field, select, csrf_input, badge, empty %}
 {% block page_title %}Introducing brokers{% endblock %}
 {% block content %}
-<div class="row g-4">
-  <div class="col-xl-8">
+<div data-tabs>
+  <section data-tab="IBs" data-tab-count="{{ rows|length }}" id="ibs">
     <div class="card"><div class="table-responsive"><table class="table table-hover">
       <thead><tr><th>IB</th><th>Client</th><th>Parent IB</th><th>Plan</th><th>Status</th><th class="num">Referred</th><th class="num">Pending</th><th class="num">Paid</th></tr></thead>
       <tbody>
@@ -21,10 +21,11 @@
       {% else %}{{ empty(8, "No IBs yet.") }}{% endfor %}
       </tbody>
     </table></div></div>
-  </div>
+  </section>
+
   {% if staff.has_perm("marketing.manage") %}
-  <div class="col-xl-4">
-    <div class="card"><div class="card-header">Make a client an IB</div><div class="card-body">
+  <section data-tab="New IB" id="new">
+    <div class="card mw-sm"><div class="card-header">Make a client an IB</div><div class="card-body">
       <form method="post" action="/admin/ibs">
         {{ csrf_input(csrf) }}
         {{ field("client_id", "Client ID", type="number", required=True) }}
@@ -33,7 +34,7 @@
         <button class="btn btn-primary" type="submit">Create IB</button>
       </form>
     </div></div>
-  </div>
+  </section>
   {% endif %}
 </div>
 {% endblock %}

@@ -45,6 +45,8 @@ class Client(Base, TimestampMixin):
     # Marketing
     referral_code: Mapped[str] = mapped_column(String(16), unique=True, index=True)
     referred_by_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), index=True)
+    # The tagged business development link they signed up with (models.staff.ReferralLink).
+    referral_link_id: Mapped[int | None] = mapped_column(ForeignKey("referral_links.id", ondelete="SET NULL"), index=True)
     lead_source: Mapped[str | None] = mapped_column(String(64))
     utm_source: Mapped[str | None] = mapped_column(String(64))
     utm_medium: Mapped[str | None] = mapped_column(String(64))

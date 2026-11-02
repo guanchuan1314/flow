@@ -51,7 +51,7 @@ def _apply(m: KycMethod, fields: dict) -> None:
     m.callback_ips = integrations.clean_ips(m.callback_ips if m.callback_ips is not None else [integrations.ANY_IP])
     unknown = set(m.required_documents or []) - set(CATEGORIES)
     if unknown:
-        raise ServiceError(f"Unknown document categories: {sorted(unknown)}")
+        raise ServiceError(f"Unknown document categories: {', '.join(sorted(unknown))}")
     if m.is_custom:
         if not (m.api_url or m.redirect_template):
             raise ServiceError("A custom method needs the provider's API URL or a redirect URL template")

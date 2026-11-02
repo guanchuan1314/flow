@@ -7,7 +7,7 @@ from app.db import get_db
 from app.models import AccountStatus, AccountGroup, Client, Deal, MT5Server, Position, Staff, TradingAccount
 from app.mt5 import MT5Error, for_account_group, routed
 from app.services import accounts as svc
-from app.services import mt5_sync
+from app.services import mt5_sync, trader_styles
 from app.services.clients import ensure_visible, visible_account, visible_client_ids
 from app.web.common import (
     Page, attempt, flash, opt_dec, opt_enum, opt_int, redirect, render, req_dec, staff_perm, sync_message,
@@ -32,7 +32,8 @@ def list_accounts(request: Request, q: str = "", status: str = "", kind: str = "
         query = query.where(TradingAccount.on_server.is_(False))
     pg = Page(db, query.order_by(TradingAccount.id.desc()), page)
     clients = {c.id: c for c in db.scalars(select(Client).where(Client.id.in_({a.client_id for a in pg.items})))}
-    return render(request, "admin/accounts/list.html", page=pg, clients=clients, q=q, status=status, kind=kind,
+    return render(request, "admin/accounts/list.html", page=pg, clients=clients,
+                  styles=trader_styles.badges(db, list(pg.items)), q=q, status=status, kind=kind,
                   origin=origin, statuses=list(AccountStatus))
 
 
@@ -59,7 +60,8 @@ def account_detail(request: Request, login: int, me: Staff = Depends(staff_perm(
                            .order_by(Position.time_create.desc())).all()
     deals = db.scalars(select(Deal).where(Deal.login == login).order_by(Deal.time.desc(), Deal.ticket.desc()).limit(100)).all()
     return render(request, "admin/accounts/detail.html", a=acc, owner=db.get(Client, acc.client_id),
-                  positions=positions, deals=deals, statuses=list(AccountStatus))
+                  positions=positions, deals=deals, statuses=list(AccountStatus),
+                  style=trader_styles.badges(db, [acc]).get(acc.login))
 
 
 @router.post("/accounts/{login}/refresh")

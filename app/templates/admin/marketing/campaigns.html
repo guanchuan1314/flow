@@ -2,8 +2,8 @@
 {% from "macros.html" import field, csrf_input, empty, post_button %}
 {% block page_title %}Campaigns &amp; promo codes{% endblock %}
 {% block content %}
-<div class="row g-4">
-  <div class="col-xl-8">
+<div data-tabs>
+  <section data-tab="Campaigns" data-tab-count="{{ rows|length }}" id="campaigns">
     <div class="card"><div class="table-responsive"><table class="table table-hover">
       <thead><tr><th>Code</th><th>Name</th><th class="num">Bonus</th><th class="num">Cap</th><th class="num">Min deposit</th><th>Valid</th><th class="num">Used</th><th class="num">Bonus paid</th><th>Active</th><th></th></tr></thead>
       <tbody>
@@ -21,21 +21,22 @@
       {% else %}{{ empty(10, "No campaigns yet.") }}{% endfor %}
       </tbody>
     </table></div></div>
-  </div>
+  </section>
+
   {% if staff.has_perm("marketing.manage") %}
-  <div class="col-xl-4">
-    <div class="card"><div class="card-header">New deposit-bonus campaign</div><div class="card-body">
+  <section data-tab="New campaign" id="new">
+    <div class="card mw-sm"><div class="card-header">New deposit-bonus campaign</div><div class="card-body">
       <form method="post" action="/admin/campaigns">
         {{ csrf_input(csrf) }}
         <div class="row">
-          {{ field("code", "Promo code", required=True, col="col-6", placeholder="WELCOME50") }}
-          {{ field("name", "Name", col="col-6") }}
-          {{ field("bonus_pct", "Bonus % of deposit", 50, type="number", step="0.01", col="col-6") }}
-          {{ field("max_bonus", "Max bonus", 500, type="number", step="0.01", col="col-6", help="0 = no cap") }}
-          {{ field("min_deposit", "Min deposit", 100, type="number", step="0.01", col="col-6") }}
-          {{ field("max_redemptions", "Max uses", type="number", col="col-6") }}
-          {{ field("starts_at", "Starts", type="datetime-local", col="col-6") }}
-          {{ field("ends_at", "Ends", type="datetime-local", col="col-6") }}
+          {{ field("code", "Promo code", required=True, col="col-12 col-md-6", placeholder="WELCOME50") }}
+          {{ field("name", "Name", col="col-12 col-md-6") }}
+          {{ field("bonus_pct", "Bonus % of deposit", 50, type="number", step="0.01", col="col-12 col-md-6") }}
+          {{ field("max_bonus", "Max bonus", 500, type="number", step="0.01", col="col-12 col-md-6", help="0 = no cap") }}
+          {{ field("min_deposit", "Min deposit", 100, type="number", step="0.01", col="col-12 col-md-6") }}
+          {{ field("max_redemptions", "Max uses", type="number", col="col-12 col-md-6") }}
+          {{ field("starts_at", "Starts", type="datetime-local", col="col-12 col-md-6") }}
+          {{ field("ends_at", "Ends", type="datetime-local", col="col-12 col-md-6") }}
         </div>
         <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="once_per_client" id="opc" checked>
           <label class="form-check-label" for="opc">Once per client</label></div>
@@ -43,7 +44,7 @@
         <div class="form-text">The bonus is credited as MT5 <em>credit</em> when a deposit using the code is approved.</div>
       </form>
     </div></div>
-  </div>
+  </section>
   {% endif %}
 </div>
 {% endblock %}

@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.mt5 import MT5Error, MT5Gateway
 from app.services import accounts, campaigns, notifications, wallet
+from app.web.labels import label
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def approve(db: Session, gw: MT5Gateway | None, staff: Staff, req: PaymentReques
     """`gw` may be None: it is then resolved from the target account's server."""
     req = lock(db, req)
     if req.status != PaymentStatus.pending:
-        raise ServiceError(f"Request is already {req.status.value}")
+        raise ServiceError(f"Request is already {label(req.status).lower()}")
     if req.created_by_staff_id == staff.id:
         raise Forbidden("Maker-checker: you cannot approve a request you created")
     return _execute(db, gw, staff, req, comment)
@@ -147,7 +148,7 @@ def reject(db: Session, staff: Staff | None, req: PaymentRequest, comment: str) 
     """`staff` None: rejected by the system (e.g. the payment provider reported a failure)."""
     req = lock(db, req)
     if req.status != PaymentStatus.pending:
-        raise ServiceError(f"Request is already {req.status.value}")
+        raise ServiceError(f"Request is already {label(req.status).lower()}")
     if not comment:
         raise ServiceError("A rejection comment is required")
     if req.kind == PaymentKind.withdrawal and req.trading_login is None:
@@ -163,7 +164,7 @@ def reject(db: Session, staff: Staff | None, req: PaymentRequest, comment: str) 
 
 def _notify(db: Session, req: PaymentRequest, outcome: str, reason: str | None = None) -> None:
     target = f"MT5 account {req.trading_login}" if req.trading_login else "your wallet"
-    body = f"Your {req.kind.value} of {req.amount} {req.currency} ({target}) was {outcome}."
+    body = f"Your {label(req.kind).lower()} of {req.amount} {req.currency} ({target}) was {outcome}."
     if reason:
         body += f"\nReason: {reason}"
-    notifications.notify_client(db.get(Client, req.client_id), f"{req.kind.value.title()} {outcome}", body)
+    notifications.notify_client(db.get(Client, req.client_id), f"{label(req.kind)} {outcome}", body)

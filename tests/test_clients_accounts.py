@@ -31,6 +31,58 @@ def test_sales_sees_only_assigned_clients(api, admin_h, db):
     assert api.get(f"/api/clients/{other['id']}", headers=sales_h).status_code == 403
 
 
+def test_business_development_sees_their_referral_tree(api, admin_h, db, account_groups):
+    from app.models import Staff
+    from app.services.clients import staff_referral_code
+
+    role = db.scalar(select(Role).where(Role.name == "Business Development"))
+    bd = api.post("/api/staff", json={"email": "bd@b.com", "full_name": "Bea Dev", "password": "Sales-Pass1",
+                                      "role_ids": [role.id]}, headers=admin_h).json()
+    code = staff_referral_code(db, db.get(Staff, bd["id"]))
+    ib = register(api, "ib@x.com", ref=code.lower())  # their link: the first IB signs up with it
+    assert ib["sales_staff_id"] == bd["id"] and ib["referred_by_id"] is None
+    child = register(api, "child@x.com", ref=ib["referral_code"])
+    grandchild = register(api, "grand@x.com", ref=child["referral_code"])
+    other = register(api, "other@x.com")
+    # someone below moved to another sales owner is still in the tree
+    api.put(f"/api/clients/{grandchild['id']}/assignment", json={"sales_staff_id": None}, headers=admin_h)
+    login = open_live(api, admin_h, grandchild["id"], account_groups["demo"])
+
+    bd_h = login_staff(api, "bd@b.com", "Sales-Pass1")
+    ids = {c["id"] for c in api.get("/api/clients", headers=bd_h).json()}
+    assert ids == {ib["id"], child["id"], grandchild["id"]}
+    assert api.get(f"/api/clients/{other['id']}", headers=bd_h).status_code == 403
+    assert api.get(f"/api/accounts/{login}", headers=bd_h).status_code == 200
+
+
+def test_business_development_tagged_links_trace_sign_ups(api, admin_h, db):
+    import pytest
+
+    from app.core.errors import Conflict, ServiceError
+    from app.models import Client, Staff
+    from app.services.clients import create_referral_link, delete_referral_link
+
+    role = db.scalar(select(Role).where(Role.name == "Business Development"))
+    bd_id = api.post("/api/staff", json={"email": "bd2@b.com", "full_name": "Bo Dev", "password": "Sales-Pass1",
+                                         "role_ids": [role.id]}, headers=admin_h).json()["id"]
+    bd = db.get(Staff, bd_id)
+    expo = create_referral_link(db, bd, " Dubai  expo ")
+    fb = create_referral_link(db, bd, "Facebook group")
+    assert expo.tag == "Dubai expo" and expo.code != fb.code
+    with pytest.raises(Conflict):
+        create_referral_link(db, bd, "Dubai expo")
+    a = register(api, "expo1@x.com", ref=expo.code)
+    register(api, "expo2@x.com", ref=expo.code)
+    assert a["sales_staff_id"] == bd_id and a["lead_source"] == "business development"
+    assert db.get(Client, a["id"]).referral_link_id == expo.id
+    with pytest.raises(ServiceError):  # people signed up with it: it stays
+        delete_referral_link(db, bd, expo.id)
+    delete_referral_link(db, bd, fb.id)
+    assert api.post("/api/auth/client/register", json={
+        "email": "late@x.com", "password": "Client-Pass1", "first_name": "A", "last_name": "B",
+        "referral_code": fb.code}).status_code == 400
+
+
 def test_kyc_upload_and_review(api, admin_h):
     c = register(api, "kyc@x.com")
     ch = login_client(api, "kyc@x.com")

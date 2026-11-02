@@ -56,6 +56,34 @@
     }
   });
 
+  // <button data-details="template-id" data-details-title="..."> shows that <template>'s content in a modal.
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-details]");
+    if (!btn) return;
+    var tpl = document.getElementById(btn.getAttribute("data-details"));
+    if (!tpl) return;
+    var el = document.getElementById("details-modal");
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "modal fade";
+      el.id = "details-modal";
+      el.tabIndex = -1;
+      el.setAttribute("aria-hidden", "true");
+      el.innerHTML =
+        '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg"><div class="modal-content">' +
+        '<div class="modal-header"><h5 class="modal-title"></h5>' +
+        '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>' +
+        '<div class="modal-body"></div>' +
+        '<div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button></div>' +
+        '</div></div>';
+      document.body.appendChild(el);
+    }
+    el.querySelector(".modal-title").textContent = btn.getAttribute("data-details-title") || "Details";
+    var body = el.querySelector(".modal-body");
+    body.replaceChildren(tpl.content.cloneNode(true));
+    bootstrap.Modal.getOrCreateInstance(el).show();
+  });
+
   // <button data-copy="text"> copies to the clipboard.
   document.addEventListener("click", function (e) {
     var el = e.target.closest("[data-copy]");
@@ -72,6 +100,93 @@
     if (e.target.closest("[data-sidebar-toggle]")) {
       document.querySelector(".crm-sidebar, .a-side").classList.toggle("show");
     }
+  });
+
+  // The sidebar keeps its scroll position from page to page, and the current page's entry is always in view
+  // (picking an entry low in a long menu doesn't send you back to the top).
+  (function () {
+    var side = document.querySelector(".crm-sidebar, .a-side");
+    if (!side) return;
+    var key = "sidebar-scroll:" + (side.classList.contains("crm-sidebar") ? "admin" : "portal");
+    try {
+      var saved = sessionStorage.getItem(key);
+      if (saved !== null) side.scrollTop = parseInt(saved, 10) || 0;
+    } catch (err) { /* storage blocked: the active entry is still brought into view below */ }
+    var current = [].find.call(side.querySelectorAll(".nav-link.active"), function (a) { return !a.closest(".nav-flyout"); });
+    if (current) {
+      var top = side.getBoundingClientRect().top, brand = side.querySelector(".brand");
+      var visibleFrom = top + (brand ? brand.offsetHeight : 0), r = current.getBoundingClientRect();
+      if (r.top < visibleFrom || r.bottom > top + side.clientHeight) {
+        side.scrollTop += r.top - visibleFrom - (side.clientHeight - (visibleFrom - top)) / 3;
+      }
+    }
+    window.addEventListener("pagehide", function () {
+      try { sessionStorage.setItem(key, String(side.scrollTop)); } catch (err) { /* ignore */ }
+    });
+  })();
+
+  // Tabs: <div data-tabs> whose direct children <section data-tab="Title" id="..."> become tabs (without
+  // JavaScript every section simply shows). The open tab follows the URL hash (#id, also an id inside the tab)
+  // and is remembered per page, so saving a form in a tab comes back to that tab, error or not.
+  document.querySelectorAll("[data-tabs]").forEach(function (box, n) {
+    var panes = [].filter.call(box.children, function (el) { return el.hasAttribute("data-tab"); });
+    if (panes.length < 2) return;
+    var storeKey = "tab:" + location.pathname + ":" + n;
+    var nav = document.createElement("ul");
+    nav.className = "nav nav-tabs crm-tabs";
+    nav.setAttribute("role", "tablist");
+    var buttons = panes.map(function (pane, i) {
+      pane.id = pane.id || "tab-" + (pane.getAttribute("data-tab").toLowerCase().replace(/[^a-z0-9]+/g, "-") || i);
+      pane.classList.add("crm-tab-pane");
+      pane.setAttribute("role", "tabpanel");
+      var li = document.createElement("li"), b = document.createElement("button");
+      li.className = "nav-item";
+      li.setAttribute("role", "presentation");
+      b.type = "button";
+      b.className = "nav-link";
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-controls", pane.id);
+      b.textContent = pane.getAttribute("data-tab");
+      var count = pane.getAttribute("data-tab-count");
+      if (count) {
+        var c = document.createElement("span");
+        c.className = "badge rounded-pill text-bg-light border ms-2";
+        c.textContent = count;
+        b.appendChild(c);
+      }
+      b.addEventListener("click", function () { show(pane.id, true); });
+      li.appendChild(b);
+      nav.appendChild(li);
+      return b;
+    });
+    box.insertBefore(nav, panes[0]);
+    function show(id, user) {
+      panes.forEach(function (pane, i) {
+        var on = pane.id === id;
+        pane.hidden = !on;
+        buttons[i].classList.toggle("active", on);
+        buttons[i].setAttribute("aria-selected", on ? "true" : "false");
+      });
+      try { sessionStorage.setItem(storeKey, id); } catch (err) { /* ignore */ }
+      if (user && history.replaceState) history.replaceState(null, "", "#" + id);
+    }
+    function paneFor(id) {
+      if (!id) return null;
+      var target = document.getElementById(id);
+      return target && panes.find(function (p) { return p === target || p.contains(target); });
+    }
+    var saved = null;
+    try { saved = sessionStorage.getItem(storeKey); } catch (err) { /* ignore */ }
+    var first = paneFor(location.hash.slice(1)) || paneFor(saved) || panes[0];
+    show(first.id, false);
+    // A form posted from a tab comes back to it: the redirect keeps the action's #hash.
+    box.addEventListener("submit", function (e) {
+      var pane = paneFor(e.target.id) || panes.find(function (p) { return p.contains(e.target); });
+      if (pane && e.target.method && e.target.method.toLowerCase() === "post") {
+        e.target.action = e.target.action.split("#")[0] + "#" + pane.id;
+        try { sessionStorage.setItem(storeKey, pane.id); } catch (err) { /* ignore */ }
+      }
+    }, true);
   });
 
   // [data-show-when="field=value"] is shown only while the form's `field` has that value.

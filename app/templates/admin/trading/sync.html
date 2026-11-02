@@ -3,13 +3,13 @@
 {% block page_title %}Trade sync{% endblock %}
 {% block content %}
 <div class="row g-3 mb-4">
-  <div class="col-md-3"><div class="card kpi"><div class="card-body">
+  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body">
     <div class="kpi-label">MT5 servers</div>
     <div class="kpi-value">{{ servers|selectattr("enabled")|list|length }} <small class="fs-6 text-muted">enabled</small></div>
   </div></div></div>
-  <div class="col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Tracked accounts</div><div class="kpi-value">{{ tracked }}</div></div></div></div>
-  <div class="col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Deals / orders stored</div><div class="kpi-value">{{ deal_count }} <small class="fs-6 text-muted">/ {{ order_count }}</small></div></div></div></div>
-  <div class="col-md-3"><div class="card kpi"><div class="card-body">
+  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Tracked accounts</div><div class="kpi-value">{{ tracked }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Deals / orders stored</div><div class="kpi-value">{{ deal_count }} <small class="fs-6 text-muted">/ {{ order_count }}</small></div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body">
     <div class="kpi-label">Last sync</div>
     <div class="small">Deals: {{ last_deals|dt }}<br>Positions: {{ last_positions|dt }}<br>Orders: {{ last_orders|dt }}</div>
   </div></div></div>
@@ -18,7 +18,9 @@
 <div class="mb-3">{{ post_button("/admin/sync", '<i class="bi bi-arrow-repeat"></i> Run full sync now', csrf, "btn-primary") }}
   <span class="small text-muted ms-2">The background worker syncs automatically every {{ settings().sync_interval_seconds }} s and receives deals in real time.</span></div>
 {% endif %}
-<div class="card mb-4">
+<div data-tabs>
+<section data-tab="Missing history" id="history">
+<div class="card">
   <div class="card-header">Sync missing history (background task)</div>
   {% if staff.has_perm("trading.sync") %}
   <div class="card-body border-bottom">
@@ -41,7 +43,9 @@
   {% endif %}
   {% include "admin/trading/sync_jobs.html" %}
 </div>
-<div class="card mb-4">
+</section>
+<section data-tab="Servers" id="servers">
+<div class="card">
   <div class="card-header d-flex justify-content-between">Servers
     {% if staff.has_perm("mt5_servers.manage") %}<a class="small fw-normal" href="/admin/configuration">Configuration</a>{% endif %}</div>
   <div class="table-responsive"><table class="table">
@@ -62,6 +66,8 @@
     </tbody>
   </table></div>
 </div>
+</section>
+<section data-tab="Sync errors" data-tab-count="{{ errors|length }}" id="errors">
 <div class="card">
   <div class="card-header">Accounts with sync errors</div>
   <div class="table-responsive"><table class="table">
@@ -72,5 +78,7 @@
     {% else %}{{ empty(3, "No sync errors.") }}{% endfor %}
     </tbody>
   </table></div>
+</div>
+</section>
 </div>
 {% endblock %}

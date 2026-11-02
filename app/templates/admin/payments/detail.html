@@ -15,7 +15,7 @@
       {% if p.proof_path %}<li class="list-group-item d-flex justify-content-between"><span>Proof of payment</span>
         <a href="/admin/payments/{{ p.id }}/proof"><i class="bi bi-paperclip"></i> {{ p.proof_name }}</a></li>{% endif %}
       {% if p.gateway_status %}<li class="list-group-item d-flex justify-content-between"><span>Provider</span>
-        <span>{{ p.gateway_status }}{% if p.paid_at %} · paid {{ p.paid_at|dt }}{% endif %} · <span class="mono">{{ p.gateway_ref }}</span></span></li>{% endif %}
+        <span>{{ p.gateway_status|label }}{% if p.paid_at %} · paid {{ p.paid_at|dt }}{% endif %} · <span class="mono">{{ p.gateway_ref }}</span></span></li>{% endif %}
       <li class="list-group-item d-flex justify-content-between"><span>Promo code</span><span>{{ p.promo_code or "—" }}</span></li>
       <li class="list-group-item d-flex justify-content-between"><span>Notes</span><span>{{ p.details or "—" }}</span></li>
       <li class="list-group-item d-flex justify-content-between"><span>Created</span><span>{{ p.created_at|dt }} by {{ staff_names.get(p.created_by_staff_id, "client") }}</span></li>

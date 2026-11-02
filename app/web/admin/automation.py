@@ -37,7 +37,7 @@ def automation_page(request: Request, me: Staff = Depends(staff_perm(PERM)), db:
     rules = db.scalars(select(AutomationRule).order_by(AutomationRule.name)).all()
     return render(request, "admin/automation/list.html", rules=rules, runs=svc.runs(db, limit=50),
                   names={r.id: r.name for r in rules}, triggers=svc.TRIGGERS, actions=svc.ACTIONS,
-                  every=svc.EVERY_MINUTES)
+                  every=svc.EVERY_MINUTES, styles=trader_styles.STYLES)
 
 
 @router.get("/automation/new")

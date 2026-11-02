@@ -246,7 +246,7 @@ def open_account(db: Session, gw: MT5Gateway, actor, client: Client, account_gro
         raise Forbidden("KYC must be approved before opening a live account")
     leverage = leverage or ag.default_leverage
     if leverage not in ag.leverage_options:
-        raise ServiceError(f"Leverage must be one of {ag.leverage_options}")
+        raise ServiceError(f"Leverage must be one of {_leverages(ag.leverage_options)}")
     count = db.scalar(select(func.count()).select_from(TradingAccount).where(
         TradingAccount.client_id == client.id, TradingAccount.account_group_id == ag.id,
         TradingAccount.status != AccountStatus.archived))
@@ -297,6 +297,10 @@ def apply_account_info(acc: TradingAccount, info) -> None:
     acc.last_synced_at = utcnow()
 
 
+def _leverages(options) -> str:
+    return ", ".join(f"1:{o}" for o in options)
+
+
 def change_leverage(db: Session, gw: MT5Gateway, actor, acc: TradingAccount, leverage: int) -> TradingAccount:
     if acc.status != AccountStatus.active:
         raise ServiceError("Account is not active")
@@ -304,7 +308,7 @@ def change_leverage(db: Session, gw: MT5Gateway, actor, acc: TradingAccount, lev
         raise ServiceError("This account has no account group; leverage can't be changed")
     options = acc.account_group.leverage_options
     if leverage not in options:
-        raise ServiceError(f"Leverage must be one of {options}")
+        raise ServiceError(f"Leverage must be one of {_leverages(options)}")
     call(lambda: gw.update_user(acc.login, leverage=leverage), "leverage change")
     before, acc.leverage = acc.leverage, leverage
     audit(db, actor, "account.leverage", "trading_account", acc.login, {"before": before, "after": leverage})

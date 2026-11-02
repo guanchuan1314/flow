@@ -2,9 +2,9 @@
 {% from "macros.html" import field, csrf_input, secret %}
 {% block page_title %}Password &amp; two-factor authentication{% endblock %}
 {% block content %}
-<div class="row g-4">
-  <div class="col-lg-6">
-    <div class="card">
+<div data-tabs>
+  <section data-tab="Password" id="password">
+    <div class="card mw-sm">
       <div class="card-header">Change password</div>
       <div class="card-body">
         <form method="post" action="/admin/me/password">
@@ -16,9 +16,10 @@
         </form>
       </div>
     </div>
-  </div>
-  <div class="col-lg-6">
-    <div class="card">
+  </section>
+
+  <section data-tab="Two-factor authentication" id="two-factor">
+    <div class="card mw-sm">
       <div class="card-header">Two-factor authentication</div>
       <div class="card-body">
         {% if staff.totp_enabled %}
@@ -45,6 +46,6 @@
         {% endif %}
       </div>
     </div>
-  </div>
+  </section>
 </div>
 {% endblock %}

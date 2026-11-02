@@ -72,7 +72,8 @@ in [docs/screenshots/](docs/screenshots/). All data shown is simulated (`run-dem
 ## Quick start (development and demo)
 
 Requirements: **Windows 10/11 or Windows Server** (the MT5 Manager API is a Windows-only library). Everything
-else is installed by `setup.ps1` with winget when missing: Python 3.12 and Docker Desktop. The database is
+else is installed by `setup.ps1` when missing: Python (the version in `.python-version`, 3.12) and Docker
+Desktop. The database is
 PostgreSQL 16 in a Docker container; Flow itself runs on Windows.
 
 ```powershell
@@ -88,10 +89,12 @@ If PowerShell refuses to run scripts, run `Set-ExecutionPolicy -Scope CurrentUse
 
 `setup.ps1` (development mode):
 
-1. Installs Python 3.12 and Docker Desktop with winget if they are missing (`-NoInstall` stops instead).
+1. Installs the Python in `.python-version` (with winget, or the official installer from python.org where
+   winget is missing, e.g. Windows Server) and Docker Desktop if they are missing (`-NoInstall` stops instead).
    After installing Docker Desktop, Windows may need a restart; start Docker Desktop once, then run the
    script again.
-2. Creates `.venv` and installs Flow with the `dev` and `mt5` extras.
+2. Creates `.venv` (again, when it runs another Python version) and installs Flow with the `dev` and `mt5`
+   extras.
 3. Creates `.env` from `.env.example`, generates `SECRET_KEY`, `CREDENTIALS_KEY` and the database password,
    picks a free port for PostgreSQL (5432, else 55432 and up) and writes `DATABASE_URL`.
 4. Starts the database (`docker compose up -d`, container `flow-db-1`, data in the `flow_pgdata` volume, reachable
@@ -388,7 +391,17 @@ scope (whole CRM, back-office, client area, website), description, optional expi
 
 Permissions are listed in `app/core/permissions.py` (for example `clients.view`, `finance.approve`,
 `symbols.manage`). Default roles: **Admin** (everything), **Manager**, **Sales** (sees only assigned clients),
-**Finance**, **Support**, **Dealer** (including symbols, routing and server health). Roles are edited under
+**Business Development**, **Finance**, **Support**, **Dealer** (including symbols, routing and server health).
+
+**Business Development** (`clients.referrals`) is for the sales people who bring in clients and IBs. Each of
+them has a referral link on their dashboard. Whoever signs up with it, client or IB, is assigned to them, and so
+is everyone below: the clients that IB refers, the clients those clients refer, at any depth (even after
+someone below is assigned to another owner). They see those clients, their accounts, open positions, deals and
+orders, and nothing else. Under **Clients → Referral links** they can also make tagged links, one per place they
+share it (a website, an event, a partner): each shows how many signed up with it, and the client page shows
+which link a client came from.
+
+Roles are edited under
 Administration → Roles; departments group staff. Staff with `staff.manage` can never grant permissions they do
 not hold, edit a role they hold, or change the password / 2FA / roles of someone with permissions they lack.
 
@@ -461,8 +474,8 @@ The Manager API is Windows-only, so Flow runs on Windows, next to or near the MT
 
 ### Prerequisites
 
-- Windows Server 2019 or later (or Windows 10/11). `setup.ps1` installs Python 3.12, Docker Desktop, NSSM and
-  Caddy with winget when they are missing.
+- Windows Server 2019 or later (or Windows 10/11). `setup.ps1` installs Python (for all users, so the services
+  can run it), Docker Desktop, NSSM and Caddy when they are missing.
 - An MT5 **manager** account (not a trader login) with the rights listed under
   [MT5 integration](#mt5-integration), including administrator access for the server-setup pages.
 - An SMTP account; two DNS names (for example `portal.yourbroker.com` and `backoffice.yourbroker.com`) pointing
@@ -563,11 +576,23 @@ administrators and encrypt it if it leaves the machine. Restore with
 
 ### Upgrading
 
-1. Back up (above).
-2. Stop the services: `nssm stop FlowCRM-API` and `nssm stop FlowCRM-Worker`.
-3. Replace the code with the new version (`git pull`).
-4. `.\setup.ps1 -Mode prod` (dependencies, database, migration, then `check-config`).
-5. Start the services: `nssm start FlowCRM-Worker` and `nssm start FlowCRM-API`.
+From an elevated PowerShell in the project folder:
+
+```powershell
+.\deploy.ps1 -BackupDir D:\backups\flow    # back up, then update to the latest code of this branch
+```
+
+`deploy.ps1` follows the branch that is checked out (`git checkout <branch>` once to follow another one):
+
+1. Stops when this copy has local changes, or when the branch has nothing new (`-Force` runs anyway).
+2. Backs up with `backup.ps1` (with `-BackupDir`), then stops the services.
+3. `git pull --ff-only` from origin.
+4. Runs `setup.ps1` in the mode `.env` is in. When the new code needs another Python (`.python-version`),
+   it installs that version and creates `.venv` again. Then packages, migration, `check-config`.
+5. Starts the services and waits until `/ready` answers. If setup failed, the services stay stopped and the
+   script says how to go back to the previous version.
+
+In development it does the same without the services: stop `run-demo.ps1` first, start it again afterwards.
 
 The API and worker refuse to work on an out-of-date schema (the worker exits; the API logs a critical error).
 
@@ -602,7 +627,7 @@ app/
 migrations/      Alembic schema history (0001-0017)
 deploy/          Caddyfile, windows\install-services.ps1, windows\backup.ps1
 docker-compose.yml   the PostgreSQL container (setup.ps1 / run-demo.ps1 start it)
-setup.ps1, run-demo.ps1
+setup.ps1, deploy.ps1, run-demo.ps1, .python-version (the Python version Flow runs on)
 tests/
 ```
 

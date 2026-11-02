@@ -4,10 +4,9 @@
 <div class="card">
   <div class="card-header">
     <form class="row g-2" method="get">
-      <div class="col-md-3"><input class="form-control form-control-sm" name="login" value="{{ login }}" placeholder="MT5 login"></div>
-      <div class="col-md-3"><input class="form-control form-control-sm" name="symbol" value="{{ symbol }}" placeholder="Symbol, e.g. EURUSD"></div>
+      {% include "admin/trading/_filters.html" %}
       <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button></div>
-      <div class="col text-end small text-muted align-self-center"><i class="bi bi-broadcast"></i> Auto-refreshes every 10 s</div>
+      <div class="col-12 col-md text-md-end small text-muted align-self-center"><i class="bi bi-broadcast"></i> Auto-refreshes every 10 s</div>
     </form>
   </div>
   <div id="positions-table" hx-get="{{ request.url.include_query_params(partial=1) }}" hx-trigger="every 10s" hx-swap="innerHTML">

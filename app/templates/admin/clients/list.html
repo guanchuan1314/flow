@@ -2,9 +2,15 @@
 {% from "macros.html" import badge, empty, pagination %}
 {% block page_title %}Clients{% endblock %}
 {% block content %}
+{% if ref_link %}
+<div class="alert alert-info d-flex justify-content-between align-items-center py-2 small">
+  <span>Signed up with the referral link tagged <strong>{{ ref_link.tag }}</strong> ({{ staff_names.get(ref_link.staff_id, "") }})</span>
+  <a class="alert-link" href="/admin/clients">Show all clients</a></div>
+{% endif %}
 <div class="card">
   <div class="card-header">
     <form class="row g-2 align-items-center" method="get">
+      {% if ref_link %}<input type="hidden" name="link" value="{{ ref_link.id }}">{% endif %}
       <div class="col-md-5"><input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Search name, email, phone, client ID or MT5 login"></div>
       <div class="col-md-2">
         <select class="form-select form-select-sm" name="status" data-autosubmit>

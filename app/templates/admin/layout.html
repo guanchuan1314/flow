@@ -9,6 +9,14 @@
   {% endif %}
 {%- endmacro %}
 
+{# One menu entry for a group of pages shown as tabs (web.common.ADMIN_HUBS): opens the first tab you may see. #}
+{% macro navhub(key) -%}
+  {% set text, icon, _tabs = admin_hubs[key] %}{% set items = hub_items(key, staff) %}
+  {% if items %}
+    <a class="nav-link {% if hub_of(path) == key %}active{% endif %}" href="{{ items[0][0] }}"><i class="bi bi-{{ icon }}"></i>{{ text }}</a>
+  {% endif %}
+{%- endmacro %}
+
 {# A menu entry with a nested menu that opens on hover (or focus); items are (href, icon, text, permission). #}
 {% macro navgroup(icon, text, items) -%}
   {% set ns = namespace(visible=[], active=False) %}
@@ -42,6 +50,7 @@
 
       {% if staff.has_perm("clients.view") or staff.has_perm("kyc.review") %}<div class="nav-section">Clients</div>{% endif %}
       {{ navlink("/admin/clients", "people", "Clients", "clients.view") }}
+      {{ navlink("/admin/referral-links", "link-45deg", "Referral links", "clients.referrals") }}
       {{ navlink("/admin/kyc", "person-vcard", "KYC queue", "kyc.review") }}
       {{ navlink("/admin/kyc-methods", "fingerprint", "KYC methods", "kyc.methods") }}
 
@@ -52,24 +61,12 @@
       {{ navgroup("wallet2", "Accounts", [
            ("/admin/accounts", "wallet2", "Trading accounts", "accounts.view"),
            ("/admin/account-groups", "sliders", "Account groups", "account_groups.manage"),
-           ("/admin/trader-styles", "robot", "Trader styles", "accounts.view")]) }}
-      {% set setup_perm = "symbols.manage" if staff.has_perm("symbols.manage") else
-                          ("liquidity.manage" if staff.has_perm("liquidity.manage") else "routing.manage") %}
-      {{ navgroup("diagram-3", "Trading setup", [
-           ("/admin/trading-setup", "diagram-3", "Overview", setup_perm),
-           ("/admin/symbols", "currency-exchange", "Symbols", "symbols.manage"),
-           ("/admin/liquidity", "bezier2", "Liquidity providers", "liquidity.manage"),
-           ("/admin/routing", "signpost-split", "Routing", "routing.manage")]) }}
+           ("/admin/trader-styles", "robot", "Trader styles", "accounts.view"),
+           ("/admin/inactive-accounts", "archive", "Inactive accounts", "accounts.cleanup")]) }}
+      {{ navhub("setup") }}
       {{ navlink("/admin/automation", "lightning-charge", "Automation", "automation.manage") }}
-      {{ navgroup("cloud-download", "Import from MT5", [
-           ("/admin/import/account-groups", "diagram-2", "Account groups", "mt5_servers.manage"),
-           ("/admin/import/trading-accounts", "people", "Trading accounts", "mt5_servers.manage"),
-           ("/admin/sync", "arrow-repeat", "Trade sync", "trading.view")]) }}
-      {{ navgroup("tools", "Server tools", [
-           ("/admin/server-health", "activity", "Server health", "mt5_health.view"),
-           ("/admin/pricing", "tags", "Symbols & pricing", "symbols.manage"),
-           ("/admin/inactive-accounts", "archive", "Inactive accounts", "accounts.cleanup"),
-           ("/admin/restart", "bootstrap-reboot", "Restart components", "mt5_servers.restart")]) }}
+      {{ navhub("import") }}
+      {{ navhub("tools") }}
       {{ navlink("/admin/configuration", "gear", "Configuration", "mt5_servers.manage") }}
 
       {% if staff.has_perm("finance.view") %}<div class="nav-section">Finance</div>{% endif %}
@@ -94,12 +91,8 @@
 
       {% if staff.has_perm("staff.view") or staff.has_perm("security.view") or staff.has_perm("security.ip_rules")
             or staff.has_perm("settings.branding") %}<div class="nav-section">Administration</div>{% endif %}
-      {{ navlink("/admin/staff", "person-badge", "Staff", "staff.view") }}
-      {{ navlink("/admin/roles", "shield-lock", "Roles", "staff.view") }}
-      {{ navlink("/admin/departments", "building", "Departments", "staff.view") }}
-      {{ navlink("/admin/audit", "journal-text", "Audit log", "security.view") }}
-      {{ navlink("/admin/login-attempts", "door-open", "Login attempts", "security.view") }}
-      {{ navlink("/admin/ip-rules", "shield-slash", "IP access rules", "security.ip_rules") }}
+      {{ navhub("staff") }}
+      {{ navhub("security") }}
       {{ navlink("/admin/branding", "palette", "Branding", "settings.branding") }}
     </nav>
   </aside>
@@ -136,6 +129,14 @@
         <a class="alert-link text-nowrap" href="/admin/server-health?server={{ a.server_id }}">Server health</a>
       </div>{% endfor %}{% endif %}
       {{ show_flashes(flashes) }}
+      {% set hub = hub_of(path) %}{% set tabs = hub_items(hub, staff) if hub else [] %}
+      {% if tabs|length > 1 %}
+      <ul class="nav nav-tabs crm-tabs crm-hub-tabs">
+        {% for href, tab in tabs %}
+        <li class="nav-item"><a class="nav-link {% if path == href or path.startswith(href ~ '/') %}active{% endif %}" href="{{ href }}">{{ tab }}</a></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>

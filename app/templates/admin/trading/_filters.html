@@ -1,0 +1,13 @@
+{# Shared filters of the positions, deals and orders lists. Login and symbol accept * and ? wildcards. #}
+<div class="col-6 col-md-2"><input class="form-control form-control-sm" name="login" value="{{ login }}" placeholder="Login, e.g. 50*"
+  title="MT5 login. * matches any text, ? one character: 50* = logins starting with 50" aria-label="MT5 login"></div>
+<div class="col-6 col-md-2"><input class="form-control form-control-sm" name="symbol" value="{{ symbol }}" placeholder="Symbol, e.g. *EUR*"
+  title="Symbol. *EUR* = contains EUR, EUR* = starts with EUR, *EUR = ends with EUR" aria-label="Symbol"></div>
+<div class="col-6 col-md-2"><select class="form-select form-select-sm" name="group" aria-label="Account group">
+  <option value="">All account groups</option>
+  {% for gid, gname in groups %}<option value="{{ gid }}" {% if group == gid|string %}selected{% endif %}>{{ gname }}</option>{% endfor %}
+</select></div>
+<div class="col-6 col-md-2"><select class="form-select form-select-sm" name="style" aria-label="Trader style">
+  <option value="">All trader styles</option>
+  {% for key, name in styles %}<option value="{{ key }}" {% if style == key %}selected{% endif %}>{{ name }}</option>{% endfor %}
+</select></div>

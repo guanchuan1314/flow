@@ -19,7 +19,7 @@ from app.models.mt5 import (
 )
 from app.models.security import AuditLog, IpRule, LoginAttempt, RevokedToken
 from app.models.settings import AppSetting
-from app.models.staff import Department, Role, Staff
+from app.models.staff import Department, ReferralLink, Role, Staff
 from app.models.trading import ORDER_STATES, ORDER_TYPES, Deal, Order, Position, SyncJob, SyncState
 
 __all__ = [name for name in dir() if not name.startswith("_")]

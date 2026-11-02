@@ -31,6 +31,8 @@
     {{ remove_row_cell() }}</tr>
 {%- endmacro %}
 
+<div data-tabs>
+<section data-tab="MT5 markups" id="markups">
 <p class="small text-muted mw-lg">Your markups on top of the liquidity providers' prices, written to MT5. Masks are MT5's: separate several with
   commas, <span class="mono">*</span> stands for any text, <span class="mono">!</span> leaves out (e.g. <span class="mono">real\*, !real\vip</span>).
   Symbol masks are MT5 symbol paths, e.g. <span class="mono">*</span>, <span class="mono">Forex\*</span> or <span class="mono">Metals\XAUUSD</span>.
@@ -68,8 +70,8 @@
     {{ add_row_button("spread-tpl", "spread-rows", "Add row", "ms-auto") }}</div><div class="card-body pb-1">
     <p class="small text-muted">Points added to the spread for these account groups, e.g. Standard +15, ECN 0, on the same symbols
       (MT5's spread difference on the group). A rule for all symbols (<span class="mono">*</span>) also becomes the account group's spread markup used for IB rebates.</p>
-    <table class="table table-sm align-middle"><thead><tr><th>MT5 account groups</th><th>Symbols</th><th>Points</th><th></th></tr></thead>
-      <tbody id="spread-rows">{% for r in p.spread %}{{ spread_row(r) }}{% else %}{{ spread_row() }}{% endfor %}</tbody></table>
+    <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>MT5 account groups</th><th>Symbols</th><th>Points</th><th></th></tr></thead>
+      <tbody id="spread-rows">{% for r in p.spread %}{{ spread_row(r) }}{% else %}{{ spread_row() }}{% endfor %}</tbody></table></div>
     <template id="spread-tpl">{{ spread_row() }}</template>
   </div></div>
 
@@ -77,8 +79,8 @@
     {{ add_row_button("comm-tpl", "comm-rows", "Add row", "ms-auto") }}</div><div class="card-body pb-1">
     <p class="small text-muted">Money per lot in the account's currency, charged on every deal in and out (so a round turn is twice this).
       Written to the MT5 group as a commission named <span class="mono">CRM …</span>.</p>
-    <table class="table table-sm align-middle"><thead><tr><th>MT5 account groups</th><th>Symbols</th><th>Per lot, per side</th><th></th></tr></thead>
-      <tbody id="comm-rows">{% for r in p.commission %}{{ comm_row(r) }}{% else %}{{ comm_row() }}{% endfor %}</tbody></table>
+    <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>MT5 account groups</th><th>Symbols</th><th>Per lot, per side</th><th></th></tr></thead>
+      <tbody id="comm-rows">{% for r in p.commission %}{{ comm_row(r) }}{% else %}{{ comm_row() }}{% endfor %}</tbody></table></div>
     <template id="comm-tpl">{{ comm_row() }}</template>
   </div></div>
 
@@ -87,8 +89,8 @@
     <p class="small text-muted">Taken off the LP's swap on each matching symbol, long and short, in the symbol's swap units (points for most).
       E.g. LP long −2.1 with a markup of 0.5 gives −2.6. The CRM keeps the LP's swap: when MT5's swap changes (a new value from the LP or
       MT5 Administrator), the markup is applied to the new value. Symbols with swaps turned off are skipped.</p>
-    <table class="table table-sm align-middle"><thead><tr><th>Symbols (name or path)</th><th>Long</th><th>Short</th><th></th></tr></thead>
-      <tbody id="swap-rows">{% for r in p.swap %}{{ swap_row(r) }}{% else %}{{ swap_row() }}{% endfor %}</tbody></table>
+    <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Symbols (name or path)</th><th>Long</th><th>Short</th><th></th></tr></thead>
+      <tbody id="swap-rows">{% for r in p.swap %}{{ swap_row(r) }}{% else %}{{ swap_row() }}{% endfor %}</tbody></table></div>
     <template id="swap-tpl">{{ swap_row() }}</template>
   </div></div>
 
@@ -97,8 +99,10 @@
   <p class="small text-muted mt-2">Removing a row puts MT5 back as it was: the symbol's own spread, no CRM commission, the LP's swap.
     Needs the manager login's right to configure groups and symbols.</p>
 </form>
+</section>
 
-<form method="post" action="/admin/pricing/website" class="mw-lg mt-4" id="website-prices">
+<section data-tab="Website prices" id="website">
+<form method="post" action="/admin/pricing/website" class="mw-lg" id="website-prices">
   {{ csrf_input(csrf) }}
   <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Website prices</span>
     {{ add_row_button("web-tpl", "web-rows", "Add symbol", "ms-auto") }}</div><div class="card-body pb-1">
@@ -107,10 +111,12 @@
       MT5's description and folder; decimals always follow the MT5 symbol.
       {% if website.from_env %}<br><strong>Now:</strong> the default list from <span class="mono">PUBLIC_SYMBOLS</span> in .env, until you save here.{% endif %}</p>
     <datalist id="mt5-symbols">{% for name in website.available %}<option value="{{ name }}">{% endfor %}</datalist>
-    <table class="table table-sm align-middle"><thead><tr><th></th><th>Symbol</th><th>Name on the website</th><th>Category</th><th></th></tr></thead>
-      <tbody id="web-rows" data-sortable>{% for r in website.entries %}{{ web_row(r) }}{% else %}{{ web_row() }}{% endfor %}</tbody></table>
+    <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th></th><th>Symbol</th><th>Name on the website</th><th>Category</th><th></th></tr></thead>
+      <tbody id="web-rows" data-sortable>{% for r in website.entries %}{{ web_row(r) }}{% else %}{{ web_row() }}{% endfor %}</tbody></table></div>
     <template id="web-tpl">{{ web_row() }}</template>
   </div></div>
   <button class="btn btn-primary" type="submit">Save website prices</button>
 </form>
+</section>
+</div>
 {% endblock %}

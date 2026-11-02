@@ -10,8 +10,9 @@
     {% if help %}<div class="form-text">{{ help }}</div>{% endif %}
   </div>
 {%- endmacro %}
-<div class="row g-3" data-toggle-scope>
-<div class="col-xl-8">
+<div data-toggle-scope>
+<div data-tabs>
+<section data-tab="Settings" id="settings" class="mw-lg">
 <form method="post" action="{{ base }}/{{ m.id if m else 'new' }}">
   {{ csrf_input(csrf) }}
   <div class="card mb-3"><div class="card-body"><div class="row">
@@ -83,7 +84,7 @@
       <label class="form-label" for="f-secret">Shared secret {% if m and m.secret_enc %}<span class="badge text-bg-light border">stored</span>{% endif %}</label>
       <input class="form-control" id="f-secret" name="secret" type="password" autocomplete="new-password" placeholder="{{ 'leave blank to keep' if m and m.secret_enc else 'required' }}">
       <div class="form-text">HMAC-SHA256 key: signs our requests and verifies the provider's callbacks. Stored encrypted.
-        Changing it needs the {{ 'finance.approve' if scope == 'payment' else 'kyc.review' }} permission too.</div>
+        Changing it also needs the permission to {{ 'approve or reject payment requests' if scope == 'payment' else 'approve or reject KYC documents' }}.</div>
     </div>
     {{ field("signature_header", "Signature header", m.signature_header if m else "X-Signature", col="col-md-6") }}
     <div class="col-12 mb-3">
@@ -101,7 +102,7 @@
     {{ field("failure_values", "Status values meaning failure", m.failure_values if m else "failed,cancelled,declined,expired,rejected", col="col-md-6") }}
     {% if scope == "payment" %}
       {{ field("amount_field", "Paid amount field", m.amount_field if m else "amount", col="col-md-6", help="Checked against the request; a missing or different amount (or a different \"currency\") is held for review. Required for auto-credit.") }}
-      <div class="col-md-6 mb-3 d-flex align-items-end">{{ check("auto_credit", "Credit automatically when paid", not m or m.auto_credit, "Otherwise finance approves paid deposits. Turning it on needs the finance.approve permission.") }}</div>
+      <div class="col-md-6 mb-3 d-flex align-items-end">{{ check("auto_credit", "Credit automatically when paid", not m or m.auto_credit, "Otherwise finance approves paid deposits. Turning it on needs the permission to approve or reject payment requests.") }}</div>
     {% endif %}
   </div></div></div>
 
@@ -115,20 +116,8 @@
                    confirm="Delete " ~ m.name ~ "?", danger=True) }}
   </div></div>
 {% endif %}
-</div>
 
-<div class="col-xl-4">
-  {% if m and m.is_custom %}
-  <div class="card mb-3"><div class="card-header">Callback URL for the provider</div><div class="card-body">
-    <div class="input-group mb-2">
-      <input class="form-control mono small" value="{{ callback_url }}" readonly aria-label="Callback URL">
-      <button class="btn btn-outline-secondary" type="button" data-copy="{{ callback_url }}"><i class="bi bi-clipboard"></i></button>
-    </div>
-    <p class="small text-muted mb-2">Unique to this method. It is also sent with every request as <span class="mono">callback_url</span>.</p>
-    {{ post_button(base ~ "/" ~ m.id ~ "/callback-url", "Generate a new URL", csrf, "btn-outline-warning btn-sm",
-                   confirm="Generate a new callback URL? The current one stops working immediately.") }}
-  </div></div>
-  {% endif %}
+{% if not m %}
   <div class="card mb-3" data-show-when="kind=custom"><div class="card-header">How the integration works</div><div class="card-body small">
     <ol class="ps-3 mb-0">
       <li class="mb-2">The client chooses this method. The CRM creates a unique <span class="mono">reference</span> and POSTs JSON to the
@@ -138,10 +127,40 @@
       <li class="mb-2">The provider POSTs the result (JSON or form) to the callback URL, signed the same way, with the reference
         and status{{ " and amount" if scope == "payment" else "" }}.</li>
       <li>{{ "Success credits the deposit (or waits for finance); failure rejects it." if scope == "payment" else "Success approves the client; failure rejects them with the reason." }}
-        Every callback is logged below.</li>
+        Every callback is listed under Recent callbacks.</li>
     </ol>
   </div></div>
-  {% if callbacks %}
+{% endif %}
+</section>
+
+{% if m and m.is_custom %}
+<section data-tab="Callback URL" id="callback" class="mw-lg">
+  <div class="card mb-3"><div class="card-header">Callback URL for the provider</div><div class="card-body">
+    <div class="input-group mb-2">
+      <input class="form-control mono small" value="{{ callback_url }}" readonly aria-label="Callback URL">
+      <button class="btn btn-outline-secondary" type="button" data-copy="{{ callback_url }}"><i class="bi bi-clipboard"></i></button>
+    </div>
+    <p class="small text-muted mb-2">Unique to this method. It is also sent with every request as <span class="mono">callback_url</span>.</p>
+    {{ post_button(base ~ "/" ~ m.id ~ "/callback-url", "Generate a new URL", csrf, "btn-outline-warning btn-sm",
+                   confirm="Generate a new callback URL? The current one stops working immediately.") }}
+  </div></div>
+  <div class="card mb-3" data-show-when="kind=custom"><div class="card-header">How the integration works</div><div class="card-body small">
+    <ol class="ps-3 mb-0">
+      <li class="mb-2">The client chooses this method. The CRM creates a unique <span class="mono">reference</span> and POSTs JSON to the
+        API URL: <span class="mono">reference, {{ "amount, currency, description, " if scope == "payment" else "date_of_birth, " }}client_id, email,
+        first_name, last_name, country, callback_url, return_url</span>, signed in the signature header (hex HMAC-SHA256 of the body).</li>
+      <li class="mb-2">The provider answers with the unique URL; the client is redirected there.</li>
+      <li class="mb-2">The provider POSTs the result (JSON or form) to the callback URL, signed the same way, with the reference
+        and status{{ " and amount" if scope == "payment" else "" }}.</li>
+      <li>{{ "Success credits the deposit (or waits for finance); failure rejects it." if scope == "payment" else "Success approves the client; failure rejects them with the reason." }}
+        Every callback is listed under Recent callbacks.</li>
+    </ol>
+  </div></div>
+</section>
+{% endif %}
+
+{% if callbacks %}
+<section data-tab="Recent callbacks" data-tab-count="{{ callbacks|length }}" id="callbacks" class="mw-lg">
   <div class="card"><div class="card-header">Recent callbacks</div>
     <ul class="list-group list-group-flush small">
     {% for c in callbacks %}
@@ -149,7 +168,8 @@
         {% if not c.signature_ok %}<span class="badge text-bg-danger">bad signature</span>{% endif %}<br>{{ c.outcome }}</li>
     {% endfor %}
     </ul></div>
-  {% endif %}
+</section>
+{% endif %}
 </div>
 </div>
 {% endblock %}

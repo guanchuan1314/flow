@@ -2,17 +2,17 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ServiceError, get_or_404
 from app.db import get_db
 from app.models import (
-    AccountGroup, AuditLog, Client, ClientNote, ClientStatus, IBProfile, KycDocument, KycStatus, PaymentRequest, Staff,
+    AccountGroup, AuditLog, Client, ClientNote, ClientStatus, IBProfile, KycDocument, KycStatus, PaymentRequest, ReferralLink, Staff,
     TradingAccount, WalletTransaction,
 )
 from app.services import clients as svc
-from app.services import wallet
+from app.services import trader_styles, wallet
 from app.web.common import Page, attempt, opt_enum, opt_int, redirect, render, staff_perm
 
 router = APIRouter()
@@ -25,9 +25,12 @@ def _staff_options(db: Session):
 
 
 @router.get("/clients")
-def list_clients(request: Request, q: str = "", status: str = "", kyc: str = "", page: int = 1,
+def list_clients(request: Request, q: str = "", status: str = "", kyc: str = "", link: int = 0, page: int = 1,
                  me: Staff = Depends(staff_perm("clients.view")), db: Session = Depends(get_db)):
     query = svc.visible_clients(me)
+    ref_link = db.get(ReferralLink, link) if link else None
+    if link:
+        query = query.where(Client.referral_link_id == link)
     if q.strip():
         like = f"%{q.strip()}%"
         conds = [Client.email.ilike(like), Client.first_name.ilike(like), Client.last_name.ilike(like),
@@ -43,7 +46,31 @@ def list_clients(request: Request, q: str = "", status: str = "", kyc: str = "",
     pg = Page(db, query.order_by(Client.id.desc()), page)
     staff_names = dict(db.execute(select(Staff.id, Staff.full_name)).all())
     return render(request, "admin/clients/list.html", page=pg, q=q, status=status, kyc=kyc, staff_names=staff_names,
+                  ref_link=ref_link,
                   statuses=[s.value for s in ClientStatus], kyc_statuses=[s.value for s in KycStatus])
+
+
+@router.get("/referral-links")
+def referral_links(request: Request, me: Staff = Depends(staff_perm("clients.referrals")), db: Session = Depends(get_db)):
+    links = db.scalars(select(ReferralLink).where(ReferralLink.staff_id == me.id).order_by(ReferralLink.tag)).all()
+    stats = {lid: (n, last) for lid, n, last in db.execute(
+        select(Client.referral_link_id, func.count(Client.id), func.max(Client.created_at))
+        .where(Client.referral_link_id.in_([x.id for x in links])).group_by(Client.referral_link_id))}
+    return render(request, "admin/clients/referral_links.html", links=links, stats=stats,
+                  untagged=svc.referral_link(svc.staff_referral_code(db, me)), url=svc.referral_link)
+
+
+@router.post("/referral-links/new")
+def referral_link_create(request: Request, tag: str = Form(""), me: Staff = Depends(staff_perm("clients.referrals")),
+                         db: Session = Depends(get_db)):
+    return attempt(request, lambda: svc.create_referral_link(db, me, tag), "Referral link created.", "/admin/referral-links")
+
+
+@router.post("/referral-links/{link_id}/delete")
+def referral_link_delete(request: Request, link_id: int, me: Staff = Depends(staff_perm("clients.referrals")),
+                         db: Session = Depends(get_db)):
+    return attempt(request, lambda: svc.delete_referral_link(db, me, link_id), "Referral link deleted.",
+                   "/admin/referral-links")
 
 
 @router.get("/clients/new")
@@ -81,11 +108,13 @@ def client_detail(request: Request, client_id: int, tab: str = "overview",
     if tab == "overview":
         ctx["staff_options"] = _staff_options(db)
         ctx["referrer"] = db.get(Client, client.referred_by_id) if client.referred_by_id else None
+        ctx["ref_link"] = db.get(ReferralLink, client.referral_link_id) if client.referral_link_id else None
         ctx["referred_count"] = len(db.scalars(select(Client.id).where(Client.referred_by_id == client.id)).all())
         ctx["ib"] = db.scalar(select(IBProfile).where(IBProfile.client_id == client.id))
         ctx["statuses"] = [s.value for s in ClientStatus]
     elif tab == "accounts":
         ctx["account_groups"] = db.scalars(select(AccountGroup).where(AccountGroup.enabled.is_(True))).all()
+        ctx["styles"] = trader_styles.badges(db, ctx["accounts"])
     elif tab == "kyc":
         ctx["docs"] = db.scalars(select(KycDocument).where(KycDocument.client_id == client.id)
                                  .order_by(KycDocument.id.desc())).all()

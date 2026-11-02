@@ -10,7 +10,9 @@
     <td><select class="form-select form-select-sm" name="rule_kind" aria-label="Kind">
       {% for k, label in kinds.items() %}<option value="{{ k }}" {% if r.kind == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
     <td><select class="form-select form-select-sm" name="rule_color" aria-label="Badge colour">
-      {% for c in colors %}<option value="{{ c }}" {% if r.color == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></td>
+      {% set colour_names = {"primary": "Blue", "success": "Green", "info": "Light blue", "warning": "Yellow", "danger": "Red",
+                             "secondary": "Grey", "dark": "Black", "light": "White"} %}
+      {% for c in colors %}<option value="{{ c }}" {% if r.color == c %}selected{% endif %}>{{ colour_names.get(c, c|label) }}</option>{% endfor %}</select></td>
     <td><select class="form-select form-select-sm" name="rule_group" aria-label="Belongs in">
       <option value="">(no suggestion)</option>
       {% for g in groups %}<option value="{{ g.id }}" {% if r.group_id == g.id %}selected{% endif %}>{{ g.name }} ({{ g.mt5_group }})</option>{% endfor %}</select></td>
@@ -40,42 +42,48 @@
   Accounts with fewer placed deals than the list's minimum show as "Too few trades"; accounts matching no style as "Unclassified".
   <a href="/admin/trader-styles">Back to Trader styles</a></p>
 
-<form method="post" action="/admin/trader-styles/setup">
-  {{ csrf_input(csrf) }}
-  <datalist id="rule-keys">{% for r in rules %}<option value="{{ r.key }}">{{ r.name }}</option>{% endfor %}</datalist>
-  <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Styles and tags</span>
-    {{ add_row_button("rule-tpl", "rule-rows", "Add style or tag", "ms-auto") }}</div>
-    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-      <thead><tr><th class="w-auto">Order</th><th>Key</th><th>Name</th><th>Kind</th><th>Badge</th><th>Belongs in (styles)</th><th>Enabled</th><th></th></tr></thead>
-      <tbody id="rule-rows">{% for r in rules %}{{ rule_row(r, loop.index * 10) }}{% endfor %}</tbody>
-    </table></div>
-    <div class="card-body pt-2">
-      <template id="rule-tpl">{{ rule_row({}, (rules|length + 1) * 10) }}</template>
-      <span class="small text-muted">To reorder, change the numbers. The key links a style to its conditions below and can't contain spaces.</span>
-    </div>
-  </div>
+<div data-tabs>
+  <section data-tab="Styles &amp; tags" data-tab-count="{{ rules|length }}" id="styles">
+    <form method="post" action="/admin/trader-styles/setup">
+      {{ csrf_input(csrf) }}
+      <datalist id="rule-keys">{% for r in rules %}<option value="{{ r.key }}">{{ r.name }}</option>{% endfor %}</datalist>
+      <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Styles and tags</span>
+        {{ add_row_button("rule-tpl", "rule-rows", "Add style or tag", "ms-auto") }}</div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+          <thead><tr><th class="w-auto">Order</th><th>Key</th><th>Name</th><th>Kind</th><th>Badge</th><th>Belongs in (styles)</th><th>Enabled</th><th></th></tr></thead>
+          <tbody id="rule-rows">{% for r in rules %}{{ rule_row(r, loop.index * 10) }}{% endfor %}</tbody>
+        </table></div>
+        <div class="card-body pt-2">
+          <template id="rule-tpl">{{ rule_row({}, (rules|length + 1) * 10) }}</template>
+          <span class="small text-muted">To reorder, change the numbers. The key links a style to its conditions below and can't contain spaces.</span>
+        </div>
+      </div>
 
-  <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Conditions <span class="small text-muted fw-normal">(all of a style's conditions must hold)</span></span>
-    {{ add_row_button("cond-tpl", "cond-rows", "Add condition", "ms-auto") }}</div>
-    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-      <thead><tr><th>Style or tag (key)</th><th>Metric</th><th>Is</th><th>Value</th><th>And (between)</th><th></th></tr></thead>
-      <tbody id="cond-rows">{% for r in rules %}{% for c in r.conditions %}{{ cond_row(r.key, c) }}{% endfor %}{% endfor %}</tbody>
-    </table></div>
-    <template id="cond-tpl">{{ cond_row() }}</template>
-  </div>
-  <button class="btn btn-primary" type="submit">Save</button>
-</form>
-<div class="mt-2">{{ post_button("/admin/trader-styles/setup", "Reset to the default styles", csrf, "btn-outline-danger btn-sm",
-                                 fields={"reset": "1"}, confirm="Replace every style and tag with the defaults?", danger=True, ok="Reset") }}</div>
+      <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Conditions <span class="small text-muted fw-normal">(all of a style's conditions must hold)</span></span>
+        {{ add_row_button("cond-tpl", "cond-rows", "Add condition", "ms-auto") }}</div>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Style or tag (key)</th><th>Metric</th><th>Is</th><th>Value</th><th>And (between)</th><th></th></tr></thead>
+          <tbody id="cond-rows">{% for r in rules %}{% for c in r.conditions %}{{ cond_row(r.key, c) }}{% endfor %}{% endfor %}</tbody>
+        </table></div>
+        <template id="cond-tpl">{{ cond_row() }}</template>
+      </div>
+      <button class="btn btn-primary" type="submit">Save</button>
+    </form>
+    <div class="mt-3 pt-3 border-top">{{ post_button("/admin/trader-styles/setup", "Reset to the default styles", csrf, "btn-outline-danger btn-sm",
+                                     fields={"reset": "1"}, confirm="Replace every style and tag with the defaults?", danger=True, ok="Reset") }}</div>
+  </section>
 
-<div class="row g-3 mt-2">
-  <div class="col-lg-7"><div class="card"><div class="card-header">Metrics</div>
+  <section data-tab="Metrics" id="metrics">
+    <div class="card"><div class="card-header">Metrics</div>
     <div class="table-responsive"><table class="table table-sm mb-0 small">
       <thead><tr><th>Metric</th><th>Unit</th><th>What it measures (over the chosen period)</th></tr></thead>
       <tbody>{% for k, (label, unit, hint) in metrics.items() %}<tr><td>{{ label }}</td><td>{{ unit }}</td><td class="text-muted">{{ hint }}</td></tr>{% endfor %}</tbody>
-    </table></div></div></div>
-  <div class="col-lg-5"><div class="card"><div class="card-header">Try on an account</div><div class="card-body">
-    <form method="get" class="d-flex gap-2 mb-3">
+    </table></div></div>
+  </section>
+
+  <section data-tab="Try on an account" id="try">
+    <div class="card mw-md"><div class="card-header">Try on an account</div><div class="card-body">
+    <form method="get" class="d-flex flex-wrap gap-2 mb-3">
       <input class="form-control form-control-sm" name="login" value="{{ login }}" placeholder="MT5 login" aria-label="MT5 login">
       <div class="input-group input-group-sm w-auto"><input class="form-control" type="number" name="days" min="1" max="365" value="{{ days }}" aria-label="Days"><span class="input-group-text">days</span></div>
       <button class="btn btn-sm btn-outline-primary" type="submit">Try</button>
@@ -85,15 +93,16 @@
       <p class="small mb-2">Account {{ tried.login }} (saved rules):
         <strong>{{ (rules|selectattr("key", "equalto", tried.style)|map(attribute="name")|first) or tried.style }}</strong>
         {% for t in tried.tags %}<span class="badge text-bg-light border">{{ (rules|selectattr("key", "equalto", t)|map(attribute="name")|first) }}</span>{% endfor %}</p>
-      <table class="table table-sm small mb-3"><tbody>
+      <div class="table-responsive"><table class="table table-sm small mb-3"><tbody>
         {% for c in tried.checks %}<tr class="{% if c.ok %}table-success{% endif %}"><td>{{ c.rule.name }}</td>
           <td>{% for x in c.checks %}{{ x.label }} {{ ops[x.op] }} {{ x.value|round(2) }}{% if x.op == "between" %}–{{ x.value2|round(2) }}{% endif %}
             (<span class="{{ 'text-success' if x.ok else 'text-danger' }}">{{ x.actual if x.actual is not none else "n/a" }}</span>){% if not loop.last %}; {% endif %}{% else %}catches every account{% endfor %}</td></tr>{% endfor %}
-      </tbody></table>
-      <table class="table table-sm small mb-0"><tbody>
+      </tbody></table></div>
+      <div class="table-responsive"><table class="table table-sm small mb-0"><tbody>
         {% for k, (label, unit, hint) in metrics.items() %}<tr><td>{{ label }}</td><td class="text-end">{{ tried.metrics[k] if tried.metrics[k] is not none else "n/a" }}{% if unit == "%" %}%{% elif unit and unit != "money" %} {{ unit }}{% endif %}</td></tr>{% endfor %}
-      </tbody></table>
+      </tbody></table></div>
     {% endif %}
-  </div></div></div>
+  </div></div>
+  </section>
 </div>
 {% endblock %}

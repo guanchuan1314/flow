@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import statistics
+import time
 from collections import defaultdict
 from copy import deepcopy
 from datetime import timedelta
@@ -437,6 +438,65 @@ def profiles(db: Session, server: MT5Server | None, days: int = 30, min_deals: i
         })
     rows.sort(key=lambda r: -r["placed"])
     return rows
+
+
+DEFAULT_DAYS, DEFAULT_MIN_DEALS = 30, 10  # as on the Trader styles page
+_STYLE_CACHE_SECONDS = 60
+_style_cache: dict[tuple, tuple[float, set[int]]] = {}
+
+
+def badges(db: Session, accounts: list[TradingAccount], days: int = DEFAULT_DAYS,
+           min_deals: int = DEFAULT_MIN_DEALS) -> dict[int, dict]:
+    """login -> {"style": (name, colour) or None, "tags": [(name, colour)]} for the accounts that have a style or
+    a tag (accounts with too few trades, or none, are left out). For lists: one query for the given accounts."""
+    logins = [a.login for a in accounts]
+    if not logins:
+        return {}
+    found = metrics(db, None, days, logins)
+    servers = {s.id: s for s in db.scalars(select(MT5Server).where(
+        MT5Server.id.in_({a.server_id for a in accounts if a.login in found})))}
+    out = {}
+    for acc in accounts:
+        m = found.get(acc.login)
+        if not m or not m["placed"]:
+            continue
+        server = servers.get(acc.server_id)
+        rule_list, color = rules(server), colors(server)
+        name = {r["key"]: r["name"] for r in rule_list}
+        style, tags = classify(m, rule_list, min_deals)
+        badge = None if style in FIXED else (name.get(style, style), color.get(style, "secondary"))
+        tag_badges = [(name.get(t, t), color.get(t, "secondary")) for t in tags]
+        if badge or tag_badges:
+            out[acc.login] = {"style": badge, "tags": tag_badges}
+    return out
+
+
+def logins_with_style(db: Session, key: str, days: int = DEFAULT_DAYS, min_deals: int = DEFAULT_MIN_DEALS) -> set[int]:
+    """Logins (live and demo, every server) whose style is `key`, or that carry tag `key`: the trading filters.
+    Same accounts as the Trader styles list (the busiest MAX_PROFILES per kind); cached for a minute."""
+    hit = _style_cache.get((key, days, min_deals))
+    if hit and time.monotonic() - hit[0] < _STYLE_CACHE_SECONDS:
+        return hit[1]
+    out: set[int] = set()
+    for server in db.scalars(select(MT5Server)):
+        rule_list = rules(server)
+        for demo in (False, True):
+            for login, m in _busiest_metrics(db, server, days, demo).items():
+                style, tags = classify(m, rule_list, min_deals)
+                if style == key or key in tags:
+                    out.add(login)
+    _style_cache[(key, days, min_deals)] = (time.monotonic(), out)
+    return out
+
+
+def filter_options(db: Session) -> list[tuple[str, str]]:
+    """(key, name) of every style and tag in use on any server, for the trading filters."""
+    seen: dict[str, str] = {}
+    for server in db.scalars(select(MT5Server)):
+        for r in rules(server):
+            if r.get("enabled", True):
+                seen.setdefault(r["key"], r["name"] if r["kind"] == "style" else f"{r['name']} (tag)")
+    return list(seen.items())
 
 
 def move(db: Session, gw: MT5Gateway, actor, logins: list[int], target_id: int) -> tuple[list[int], list[str]]:

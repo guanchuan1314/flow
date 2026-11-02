@@ -3,15 +3,14 @@
 {% block page_title %}Orders{% endblock %}
 {% block content %}
 <ul class="nav nav-tabs mb-3">
-  <li class="nav-item"><a class="nav-link {% if status != 'history' %}active{% endif %}" href="?status=open&login={{ login }}&symbol={{ symbol }}">Open (pending)</a></li>
-  <li class="nav-item"><a class="nav-link {% if status == 'history' %}active{% endif %}" href="?status=history&login={{ login }}&symbol={{ symbol }}">History</a></li>
+  <li class="nav-item"><a class="nav-link {% if status != 'history' %}active{% endif %}" href="{{ request.url.remove_query_params('page').include_query_params(status='open') }}">Open (pending)</a></li>
+  <li class="nav-item"><a class="nav-link {% if status == 'history' %}active{% endif %}" href="{{ request.url.remove_query_params('page').include_query_params(status='history') }}">History</a></li>
 </ul>
 <div class="card">
   <div class="card-header">
     <form class="row g-2" method="get">
       <input type="hidden" name="status" value="{{ status }}">
-      <div class="col-md-2"><input class="form-control form-control-sm" name="login" value="{{ login }}" placeholder="MT5 login"></div>
-      <div class="col-md-2"><input class="form-control form-control-sm" name="symbol" value="{{ symbol }}" placeholder="Symbol"></div>
+      {% include "admin/trading/_filters.html" %}
       <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button></div>
     </form>
   </div>

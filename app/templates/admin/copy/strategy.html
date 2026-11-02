@@ -24,9 +24,9 @@
   <strong>Closed</strong>: nothing is copied.
 </div>
 
-<div class="row g-4">
-  <div class="col-xl-8">
-    <div class="card mb-4"><div class="card-header">Followers</div><div class="table-responsive"><table class="table">
+<div data-tabs>
+  <section data-tab="Followers" data-tab-count="{{ subs|length }}" id="followers">
+    <div class="card"><div class="card-header">Followers</div><div class="table-responsive"><table class="table">
       <thead><tr><th>Follower</th><th>Login</th><th>Allocation</th><th class="num">Ratio</th><th class="num">Max lot</th><th>Status</th><th class="num">HWM</th><th class="num">Fees paid</th><th></th></tr></thead>
       <tbody>
       {% for sub in subs %}
@@ -47,21 +47,24 @@
       {% else %}{{ empty(9, "No followers yet.") }}{% endfor %}
       </tbody>
     </table></div></div>
+  </section>
 
+  <section data-tab="Copy executions" id="executions">
     <div class="card"><div class="card-header">Recent copy executions</div><div class="table-responsive"><table class="table">
       <thead><tr><th>Time</th><th>Follower</th><th>Master deal</th><th>Action</th><th>Symbol</th><th class="num">Lots</th><th>Result</th><th>Message</th></tr></thead>
       <tbody>
       {% for e in execs %}
         <tr><td class="small">{{ e.created_at|dt }}</td><td>{{ e.follower_login }}</td><td class="mono">{{ e.master_deal_ticket }}</td>
-          <td>{{ e.action }}</td><td>{{ e.symbol }}</td><td class="num">{{ e.volume|money }}</td><td>{{ badge(e.status) }}</td>
+          <td>{{ e.action|label }}</td><td>{{ e.symbol }}</td><td class="num">{{ e.volume|money }}</td><td>{{ badge(e.status) }}</td>
           <td class="small">{{ e.message }}{% if e.retcode %} <span class="text-muted">(retcode {{ e.retcode }})</span>{% endif %}</td></tr>
       {% else %}{{ empty(8, "No trades copied yet.") }}{% endfor %}
       </tbody>
     </table></div></div>
-  </div>
+  </section>
+
   {% if manage %}
-  <div class="col-xl-4">
-    <div class="card"><div class="card-header">Add follower</div><div class="card-body">
+  <section data-tab="Add follower" id="add-follower">
+    <div class="card mw-sm"><div class="card-header">Add follower</div><div class="card-body">
       <form method="post" action="/admin/copy/{{ s.id }}/subscribe">
         {{ csrf_input(csrf) }}
         <div class="row">
@@ -77,7 +80,7 @@
         <button class="btn btn-primary" type="submit">Add follower</button>
       </form>
     </div></div>
-  </div>
+  </section>
   {% endif %}
 </div>
 {% endblock %}

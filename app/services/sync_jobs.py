@@ -19,6 +19,7 @@ from app.db import utcnow
 from app.models import MT5Server, Staff, SyncJob, TradingAccount
 from app.mt5 import MT5Error, get_gateway
 from app.services import sync
+from app.web.labels import label
 
 log = logging.getLogger(__name__)
 BATCH = 50  # accounts per MT5 request
@@ -54,7 +55,7 @@ def create_job(db: Session, actor, *, server_id: int | None, logins: list[int], 
 
 def cancel_job(db: Session, actor, job: SyncJob) -> SyncJob:
     if not job.active:
-        raise ServiceError(f"The task is already {job.status}")
+        raise ServiceError(f"The task is already {label(job.status).lower()}")
     if job.status == "queued":
         job.status, job.finished_at, job.message = "cancelled", utcnow(), "Cancelled before it started"
     else:

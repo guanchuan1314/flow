@@ -1,5 +1,5 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import badge, empty, pagination %}
+{% from "macros.html" import badge, empty, pagination, trader_style %}
 {% block page_title %}Trading accounts{% endblock %}
 {% block content %}
 <form id="sync-accounts" method="post" action="/admin/accounts/sync" class="d-none"
@@ -30,7 +30,7 @@
   </div>
   <div class="table-responsive">
     <table class="table table-hover">
-      <thead><tr><th>Login</th><th>Client</th><th>Type</th><th>Leverage</th><th>Status</th><th class="num">Balance</th><th class="num">Equity</th><th class="num">Margin level</th><th>Synced</th></tr></thead>
+      <thead><tr><th>Login</th><th>Client</th><th>Type</th><th>Leverage</th><th>Status</th><th>Trader style</th><th class="num">Balance</th><th class="num">Equity</th><th class="num">Margin level</th><th>Synced</th></tr></thead>
       <tbody>
       {% for a in page.items %}
         <tr>
@@ -41,6 +41,7 @@
           <td>{{ a.account_group.name if a.account_group else a.group }}</td>
           <td>1:{{ a.leverage }}</td>
           <td>{{ badge(a.status) }}</td>
+          <td>{{ trader_style(styles.get(a.login)) }}</td>
           <td class="num">{{ a.balance|money }}</td>
           <td class="num">{{ a.equity|money }}</td>
           <td class="num">{{ (a.margin_level|money ~ "%") if a.margin else "—" }}</td>

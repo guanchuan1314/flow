@@ -13,7 +13,7 @@
     <thead><tr><th>When</th><th>Who</th><th>Email</th><th>IP</th><th>Result</th><th>Reason</th></tr></thead>
     <tbody>
     {% for a in page.items %}
-      <tr><td class="small">{{ a.created_at|dt }}</td><td>{{ a.principal_type }}</td><td>{{ a.email }}</td><td class="mono small">{{ a.ip or "" }}</td>
+      <tr><td class="small">{{ a.created_at|dt }}</td><td>{{ a.principal_type|label }}</td><td>{{ a.email }}</td><td class="mono small">{{ a.ip or "" }}</td>
         <td>{% if a.success %}<span class="badge text-bg-success">success</span>{% else %}<span class="badge text-bg-danger">failed</span>{% endif %}</td>
         <td class="small">{{ (a.reason or "")|label }}</td></tr>
     {% else %}{{ empty(6, "No attempts recorded.") }}{% endfor %}

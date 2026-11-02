@@ -25,6 +25,7 @@ from app.core.security import encrypt_secret
 from app.db import utcnow
 from app.models import CUSTOM, MANUAL, Client, PaymentKind, PaymentMethod, PaymentRequest, PaymentStatus
 from app.services import integrations
+from app.web.labels import label
 
 log = logging.getLogger(__name__)
 SCOPE = "payment"
@@ -129,7 +130,7 @@ def check_request(m: PaymentMethod, kind: PaymentKind, amount: Decimal, currency
     if not m.enabled:
         raise ServiceError(f"{m.name} is not available at the moment")
     if kind == PaymentKind.deposit and not m.allow_deposit or kind == PaymentKind.withdrawal and not m.allow_withdrawal:
-        raise ServiceError(f"{m.name} cannot be used for {kind.value}s")
+        raise ServiceError(f"{m.name} cannot be used for {label(kind).lower()}s")
     if m.currency and currency and m.currency != currency:
         raise ServiceError(f"{m.name} accepts {m.currency} only")
     if m.min_amount is not None and amount < m.min_amount:

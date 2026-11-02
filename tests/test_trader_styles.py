@@ -152,3 +152,58 @@ def test_setup_page_save_try_and_reset(admin_web, db, gw, server):  # noqa: F811
     assert "Back to the default styles" in r.text
     db.expire_all()
     assert [r["key"] for r in trader_styles.rules(db.get(MT5Server, 1))][:3] == ["signal", "hft", "ea"]
+
+
+# ---------------------------------------------------------------- styles on account lists, and the trading filters
+@pytest.fixture(autouse=True)
+def fresh_style_cache():
+    trader_styles._style_cache.clear()
+    yield
+    trader_styles._style_cache.clear()
+
+
+def test_badges_on_account_lists(db, gw, server):
+    from app.models import TradingAccount
+
+    ea, idle = accounts(db, gw, server, 2)
+    d = Deals(db, ea)
+    for i in range(12):
+        d.position(START + timedelta(minutes=i * 30), 30, reason=1)
+    Deals(db, idle).position(START, 600)  # one trade: too few to have a style
+    rows = db.scalars(select(TradingAccount).where(TradingAccount.login.in_([ea, idle]))).all()
+    found = trader_styles.badges(db, rows)
+    assert set(found) == {ea} and found[ea]["style"][0] == trader_styles.STYLES["ea"]
+    assert trader_styles.logins_with_style(db, "ea") == {ea}
+
+
+def test_trading_filters_wildcards_group_and_style(db, gw, server, admin_web):  # noqa: F811
+    from app.models import TradingAccount
+    from app.web.admin.trading import _filters, wildcard
+
+    assert (wildcard("*EUR*"), wildcard("EUR*"), wildcard("*EUR"), wildcard("EURUSD")) == ("%EUR%", "EUR%", "%EUR", None)
+    assert wildcard("EUR_?") == "EUR\__"  # LIKE characters are literal
+    ea, other = accounts(db, gw, server, 2)
+    for i, symbol in enumerate(("EURUSD", "USDJPY", "EURGBP", "XAUUSD")):
+        Deals(db, ea).position(START + timedelta(minutes=i), 30, reason=1, symbol=symbol)
+    for i in range(12):
+        Deals(db, ea).position(START + timedelta(hours=1, minutes=i * 30), 30, reason=1)
+    Deals(db, other).position(START, 600, symbol="GBPEUR")
+
+    def symbols(login="", symbol="", group="", style=""):
+        q = _filters(db, select(Deal.symbol).distinct(), Deal, login, symbol, group, style)
+        return set(db.scalars(q))
+
+    assert symbols(symbol="*eur*") == {"EURUSD", "EURGBP", "GBPEUR"}  # contains (any case)
+    assert symbols(symbol="EUR*") == {"EURUSD", "EURGBP"}  # starts with
+    assert symbols(symbol="*EUR") == {"GBPEUR"}  # ends with
+    assert symbols(symbol="EURUSD") == {"EURUSD"}  # exact, as before
+    assert symbols(login=f"{str(other)[:-1]}?") >= {"GBPEUR"} and symbols(login="abc") == set()
+    group = db.scalar(select(TradingAccount.account_group_id).where(TradingAccount.login == other))
+    if group:
+        assert "GBPEUR" in symbols(group=str(group))
+    assert symbols(style="ea") == {"EURUSD", "USDJPY", "EURGBP", "XAUUSD"}  # only the EA account's deals
+
+    for path in ("/admin/deals?symbol=*EUR*&style=ea", "/admin/positions?symbol=EUR*&group=1",
+                 "/admin/orders?status=history&login=5*"):
+        r = admin_web.get(path)
+        assert r.status_code == 200 and "All trader styles" in r.text and "All account groups" in r.text

@@ -1,5 +1,5 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import field, csrf_input, badge, empty, pnl, post_button %}
+{% from "macros.html" import field, csrf_input, badge, empty, pnl, post_button, trader_style %}
 {% block page_title %}MT5 account {{ a.login }}{% endblock %}
 {% block content %}
 {% set manage = staff.has_perm("accounts.manage") %}
@@ -8,6 +8,7 @@
   {% if a.is_demo %}<span class="badge text-bg-info">demo</span>{% endif %}
   {% if not a.trading_enabled %}<span class="badge text-bg-danger">trading disabled</span>{% endif %}
   {% if a.purpose.value != "trading" %}<span class="badge text-bg-dark">{{ a.purpose|label }}</span>{% endif %}
+  {{ trader_style(style) }}
   <span class="text-muted small">Client <a href="/admin/clients/{{ owner.id }}">{{ owner.full_name }}</a> ·
     {{ a.account_group.name if a.account_group else "" }} · <span class="mono">{{ a.group }}</span> · 1:{{ a.leverage }} ·
     last sync {{ a.last_synced_at|dt }}</span>
@@ -25,10 +26,9 @@
   </div></div></div>
 </div>
 
-<div class="row g-4">
-  <div class="col-xl-8">
-    <div class="card mb-4">
-      <div class="card-header">Open positions ({{ positions|length }})</div>
+<div data-tabs>
+  <section data-tab="Open positions" data-tab-count="{{ positions|length }}" id="positions">
+    <div class="card">
       <div class="table-responsive"><table class="table">
         <thead><tr><th>Position</th><th>Symbol</th><th>Side</th><th class="num">Lots</th><th class="num">Open</th><th class="num">Current</th><th class="num">Swap</th><th class="num">Profit</th><th>Opened</th></tr></thead>
         <tbody>
@@ -40,8 +40,11 @@
         </tbody>
       </table></div>
     </div>
+  </section>
+
+  <section data-tab="Recent deals" id="deals">
     <div class="card">
-      <div class="card-header d-flex justify-content-between">Recent deals <a class="small" href="/admin/deals?login={{ a.login }}">All deals</a></div>
+      <div class="card-header d-flex justify-content-between">Latest deals <a class="small" href="/admin/deals?login={{ a.login }}">All deals</a></div>
       <div class="table-responsive"><table class="table">
         <thead><tr><th>Time</th><th>Ticket</th><th>Type</th><th>Symbol</th><th class="num">Lots</th><th class="num">Price</th><th class="num">Profit</th><th>Comment</th></tr></thead>
         <tbody>
@@ -54,46 +57,50 @@
         </tbody>
       </table></div>
     </div>
-  </div>
+  </section>
 
-  <div class="col-xl-4">
-    {% if manage %}
-    <div class="card mb-3"><div class="card-header">Leverage</div><div class="card-body">
-      <form method="post" action="/admin/accounts/{{ a.login }}/leverage" class="d-flex gap-2">
-        {{ csrf_input(csrf) }}
-        <select class="form-select" name="leverage">
-          {% for l in (a.account_group.leverage_options if a.account_group else [a.leverage]) %}
-            <option value="{{ l }}" {% if l == a.leverage %}selected{% endif %}>1:{{ l }}</option>{% endfor %}
-        </select>
-        <button class="btn btn-outline-primary" type="submit">Apply</button>
-      </form>
-    </div></div>
+  {% if manage %}
+  <section data-tab="Manage" id="manage">
+    <div class="row g-3">
+      <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-header">Leverage</div><div class="card-body">
+        <form method="post" action="/admin/accounts/{{ a.login }}/leverage" class="d-flex gap-2">
+          {{ csrf_input(csrf) }}
+          <select class="form-select" name="leverage" aria-label="Leverage">
+            {% for l in (a.account_group.leverage_options if a.account_group else [a.leverage]) %}
+              <option value="{{ l }}" {% if l == a.leverage %}selected{% endif %}>1:{{ l }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-outline-primary" type="submit">Apply</button>
+        </form>
+      </div></div></div>
 
-    <div class="card mb-3"><div class="card-header">Passwords</div><div class="card-body d-flex gap-2">
-      {{ post_button("/admin/accounts/" ~ a.login ~ "/password", "Reset master", csrf, "btn-outline-warning", confirm="Generate a new MASTER password? The client's terminal will be disconnected.", fields={"which": "master"}) }}
-      {{ post_button("/admin/accounts/" ~ a.login ~ "/password", "Reset investor", csrf, "btn-outline-secondary", confirm="Generate a new investor password?", fields={"which": "investor"}) }}
-    </div></div>
+      <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-header">Passwords</div><div class="card-body d-flex flex-wrap gap-2">
+        {{ post_button("/admin/accounts/" ~ a.login ~ "/password", "Reset master", csrf, "btn-outline-warning", confirm="Generate a new MASTER password? The client's terminal will be disconnected.", fields={"which": "master"}) }}
+        {{ post_button("/admin/accounts/" ~ a.login ~ "/password", "Reset investor", csrf, "btn-outline-secondary", confirm="Generate a new investor password?", fields={"which": "investor"}) }}
+      </div></div></div>
 
-    <div class="card mb-3"><div class="card-header">Controls</div><div class="card-body d-flex flex-wrap gap-2">
-      {% if a.trading_enabled %}
-        {{ post_button("/admin/accounts/" ~ a.login ~ "/trading", "Disable trading", csrf, "btn-outline-danger", confirm="Disable trading on this account?", fields={"enabled": "0"}) }}
-      {% else %}
-        {{ post_button("/admin/accounts/" ~ a.login ~ "/trading", "Enable trading", csrf, "btn-outline-success", fields={"enabled": "1"}) }}
-      {% endif %}
-      {% if a.status.value == "active" %}
-        {{ post_button("/admin/accounts/" ~ a.login ~ "/status", "Block login", csrf, "btn-outline-danger", confirm="Block this account from logging in?", fields={"status": "disabled"}) }}
-        {{ post_button("/admin/accounts/" ~ a.login ~ "/status", "Archive", csrf, "btn-outline-secondary", confirm="Archive this account? It must be empty.", fields={"status": "archived"}) }}
-      {% else %}
-        {{ post_button("/admin/accounts/" ~ a.login ~ "/status", "Re-activate", csrf, "btn-outline-success", fields={"status": "active"}) }}
-      {% endif %}
-    </div></div>
-    {% endif %}
+      <div class="col-md-12 col-xl-4"><div class="card h-100"><div class="card-header">Trading and login</div><div class="card-body d-flex flex-wrap gap-2">
+        {% if a.trading_enabled %}
+          {{ post_button("/admin/accounts/" ~ a.login ~ "/trading", "Disable trading", csrf, "btn-outline-danger", confirm="Disable trading on this account?", fields={"enabled": "0"}) }}
+        {% else %}
+          {{ post_button("/admin/accounts/" ~ a.login ~ "/trading", "Enable trading", csrf, "btn-outline-success", fields={"enabled": "1"}) }}
+        {% endif %}
+        {% if a.status.value == "active" %}
+          {{ post_button("/admin/accounts/" ~ a.login ~ "/status", "Block login", csrf, "btn-outline-danger", confirm="Block this account from logging in?", fields={"status": "disabled"}) }}
+          {{ post_button("/admin/accounts/" ~ a.login ~ "/status", "Archive", csrf, "btn-outline-secondary", confirm="Archive this account? It must be empty.", fields={"status": "archived"}) }}
+        {% else %}
+          {{ post_button("/admin/accounts/" ~ a.login ~ "/status", "Re-activate", csrf, "btn-outline-success", fields={"status": "active"}) }}
+        {% endif %}
+      </div></div></div>
+    </div>
+  </section>
+  {% endif %}
 
-    {% if manage and staff.has_perm("finance.create") and not a.is_demo %}
-    <div class="card"><div class="card-header">Wallet transfer</div><div class="card-body">
+  {% if manage and staff.has_perm("finance.create") and not a.is_demo %}
+  <section data-tab="Wallet transfer" id="transfer">
+    <div class="card mw-sm"><div class="card-body">
       <form method="post" action="/admin/accounts/{{ a.login }}/transfer" data-confirm="Move funds between the client's wallet and this account?">
         {{ csrf_input(csrf) }}
-        <div class="mb-2"><select class="form-select" name="direction">
+        <div class="mb-2"><select class="form-select" name="direction" aria-label="Direction">
           <option value="to_mt5">Wallet → MT5 account</option>
           <option value="from_mt5">MT5 account → wallet</option>
         </select></div>
@@ -102,7 +109,7 @@
       </form>
       <div class="form-text">External deposits and withdrawals go through <a href="/admin/payments/new?client_id={{ owner.id }}">Payments</a> for approval.</div>
     </div></div>
-    {% endif %}
-  </div>
+  </section>
+  {% endif %}
 </div>
 {% endblock %}

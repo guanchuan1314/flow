@@ -171,6 +171,9 @@ def reset_staff_2fa(db: Session, actor: Staff, staff: Staff) -> None:
 
 
 def create_department(db: Session, actor: Staff, name: str) -> Department:
+    name = " ".join(name.split())
+    if not name:
+        raise ServiceError("Give the department a name")
     if db.scalar(select(Department).where(Department.name == name)):
         raise Conflict("Department already exists")
     dep = Department(name=name)
@@ -179,6 +182,30 @@ def create_department(db: Session, actor: Staff, name: str) -> Department:
     audit(db, actor, "department.create", "department", dep.id, {"name": name})
     db.commit()
     return dep
+
+
+def update_department(db: Session, actor: Staff, dep: Department, name: str) -> Department:
+    name = " ".join(name.split())
+    if not name:
+        raise ServiceError("Give the department a name")
+    if db.scalar(select(Department.id).where(Department.name == name, Department.id != dep.id)):
+        raise Conflict("Department already exists")
+    if name != dep.name:
+        audit(db, actor, "department.update", "department", dep.id, {"before": dep.name, "after": name})
+        dep.name = name
+    db.commit()
+    return dep
+
+
+def delete_department(db: Session, actor: Staff, dep: Department) -> int:
+    """Deletes the department; its staff stay, without a department. Returns how many staff that was."""
+    members = db.scalars(select(Staff).where(Staff.department_id == dep.id)).all()
+    for s in members:
+        s.department_id = None
+    audit(db, actor, "department.delete", "department", dep.id, {"name": dep.name, "staff": len(members)})
+    db.delete(dep)
+    db.commit()
+    return len(members)
 
 
 def bootstrap_admin(db: Session, email: str, password: str, full_name: str = "Administrator") -> Staff:

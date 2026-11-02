@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.errors import Conflict, Forbidden, ServiceError
 from app.db import utcnow
+from app.web.labels import permission_label
 from app.models import (
     AccountGroup, AccountStatus, AutomationRule, AutomationRun, Client, ClientNote, Deal, KycStatus, PaymentKind,
     PaymentRequest, PaymentStatus, Staff, TradingAccount,
@@ -83,7 +84,7 @@ def check_permissions(actor, action: str) -> None:
     missing = [p for p in ("automation.manage", *ACTION_PERMISSIONS.get(action, ())) if not actor.has_perm(p)]
     if missing:
         raise Forbidden(f"A rule that does '{ACTIONS.get(action, (action,))[0]}' needs the permission "
-                        f"{', '.join(missing)}")
+                        f"{', '.join(permission_label(p) for p in missing)}")
 
 
 # ---------------------------------------------------------------- validation

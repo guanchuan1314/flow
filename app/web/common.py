@@ -22,6 +22,7 @@ from app.core.security import ip_allowed, password_fingerprint
 from app.db import get_db, utcnow
 from app.models import Client, ClientStatus, Staff
 from app.mt5 import MT5Error
+from app.web import labels
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 
@@ -29,6 +30,9 @@ STAFF_KEY, CLIENT_KEY = "staff", "client"
 
 
 # ---------------------------------------------------------------- template helpers
+_label = labels.label
+
+
 def _money(v, places: int = 2) -> str:
     if v is None or v == "":
         return "—"
@@ -76,13 +80,6 @@ def _badge(v) -> str:
     return BADGES.get(str(value), "secondary")
 
 
-def _label(v) -> str:
-    """A code shown to people: "bank_transfer" -> "Bank Transfer" (every word starts upper case; the rest of
-    each word is kept, so "USDT" stays "USDT")."""
-    words = str(getattr(v, "value", v)).replace("_", " ").replace("-", " ").split()
-    return " ".join(w[:1].upper() + w[1:] for w in words)
-
-
 def _side(action) -> str:
     return {0: "Buy", 1: "Sell", 2: "Balance", 3: "Credit"}.get(action, f"#{action}")
 
@@ -93,6 +90,8 @@ def _opts(values) -> list[tuple[str, str]]:
 
 
 templates.env.filters.update(money=_money, num=_num, price=_price, dt=_dt, badge=_badge, label=_label, side=_side,
+                             action_label=labels.action_label, entity_label=labels.entity_label,
+                             detail_rows=labels.detail_rows,
                              zip=lambda a, b: list(zip(a, b)))
 def _health_alerts() -> list[dict]:
     """MT5 components that are disconnected now (Server health), for the banner on every admin page."""
@@ -108,7 +107,48 @@ def _live_quotes() -> list[dict]:
     return market.quotes()
 
 
-templates.env.globals.update(settings=get_settings, brand=branding.current, live_quotes=_live_quotes, opts=_opts, health_alerts=_health_alerts)
+# Back-office pages grouped as one menu entry with tabs: key -> (menu text, icon, [(href, tab, permissions)]),
+# where a tab shows to staff with any of its permissions.
+ADMIN_HUBS = {
+    "setup": ("Trading setup", "diagram-3", [
+        ("/admin/trading-setup", "Overview", ("symbols.manage", "liquidity.manage", "routing.manage")),
+        ("/admin/symbols", "Symbols", ("symbols.manage",)),
+        ("/admin/liquidity", "Liquidity providers", ("liquidity.manage",)),
+        ("/admin/routing", "Routing", ("routing.manage",))]),
+    "import": ("Import from MT5", "cloud-download", [
+        ("/admin/import/account-groups", "Account groups", ("mt5_servers.manage",)),
+        ("/admin/import/trading-accounts", "Trading accounts", ("mt5_servers.manage",)),
+        ("/admin/sync", "Trades", ("trading.view",))]),
+    "tools": ("Server tools", "tools", [
+        ("/admin/server-health", "Server health", ("mt5_health.view",)),
+        ("/admin/pricing", "Symbols & pricing", ("symbols.manage",)),
+        ("/admin/restart", "Restart components", ("mt5_servers.restart",))]),
+    "staff": ("Staff", "person-badge", [
+        ("/admin/staff", "Staff", ("staff.view",)),
+        ("/admin/roles", "Roles", ("staff.view",)),
+        ("/admin/departments", "Departments", ("staff.view",))]),
+    "security": ("Security", "shield-lock", [
+        ("/admin/audit", "Audit log", ("security.view",)),
+        ("/admin/login-attempts", "Login attempts", ("security.view",)),
+        ("/admin/ip-rules", "IP access rules", ("security.ip_rules",))]),
+}
+
+
+def _hub_items(key: str, staff) -> list[tuple[str, str]]:
+    """The tabs of a hub this staff member may open: [(href, tab)]."""
+    return [(href, tab) for href, tab, perms in ADMIN_HUBS[key][2] if any(staff.has_perm(p) for p in perms)]
+
+
+def _hub_of(path: str) -> str | None:
+    """The hub a back-office page belongs to (its tabs are shown on top of it), or None."""
+    for key, (_, _, items) in ADMIN_HUBS.items():
+        if any(path == href or path.startswith(href + "/") for href, _, _ in items):
+            return key
+    return None
+
+
+templates.env.globals.update(settings=get_settings, brand=branding.current, live_quotes=_live_quotes, opts=_opts,
+                             health_alerts=_health_alerts, admin_hubs=ADMIN_HUBS, hub_items=_hub_items, hub_of=_hub_of)
 
 
 # ---------------------------------------------------------------- session primitives

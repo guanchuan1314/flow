@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, String, Table, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, TimestampMixin
@@ -41,6 +41,8 @@ class Staff(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     manager_id: Mapped[int | None] = mapped_column(ForeignKey("staff.id"))
+    # Business development: clients who sign up with this code are assigned to this staff member (sales).
+    referral_code: Mapped[str | None] = mapped_column(String(16), unique=True, index=True)
 
     totp_secret: Mapped[str | None] = mapped_column(String(255))  # encrypted (encrypt_secret)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -70,3 +72,15 @@ class Staff(Base, TimestampMixin):
         if "*" in perms or perm in perms:
             return True
         return f"{perm.split('.', 1)[0]}.*" in perms
+
+
+class ReferralLink(Base, TimestampMixin):
+    """A business development referral link with a tag (where it was shared: a website, an event, a partner),
+    so the clients who sign up with it can be traced to it. The untagged link is Staff.referral_code."""
+    __tablename__ = "referral_links"
+    __table_args__ = (UniqueConstraint("staff_id", "tag"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff.id", ondelete="CASCADE"), index=True)
+    tag: Mapped[str] = mapped_column(String(64))
+    code: Mapped[str] = mapped_column(String(16), unique=True, index=True)

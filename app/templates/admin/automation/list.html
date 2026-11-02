@@ -15,7 +15,8 @@
     <tr class="{% if not r.enabled %}text-muted{% endif %}">
       <td><a class="fw-semibold" href="/admin/automation/{{ r.id }}">{{ r.name }}</a></td>
       <td class="small">{{ triggers[r.trigger][0] if r.trigger in triggers else r.trigger }}
-        <span class="text-muted">{% for k, v in (r.params or {}).items() %}{{ k|replace("_", " ") }} {{ v }}{{ ", " if not loop.last }}{% endfor %}</span></td>
+        {% set spec = triggers[r.trigger][2] if r.trigger in triggers else {} %}
+        <span class="text-muted">{% for k, v in (r.params or {}).items() %}{{ spec[k][0] if k in spec else k|label }}: {{ styles.get(v, v|label) if k in spec and spec[k][1] == "style" else v }}{{ ", " if not loop.last }}{% endfor %}</span></td>
       <td class="small">{{ actions[r.action][0] if r.action in actions else r.action }}</td>
       <td class="small">{{ (r.cooldown_hours ~ " h") if r.cooldown_hours else "once per target" }}</td>
       <td class="small">{{ r.last_run_at|dt if r.last_run_at else "never" }}{% if r.last_result %}<div class="text-muted">{{ r.last_result }}</div>{% endif %}</td>

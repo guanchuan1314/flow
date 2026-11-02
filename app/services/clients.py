@@ -2,7 +2,7 @@ import uuid
 from pathlib import Path
 
 from sqlalchemy import Select, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.config import get_settings
 from app.core.audit import audit
@@ -10,7 +10,7 @@ from app.core.errors import Conflict, Forbidden, NotFound, ServiceError
 from app.core.security import hash_password, new_referral_code, validate_password_policy
 from app.db import utcnow
 from app.services import notifications
-from app.models import Client, ClientNote, ClientStatus, KycDocument, KycStatus, Staff, TradingAccount
+from app.models import Client, ClientNote, ClientStatus, KycDocument, KycStatus, ReferralLink, Staff, TradingAccount
 
 ALLOWED_DOC_TYPES = {"passport", "id_card", "driving_license", "proof_of_address", "selfie", "other"}
 ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
@@ -24,12 +24,19 @@ FILE_SIGNATURES = {
 
 
 def visible_clients(staff: Staff) -> Select:
-    """Clients a staff member may see: all, or those assigned to them or their direct reports."""
+    """Clients a staff member may see: all, or those assigned to them or their direct reports; with
+    clients.referrals (business development) also everyone those clients referred, at any depth."""
     q = select(Client)
     if staff.has_perm("clients.view_all"):
         return q
     team = select(Staff.id).where(or_(Staff.id == staff.id, Staff.manager_id == staff.id))
-    return q.where(or_(Client.sales_staff_id.in_(team), Client.account_manager_id.in_(team)))
+    assigned = or_(Client.sales_staff_id.in_(team), Client.account_manager_id.in_(team))
+    if not staff.has_perm("clients.referrals"):
+        return q.where(assigned)
+    tree = select(Client.id).where(assigned).cte("referral_tree", recursive=True)
+    below = aliased(Client)
+    tree = tree.union(select(below.id).where(below.referred_by_id == tree.c.id))  # union: stops on a loop
+    return q.where(Client.id.in_(select(tree.c.id)))
 
 
 def visible_client_ids(staff: Staff) -> Select:
@@ -61,10 +68,55 @@ def visible_account(db: Session, staff: Staff, login: int) -> TradingAccount:
 
 
 def _unique_referral_code(db: Session) -> str:
+    """Clients and staff (business development, untagged and tagged links) share one set of referral codes."""
     while True:
         code = new_referral_code()
-        if not db.scalar(select(Client.id).where(Client.referral_code == code)):
+        taken = (select(Client.id).where(Client.referral_code == code),
+                 select(Staff.id).where(Staff.referral_code == code),
+                 select(ReferralLink.id).where(ReferralLink.code == code))
+        if not any(db.scalar(q) for q in taken):
             return code
+
+
+def staff_referral_code(db: Session, staff: Staff) -> str:
+    """The staff member's referral code, created the first time it is asked for."""
+    if not staff.referral_code:
+        staff.referral_code = _unique_referral_code(db)
+        db.commit()
+    return staff.referral_code
+
+
+def create_referral_link(db: Session, staff: Staff, tag: str) -> ReferralLink:
+    """A tagged referral link of a business development staff member: sign-ups are traced to the tag."""
+    tag = " ".join(tag.split())
+    if not tag:
+        raise ServiceError("Give the link a tag: where you will share it")
+    if len(tag) > 64:
+        raise ServiceError("The tag can be at most 64 characters")
+    if db.scalar(select(ReferralLink.id).where(ReferralLink.staff_id == staff.id, ReferralLink.tag == tag)):
+        raise Conflict(f'You already have a link tagged "{tag}"')
+    link = ReferralLink(staff_id=staff.id, tag=tag, code=_unique_referral_code(db))
+    db.add(link)
+    db.flush()
+    audit(db, staff, "referral_link.create", "referral_link", link.id, {"tag": tag, "code": link.code})
+    db.commit()
+    return link
+
+
+def delete_referral_link(db: Session, staff: Staff, link_id: int) -> None:
+    """Only a link nobody signed up with yet: the clients who did keep their tag."""
+    link = db.get(ReferralLink, link_id)
+    if link is None or link.staff_id != staff.id:
+        raise NotFound("Referral link not found")
+    if db.scalar(select(Client.id).where(Client.referral_link_id == link.id).limit(1)):
+        raise ServiceError("Clients signed up with this link, so it stays: their sign-ups are traced to it")
+    audit(db, staff, "referral_link.delete", "referral_link", link.id, {"tag": link.tag, "code": link.code})
+    db.delete(link)
+    db.commit()
+
+
+def referral_link(code: str) -> str:
+    return f"{get_settings().public_url.rstrip('/')}/portal/register?ref={code}"
 
 
 WEBSITE_LEAD_SOURCE = "website-contact"
@@ -101,16 +153,25 @@ def register_client(db: Session, actor, *, email: str, first_name: str, last_nam
             raise Conflict("Email already registered")
         return _claim_lead(db, lead, first_name=first_name, last_name=last_name, password=password, phone=phone,
                            country=country, ip=ip)
-    referrer = None
+    referrer, referral_link_id = None, None
     if referral_code:
-        referrer = db.scalar(select(Client).where(Client.referral_code == referral_code.upper()))
+        code = referral_code.strip().upper()
+        referrer = db.scalar(select(Client).where(Client.referral_code == code))
         if referrer is None:
-            raise ServiceError("Invalid referral code")
+            # A business development link: the new client is theirs (and so is everyone they refer later).
+            tagged = db.scalar(select(ReferralLink).where(ReferralLink.code == code))
+            bd = db.scalar(select(Staff).where(Staff.id == tagged.staff_id if tagged else Staff.referral_code == code,
+                                               Staff.is_active.is_(True)))
+            if bd is None:
+                raise ServiceError("Invalid referral code")
+            referral_link_id = tagged.id if tagged else None
+            sales_staff_id = sales_staff_id or bd.id
+            lead_source = lead_source or "business development"
     client = Client(
         email=email, first_name=first_name, last_name=last_name,
         password_hash=hash_password(password) if password else None, phone=phone,
         country=country.upper() if country else None, referral_code=_unique_referral_code(db),
-        referred_by_id=referrer.id if referrer else None,
+        referred_by_id=referrer.id if referrer else None, referral_link_id=referral_link_id,
         lead_source=lead_source or ("referral" if referrer else None),
         utm_source=utm_source, utm_medium=utm_medium, utm_campaign=utm_campaign,
         sales_staff_id=sales_staff_id or (referrer.sales_staff_id if referrer else None),
@@ -119,7 +180,9 @@ def register_client(db: Session, actor, *, email: str, first_name: str, last_nam
     db.add(client)
     db.flush()
     audit(db, actor, "client.register", "client", client.id,
-          {"referrer": referrer.id if referrer else None, "utm_campaign": utm_campaign}, ip=ip)
+          {"referrer": referrer.id if referrer else None, "sales_staff_id": client.sales_staff_id,
+           "referral_link": referral_link_id,
+           "utm_campaign": utm_campaign}, ip=ip)
     db.commit()
     return client
 
@@ -254,9 +317,10 @@ def set_kyc_status(db: Session, actor: Staff, client: Client, status: KycStatus)
     audit(db, actor, "kyc.status", "client", client.id, {"before": before, "after": status})
     db.commit()
     if status in (KycStatus.approved, KycStatus.rejected) and status != before:
-        notifications.notify_client(client, f"Verification {status.value}",
+        approved = status == KycStatus.approved
+        notifications.notify_client(client, "Verification approved" if approved else "Verification not approved",
                                     "Your identity verification has been approved. You can now open live accounts."
-                                    if status == KycStatus.approved else
+                                    if approved else
                                     "Your identity verification was not approved. Please contact support.")
     return client
 

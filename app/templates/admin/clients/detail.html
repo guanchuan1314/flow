@@ -1,5 +1,5 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import field, select, csrf_input, badge, empty, pnl, post_button %}
+{% from "macros.html" import field, select, csrf_input, badge, empty, pnl, post_button, trader_style %}
 {% block page_title %}{{ c.full_name }}{% endblock %}
 {% block content %}
 {% set can_manage = staff.has_perm("clients.manage") %}
@@ -44,7 +44,7 @@
           {{ field("city", "City", c.city, col="col-md-4") }}
           {{ field("address", "Address", c.address, col="col-md-8") }}
           {{ field("date_of_birth", "Date of birth", c.date_of_birth, type="date", col="col-md-4") }}
-          {{ select("status", "Status", statuses|map("string")|zip(statuses|map("replace", "_", " "))|list, c.status.value, col="col-md-4") }}
+          {{ select("status", "Status", opts(statuses), c.status.value, col="col-md-4") }}
         </div>
         {% if can_manage %}<button class="btn btn-primary" type="submit">Save profile</button>{% endif %}
         </fieldset>
@@ -67,6 +67,8 @@
         <li class="list-group-item d-flex justify-content-between"><span>Referral code</span><span class="mono">{{ c.referral_code }}</span></li>
         <li class="list-group-item d-flex justify-content-between"><span>Referred by</span>
           <span>{% if referrer %}<a href="/admin/clients/{{ referrer.id }}">{{ referrer.full_name }}</a>{% else %}—{% endif %}</span></li>
+        {% if ref_link %}<li class="list-group-item d-flex justify-content-between"><span>Signed up with link</span>
+          <span>{{ ref_link.tag }} <span class="text-muted small">({{ staff_names.get(ref_link.staff_id, "") }})</span></span></li>{% endif %}
         <li class="list-group-item d-flex justify-content-between"><span>Clients referred</span><span>{{ referred_count }}</span></li>
         <li class="list-group-item d-flex justify-content-between"><span>IB</span>
           <span>{% if ib %}<a href="/admin/ibs/{{ ib.id }}">IB #{{ ib.id }}</a> {{ badge(ib.status) }}{% else %}No{% endif %}</span></li>
@@ -84,7 +86,7 @@
 <div class="card mb-4">
   <div class="table-responsive">
     <table class="table table-hover">
-      <thead><tr><th>Login</th><th>Type</th><th>Group</th><th>Leverage</th><th>Status</th><th class="num">Balance</th><th class="num">Credit</th><th class="num">Equity</th><th>Synced</th></tr></thead>
+      <thead><tr><th>Login</th><th>Type</th><th>Group</th><th>Leverage</th><th>Status</th><th>Trader style</th><th class="num">Balance</th><th class="num">Credit</th><th class="num">Equity</th><th>Synced</th></tr></thead>
       <tbody>
       {% for a in accounts %}
         <tr>
@@ -94,10 +96,11 @@
           <td class="mono small">{{ a.group }}</td>
           <td>1:{{ a.leverage }}</td>
           <td>{{ badge(a.status) }}{% if not a.trading_enabled %} <span class="badge text-bg-danger">trading off</span>{% endif %}</td>
+          <td>{{ trader_style(styles.get(a.login)) }}</td>
           <td class="num">{{ a.balance|money }}</td><td class="num">{{ a.credit|money }}</td><td class="num">{{ a.equity|money }}</td>
           <td class="small">{{ a.last_synced_at|dt }}</td>
         </tr>
-      {% else %}{{ empty(9, "No MT5 accounts yet.") }}{% endfor %}
+      {% else %}{{ empty(10, "No MT5 accounts yet.") }}{% endfor %}
       </tbody>
     </table>
   </div>
@@ -161,7 +164,7 @@
     <div class="card mb-4"><div class="card-header">Verification decision</div><div class="card-body">
       <form method="post" action="/admin/clients/{{ c.id }}/kyc-status">
         {{ csrf_input(csrf) }}
-        {{ select("status", "KYC status", kyc_statuses|zip(kyc_statuses|map("replace", "_", " "))|list, c.kyc_status.value) }}
+        {{ select("status", "KYC status", opts(kyc_statuses), c.kyc_status.value) }}
         <button class="btn btn-primary" type="submit">Save</button>
       </form>
     </div></div>
@@ -170,7 +173,7 @@
     <div class="card"><div class="card-header">Upload on behalf of client</div><div class="card-body">
       <form method="post" action="/admin/clients/{{ c.id }}/kyc/upload" enctype="multipart/form-data">
         {{ csrf_input(csrf) }}
-        {{ select("doc_type", "Document type", doc_types|zip(doc_types|map("replace", "_", " "))|list) }}
+        {{ select("doc_type", "Document type", opts(doc_types)) }}
         <div class="mb-3"><input class="form-control" type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required>
           <div class="form-text">PDF, JPG or PNG, max 10 MB.</div></div>
         <button class="btn btn-outline-primary" type="submit">Upload</button>
@@ -244,9 +247,9 @@
   <tbody>
   {% for e in events %}
     <tr><td class="small">{{ e.created_at|dt }}</td>
-      <td class="small">{{ e.actor_type }}{% if e.actor_type == "staff" %}: {{ staff_names.get(e.actor_id, e.actor_id) }}{% endif %}</td>
-      <td class="mono small">{{ e.action }}</td><td class="small">{{ e.entity }} {{ e.entity_id }}</td>
-      <td class="small mono text-break">{{ e.details|tojson }}</td><td class="small">{{ e.ip or "" }}</td></tr>
+      <td class="small">{{ e.actor_type|label }}{% if e.actor_type == "staff" %}: {{ staff_names.get(e.actor_id, "#" ~ e.actor_id) }}{% endif %}</td>
+      <td class="small">{{ e.action|action_label }}</td><td class="small">{{ e.entity|entity_label }}{% if e.entity_id %} #{{ e.entity_id }}{% endif %}</td>
+      <td class="small text-break">{% for name, value in e.details|detail_rows(staff_names) %}<div><span class="text-muted">{{ name }}:</span> {{ value }}</div>{% endfor %}</td><td class="small">{{ e.ip or "" }}</td></tr>
   {% else %}{{ empty(6, "No activity recorded.") }}{% endfor %}
   </tbody>
 </table></div></div>

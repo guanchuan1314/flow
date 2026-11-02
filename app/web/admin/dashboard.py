@@ -9,7 +9,7 @@ from app.models import (
     AccountStatus, Client, KycStatus, PaymentKind, PaymentRequest, PaymentStatus, Position, Staff, SyncState,
     TradingAccount,
 )
-from app.services.clients import visible_client_ids
+from app.services.clients import referral_link, staff_referral_code, visible_client_ids
 from app.web.common import render, web_staff
 
 
@@ -50,5 +50,6 @@ def dashboard(request: Request, staff: Staff = Depends(web_staff), db: Session =
                              .order_by(Client.updated_at).limit(10)).all()
     recent = db.scalars(select(Client).where(Client.id.in_(client_ids)).order_by(Client.id.desc()).limit(8)).all()
     names = {c.id: c for c in db.scalars(select(Client).where(Client.id.in_({p.client_id for p in pending_payments})))}
+    link = referral_link(staff_referral_code(db, staff)) if staff.has_perm("clients.referrals") else None
     return render(request, "admin/dashboard.html", kpi=kpi, pending_payments=pending_payments,
-                  pending_kyc=pending_kyc, recent=recent, names=names)
+                  pending_kyc=pending_kyc, recent=recent, names=names, referral_link=link)

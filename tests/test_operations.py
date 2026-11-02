@@ -306,23 +306,31 @@ def test_operations_pages_post(admin_web, db, gw):  # noqa: F811
     assert "Tick the accounts to move first" in r.text
 
 
-def test_mt5_menu_is_nested(admin_web):  # noqa: F811
+def test_mt5_menu_and_tabbed_pages(admin_web):  # noqa: F811
     page = admin_web.get("/admin/symbols").text
     nav = page[page.find('<nav class="nav'):page.find("</nav>")]
-    assert nav.count('class="nav-group"') == 4 and "Demo clean-up" not in nav and ">Servers<" not in nav
-    assert ">Import from MT5<" in nav and ">Server tools<" in nav and 'href="/admin/configuration"' in nav
-    assert "Sync status" not in nav and ">Trade sync<" in nav
+    assert nav.count('class="nav-group"') == 1  # only Accounts opens a nested menu
     accounts = nav[nav.find(">Accounts<"):nav.find(">Trading setup<")]
-    assert "Trading accounts" in accounts and "Trader styles" in accounts
-    setup = nav[nav.find("bi-diagram-3") - 120:nav.find(">Import from MT5<")]
-    assert "nav-group-toggle active" in setup and "Liquidity providers" in setup  # on Symbols: its group is active
-    assert nav.count("nav-group-toggle active") == 1
+    assert all(t in accounts for t in ("Trading accounts", "Account groups", "Trader styles", "Inactive accounts"))
+    # Trading setup, Import from MT5 and Server tools are one entry each, opening a page with tabs
+    assert 'href="/admin/trading-setup"><i class="bi bi-diagram-3"></i>Trading setup' in nav
+    assert 'href="/admin/import/account-groups"><i class="bi bi-cloud-download"></i>Import from MT5' in nav
+    assert 'href="/admin/server-health"><i class="bi bi-tools"></i>Server tools' in nav
+    assert nav.count("nav-link active") == 1 and 'nav-link active" href="/admin/trading-setup"' in nav  # on Symbols
+    tabs = page[page.find("crm-hub-tabs"):page.find("</ul>", page.find("crm-hub-tabs"))]
+    assert [t in tabs for t in (">Overview<", ">Symbols<", ">Liquidity providers<", ">Routing<")] == [True] * 4
+    assert 'nav-link active" href="/admin/symbols"' in tabs
+    for url, expect in (("/admin/sync", (">Account groups<", ">Trading accounts<", ">Trades<")),
+                        ("/admin/pricing", (">Server health<", ">Symbols &amp; pricing<", ">Restart components<"))):
+        text = admin_web.get(url).text
+        tabs = text[text.find("crm-hub-tabs"):text.find("</ul>", text.find("crm-hub-tabs"))]
+        assert all(t in tabs for t in expect), url
 
 
 # ---------------------------------------------------------------- restarts
 def test_restart_a_component_and_all_gateways(admin_web, db, gw):  # noqa: F811
     page = "/admin/restart"
-    assert 'href="/admin/restart"' in admin_web.get("/admin/configuration").text  # in the menu
+    assert 'href="/admin/restart"' in admin_web.get("/admin/server-health").text  # a Server tools tab
     text = admin_web.get(page).text
     assert "Access Server Asia" in text and "type Main Trade Server" in text
 
