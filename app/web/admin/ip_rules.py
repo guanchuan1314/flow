@@ -52,7 +52,7 @@ def _report(rule: IpRule) -> str:
     return f" Applied on {done} MT5 server(s)." if done else ""
 
 
-@router.get("/ip-rules")
+@router.get("/security/ip-rules")
 def rules_page(request: Request, firewall: int | None = None, me: Staff = Depends(staff_perm(PERM)),
                db: Session = Depends(get_db)):
     rules = db.scalars(select(IpRule).order_by(IpRule.action, IpRule.id)).all()
@@ -66,27 +66,27 @@ def rules_page(request: Request, firewall: int | None = None, me: Staff = Depend
                   firewall=fw, firewall_error=fw_error, **_ctx(db, request))
 
 
-@router.post("/ip-rules")
+@router.post("/security/ip-rules")
 def rule_create(request: Request, form: RuleForm = Depends(), me: Staff = Depends(staff_perm(PERM)),
                 db: Session = Depends(get_db)):
     return attempt(request, lambda: _report(svc.create_rule(db, me, client_ip(request), **form.fields())),
-                   "IP rule added.{result}", "/admin/ip-rules")
+                   "IP rule added.{result}", "/admin/security/ip-rules")
 
 
-@router.get("/ip-rules/{rule_id}")
+@router.get("/security/ip-rules/{rule_id}")
 def rule_edit(request: Request, rule_id: int, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     return render(request, "admin/security/ip_rule_form.html", r=get_or_404(db, IpRule, rule_id), **_ctx(db, request))
 
 
-@router.post("/ip-rules/{rule_id}")
+@router.post("/security/ip-rules/{rule_id}")
 def rule_update(request: Request, rule_id: int, form: RuleForm = Depends(), me: Staff = Depends(staff_perm(PERM)),
                 db: Session = Depends(get_db)):
     rule = get_or_404(db, IpRule, rule_id)
     return attempt(request, lambda: _report(svc.update_rule(db, me, client_ip(request), rule, form.fields())),
-                   "IP rule saved.{result}", "/admin/ip-rules")
+                   "IP rule saved.{result}", "/admin/security/ip-rules")
 
 
-@router.post("/ip-rules/{rule_id}/reapply")
+@router.post("/security/ip-rules/{rule_id}/reapply")
 def rule_reapply(request: Request, rule_id: int, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     rule = get_or_404(db, IpRule, rule_id)
 
@@ -94,11 +94,11 @@ def rule_reapply(request: Request, rule_id: int, me: Staff = Depends(staff_perm(
         errors = svc.reapply(db, me, rule)
         if errors:
             raise ServiceError("MT5 still refuses: " + "; ".join(errors[:3]))
-    return attempt(request, run, "MT5 firewall updated.", f"/admin/ip-rules/{rule_id}")
+    return attempt(request, run, "MT5 firewall updated.", f"/admin/security/ip-rules/{rule_id}")
 
 
-@router.post("/ip-rules/{rule_id}/delete")
+@router.post("/security/ip-rules/{rule_id}/delete")
 def rule_delete(request: Request, rule_id: int, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     rule = get_or_404(db, IpRule, rule_id)
     return attempt(request, lambda: svc.delete_rule(db, me, client_ip(request), rule), "IP rule deleted.",
-                   "/admin/ip-rules")
+                   "/admin/security/ip-rules")

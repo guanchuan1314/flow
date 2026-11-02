@@ -1,0 +1,21 @@
+{% extends "admin/layout.html" %}
+{% block page_title %}Synchronization history{% endblock %}
+{% block content %}
+<p class="small text-muted mw-md">Every sync from MT5: started from a page's sync button (they run in the background, several at
+  once) or by the schedule (the MT5 import every {{ settings().mt5_import_interval_minutes }} minutes, the symbol auto sync).
+  Missing trade history tasks are on the <a href="/admin/import/trades">Trades</a> tab.</p>
+<div class="card">
+  <div class="card-header"><form class="row g-2" method="get">
+    <div class="col-6 col-md-3"><select class="form-select form-select-sm" name="kind" aria-label="What" data-autosubmit>
+      <option value="">Anything</option>{% for key, name in kinds.items() %}<option value="{{ key }}" {% if key == kind %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></div>
+    <div class="col-6 col-md-3"><select class="form-select form-select-sm" name="trigger" aria-label="Started by" data-autosubmit>
+      <option value="">Staff or schedule</option>
+      <option value="manual" {% if trigger == "manual" %}selected{% endif %}>Started by staff</option>
+      <option value="schedule" {% if trigger == "schedule" %}selected{% endif %}>Scheduled</option></select></div>
+    <div class="col-6 col-md-3"><select class="form-select form-select-sm" name="status" aria-label="Status" data-autosubmit>
+      <option value="">Any status</option>
+      {% for key, name in [("running", "Running"), ("done", "Done"), ("failed", "Failed")] %}<option value="{{ key }}" {% if key == status %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></div>
+  </form></div>
+  {% include "admin/servers/sync_runs.html" %}
+</div>
+{% endblock %}

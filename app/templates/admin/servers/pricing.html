@@ -2,6 +2,7 @@
 {% from "macros.html" import add_row_button, alert, csrf_input, post_button, remove_row_cell %}
 {% block page_title %}Symbols &amp; pricing: {{ s.name }}{% endblock %}
 {% block content %}
+{% from "macros.html" import sync_panel %}{{ sync_panel(["pricing"]) }}
 {{ alert(mt5_warning) }}
 {% set auto = p.auto_sync %}
 {% macro spread_row(r={}) -%}
@@ -44,7 +45,7 @@
     ({{ pending.groups|join(", ")|truncate(120) }}){% endif %} and {{ pending.swaps|length }} symbol swap(s).
     {% else %}MT5 has every markup below.{% endif %}
     {% if p.last_apply %}<span class="text-muted">Last applied {{ p.last_apply.at|dt }}.</span>{% endif %}</div>
-  {{ post_button("/admin/mt5-servers/" ~ s.id ~ "/pricing/apply", '<i class="bi bi-arrow-repeat"></i> Sync symbols and apply now', csrf,
+  {{ post_button("/admin/server-tools/pricing/" ~ s.id ~ "/apply", '<i class="bi bi-arrow-repeat"></i> Sync symbols and apply now', csrf,
                  "btn-outline-primary btn-sm") }}
 </div>
 {% endif %}
@@ -53,7 +54,7 @@
   {% for g, items in pending.other_commissions.items() %}<br><span class="mono">{{ g }}</span>: {{ items|join(", ") }}{% endfor %}</div>
 {% endif %}
 
-<form method="post" action="/admin/mt5-servers/{{ s.id }}/pricing" class="mw-lg">
+<form method="post" action="/admin/server-tools/pricing/{{ s.id }}" class="mw-lg">
   {{ csrf_input(csrf) }}
   <div class="card mb-3"><div class="card-header">Auto sync symbols</div><div class="card-body">
     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -102,7 +103,7 @@
 </section>
 
 <section data-tab="Website prices" id="website">
-<form method="post" action="/admin/pricing/website" class="mw-lg" id="website-prices">
+<form method="post" action="/admin/server-tools/pricing/website" class="mw-lg" id="website-prices">
   {{ csrf_input(csrf) }}
   <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Website prices</span>
     {{ add_row_button("web-tpl", "web-rows", "Add symbol", "ms-auto") }}</div><div class="card-body pb-1">

@@ -295,12 +295,12 @@ def test_force_delete_group_deletes_its_accounts(db, gw, group_with_accounts):
 
 def test_delete_group_dialog_requires_typed_name(admin_web, db, group_with_accounts):
     t = group_with_accounts["type"]
-    page = admin_web.get(f"/admin/account-groups/{t.id}")
+    page = admin_web.get(f"/admin/accounts/account-groups/{t.id}")
     assert "Force delete all 2 account(s)" in page.text and 'data-bs-target="#delete-type"' in page.text
-    r = form_post(admin_web, f"/admin/account-groups/{t.id}", f"/admin/account-groups/{t.id}/delete",
+    r = form_post(admin_web, f"/admin/accounts/account-groups/{t.id}", f"/admin/accounts/account-groups/{t.id}/delete",
                   {"accounts_action": "delete", "confirm_name": "wrong"})
     assert "Type the account group name" in r.text
-    r = form_post(admin_web, f"/admin/account-groups/{t.id}", f"/admin/account-groups/{t.id}/delete",
+    r = form_post(admin_web, f"/admin/accounts/account-groups/{t.id}", f"/admin/accounts/account-groups/{t.id}/delete",
                   {"accounts_action": "move", "move_to": group_with_accounts["other"].id})
     assert "2 account(s) moved" in r.text
 

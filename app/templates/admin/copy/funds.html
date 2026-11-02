@@ -10,7 +10,7 @@
       {% for f in rows %}
         <tr>
           <td><a href="/admin/pamm/{{ f.id }}">{{ f.name }}</a></td>
-          <td><a href="/admin/accounts/{{ f.master_login }}">{{ f.master_login }}</a></td>
+          <td><a href="/admin/accounts/trading-accounts/{{ f.master_login }}">{{ f.master_login }}</a></td>
           <td><a href="/admin/clients/{{ f.manager_client_id }}">{{ managers[f.manager_client_id].full_name }}</a></td>
           <td>{{ badge(f.status) }}</td>
           <td class="num">{{ f.last_nav|money(4) }}</td><td class="num">{{ f.total_units|money(2) }}</td>

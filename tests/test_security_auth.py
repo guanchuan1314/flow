@@ -65,12 +65,12 @@ def test_web_staff_form_cannot_escalate(api, admin, db):
     make_staff(db, admin, "mgr@b.com", ["staff.view", "staff.manage"])
     admin_role = db.scalar(select(Role).where(Role.name == "Admin"))
     web_login(api, "mgr@b.com", "Staff-Pass1")
-    r = form_post(api, "/admin/staff/new", "/admin/staff/new", {
+    r = form_post(api, "/admin/staff/members/new", "/admin/staff/members/new", {
         "email": "evil@b.com", "full_name": "Evil", "password": "Evil-Pass1", "role_ids": str(admin_role.id)})
     assert "grant permissions you don&#39;t hold" in r.text or "grant permissions you don't hold" in r.text
     assert db.scalar(select(Staff).where(Staff.email == "evil@b.com")) is None
     # saving an admin's page without changing anything sensitive works; changing the password doesn't
-    page = f"/admin/staff/{admin.id}"
+    page = f"/admin/staff/members/{admin.id}"
     base = {"full_name": "Boss", "is_active": "on", "role_ids": str(admin_role.id), "allowed_ips": ""}
     assert "Staff member saved" in form_post(api, page, page, base).text
     assert "permissions you don" in form_post(api, page, page, {**base, "password": "Hijack-Pass1"}).text

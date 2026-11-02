@@ -14,6 +14,7 @@ from app.mt5 import peek
 from app.services import servers as server_svc
 from app.services import sync, sync_jobs, trader_styles
 from app.services.clients import visible_logins
+from app.web import syncs
 from app.web.common import Page, attempt, opt_int, render, staff_perm
 
 router = APIRouter()
@@ -139,7 +140,7 @@ def orders(request: Request, login: str = "", symbol: str = "", status: str = "o
                   **_filter_ctx(db, login=login, symbol=symbol, group=group, style=style))
 
 
-@router.get("/sync")
+@router.get("/import/trades")
 def sync_page(request: Request, me: Staff = Depends(staff_perm("trading.view")), db: Session = Depends(get_db)):
     errors = db.scalars(select(SyncState).where(SyncState.last_error.is_not(None))
                         .order_by(SyncState.last_deal_sync_at.desc().nulls_last(), SyncState.login)
@@ -157,26 +158,23 @@ def sync_page(request: Request, me: Staff = Depends(staff_perm("trading.view")),
                   today=utcnow().date())
 
 
-@router.post("/sync")
+@router.post("/import/trades")
 def run_sync(request: Request, me: Staff = Depends(staff_perm("trading.sync")), db: Session = Depends(get_db)):
-    return attempt(request, lambda: sync.full_sync(db),
-                   "Sync finished: {result[new_deals]} new deals, {result[open_positions]} open positions, "
-                   "{result[open_orders]} open orders, {result[accounts]} accounts updated across all servers.",
-                   "/admin/sync")
+    return syncs.start(request, db, me, "trades", None, "/admin/import/trades")
 
 
 def _jobs(db: Session):
     return db.scalars(select(SyncJob).order_by(SyncJob.id.desc()).limit(15)).all()
 
 
-@router.get("/sync/jobs")
+@router.get("/import/trades/jobs")
 def sync_jobs_partial(request: Request, me: Staff = Depends(staff_perm("trading.view")), db: Session = Depends(get_db)):
     """The task list alone; the page polls it every 2 s while a task is queued or running."""
     servers = {s.id: s.name for s in db.scalars(select(MT5Server))}
     return render(request, "admin/trading/sync_jobs.html", jobs=_jobs(db), server_names=servers)
 
 
-@router.post("/sync/jobs")
+@router.post("/import/trades/jobs")
 def sync_job_create(request: Request, server_id: str = Form(""), logins: str = Form(""), date_from: str = Form(...),
                     date_to: str = Form(""), include_orders: str = Form(""),
                     me: Staff = Depends(staff_perm("trading.sync")), db: Session = Depends(get_db)):
@@ -191,11 +189,11 @@ def sync_job_create(request: Request, server_id: str = Form(""), logins: str = F
             raise ServiceError("Accounts must be MT5 logins separated by commas or spaces")
         return sync_jobs.create_job(db, me, server_id=opt_int(server_id), logins=wanted, date_from=start,
                                     date_to=end, include_orders=include_orders == "on").id
-    return attempt(request, run, "Sync task #{result} queued; progress is shown below.", "/admin/sync")
+    return attempt(request, run, "Sync task #{result} queued; progress is shown below.", "/admin/import/trades")
 
 
-@router.post("/sync/jobs/{job_id}/cancel")
+@router.post("/import/trades/jobs/{job_id}/cancel")
 def sync_job_cancel(request: Request, job_id: int, me: Staff = Depends(staff_perm("trading.sync")),
                     db: Session = Depends(get_db)):
     job = get_or_404(db, SyncJob, job_id)
-    return attempt(request, lambda: sync_jobs.cancel_job(db, me, job), f"Sync task #{job_id} cancelled.", "/admin/sync")
+    return attempt(request, lambda: sync_jobs.cancel_job(db, me, job), f"Sync task #{job_id} cancelled.", "/admin/import/trades")

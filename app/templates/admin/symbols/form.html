@@ -16,7 +16,7 @@
   {{ select(name, label, options.items(), selected=(none if new else s[name]), blank=("(" ~ same ~ ")") if new else none, col=col) }}
 {%- endmacro %}
 
-<form method="post" action="{{ '/admin/symbols/new' if new else '/admin/symbols/' ~ s.id }}" class="mw-lg">
+<form method="post" action="{{ '/admin/trading-setup/symbols/new' if new else '/admin/trading-setup/symbols/' ~ s.id }}" class="mw-lg">
   {{ csrf_input(csrf) }}
   <div class="card mb-3"><div class="card-header">Symbol on <strong>{{ server.name if server else "—" }}</strong></div><div class="card-body"><div class="row">
     {% if new %}
@@ -97,7 +97,7 @@
   {% endif %}
 
   <button class="btn btn-primary" type="submit">{{ "Create on MT5" if new else "Save to MT5" }}</button>
-  <a class="btn btn-link" href="/admin/symbols?server={{ server.id if server else '' }}">Cancel</a>
+  <a class="btn btn-link" href="/admin/trading-setup/symbols?server={{ server.id if server else '' }}">Cancel</a>
 </form>
 
 {% if not new %}
@@ -106,7 +106,7 @@
     {% set busy = usage.values()|sum %}{% if busy %}<br><strong class="text-danger">It can't be deleted while it has
     {% for k, v in usage.items() if v %}{{ v }} {{ k }}{{ " and " if not loop.last }}{% endfor %}.</strong>{% endif %}
     Groups whose symbol list names it stop offering it.</div>
-  {{ post_button("/admin/symbols/" ~ s.id ~ "/delete", '<i class="bi bi-trash"></i> Delete symbol', csrf, "btn-outline-danger btn-sm",
+  {{ post_button("/admin/trading-setup/symbols/" ~ s.id ~ "/delete", '<i class="bi bi-trash"></i> Delete symbol', csrf, "btn-outline-danger btn-sm",
                  confirm="Delete " ~ s.name ~ " on the MT5 server " ~ server.name ~ "? Traders can no longer see or trade it.", danger=True) }}
 </div></div>
 {% endif %}

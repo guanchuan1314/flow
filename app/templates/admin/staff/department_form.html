@@ -4,26 +4,26 @@
 {% block content %}
 {% set manage = staff.has_perm("staff.manage") %}
 <div class="card mw-sm mb-3"><div class="card-body">
-  <form method="post" action="/admin/departments/{{ d.id if d else 'new' }}">
+  <form method="post" action="/admin/staff/departments/{{ d.id if d else 'new' }}">
     {{ csrf_input(csrf) }}
     <fieldset {% if not manage %}disabled{% endif %}>
     {{ field("name", "Name", d.name if d else "", required=True, placeholder="Sales, Finance, Dealing…") }}
     {% if manage %}<button class="btn btn-primary" type="submit">{{ "Save" if d else "Create" }}</button>{% endif %}
-    <a class="btn btn-link" href="/admin/departments">Back</a>
+    <a class="btn btn-link" href="/admin/staff/departments">Back</a>
     </fieldset>
   </form>
 </div></div>
 {% if d %}
 <div class="card mw-sm mb-3"><div class="card-header">Staff in this department ({{ members|length }})</div>
   <ul class="list-group list-group-flush">
-    {% for s in members %}<li class="list-group-item"><a href="/admin/staff/{{ s.id }}">{{ s.full_name }}</a>
+    {% for s in members %}<li class="list-group-item"><a href="/admin/staff/members/{{ s.id }}">{{ s.full_name }}</a>
       <span class="small text-muted">{{ s.email }}</span></li>
     {% else %}<li class="list-group-item text-muted small">Nobody yet. Choose the department on a staff member's page.</li>{% endfor %}
   </ul></div>
 {% if manage %}
 <div class="card mw-sm border-danger"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
   <div class="small text-muted">{% if members %}Its {{ members|length }} staff stay, without a department.{% else %}Nobody is in it.{% endif %}</div>
-  {{ post_button("/admin/departments/" ~ d.id ~ "/delete", '<i class="bi bi-trash"></i> Delete department', csrf, "btn-outline-danger btn-sm",
+  {{ post_button("/admin/staff/departments/" ~ d.id ~ "/delete", '<i class="bi bi-trash"></i> Delete department', csrf, "btn-outline-danger btn-sm",
                  confirm='Delete the department "' ~ d.name ~ '"?' ~ ((" Its " ~ members|length ~ " staff stay, without a department.") if members else ""), danger=True) }}
 </div></div>
 {% endif %}

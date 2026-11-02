@@ -1,16 +1,18 @@
 from fastapi import APIRouter, Depends, Form, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.core.deps import client_ip
 from app.core.errors import ServiceError, get_or_404
 from app.db import get_db
-from app.models import MT5Server, ServerKind, Staff
+from app.models import MT5Server, ServerKind, Staff, SyncRun
 from app.mt5 import peek
-from app.services import market, mt5_sync
+from app.services import market, sync_runs
 from app.services import servers as svc
+from app.web import syncs
 from app.web.common import (
-    attempt, back, flash, form_rows, opt_enum, opt_int, redirect, render, staff_perm, sync_message,
+    Page, WebForbidden, attempt, back, flash, form_rows, opt_enum, opt_int, redirect, render, staff_perm, web_staff,
 )
 
 router = APIRouter()
@@ -35,15 +37,65 @@ def _only(db: Session) -> MT5Server:
     return get_or_404(db, MT5Server, getattr(svc.the_server(db, enabled_only=False), "id", 0), "MT5 server")
 
 
-IMPORTS = {"account-groups": "groups", "trading-accounts": "accounts"}  # MT5 > Import from MT5 pages
-
-
-@router.get("/import/{page}")
-def import_page(request: Request, page: str, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+def _import_page(request: Request, db: Session, what: str):
     """MT5 > Import from MT5: account groups (MT5 groups) or trading accounts (MT5 users)."""
-    if page not in IMPORTS:
-        return redirect("/admin/import/trading-accounts")
-    return render(request, "admin/servers/import.html", s=svc.the_server(db, enabled_only=False), what=IMPORTS[page])
+    return render(request, "admin/servers/import.html", s=svc.the_server(db, enabled_only=False), what=what)
+
+
+@router.post("/import/account-groups/sync")
+def import_groups_run(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+    return syncs.start(request, db, me, "account_groups", syncs.server_id(db), "/admin/import/account-groups")
+
+
+@router.post("/import/trading-accounts/sync")
+def import_accounts_run(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+    return syncs.start(request, db, me, "trading_accounts", syncs.server_id(db), "/admin/import/trading-accounts")
+
+
+# ---------------------------------------------------------------- synchronization history
+HISTORY_PERMS = ("mt5_servers.manage", "account_groups.manage", "accounts.manage", "accounts.cleanup", "trading.sync",
+                 "symbols.manage", "liquidity.manage", "routing.manage")
+
+
+def history_staff(staff: Staff = Depends(web_staff)) -> Staff:
+    if not any(staff.has_perm(p) for p in HISTORY_PERMS):
+        raise WebForbidden()
+    return staff
+
+
+@router.get("/import/history")
+def sync_history(request: Request, kind: str = "", trigger: str = "", status: str = "", partial: int = 0,
+                 page: int = 1, me: Staff = Depends(history_staff), db: Session = Depends(get_db)):
+    """Every synchronization from MT5: what, which server, started by whom (or the schedule), how it went."""
+    q = select(SyncRun)
+    if kind in sync_runs.KINDS:
+        q = q.where(SyncRun.kind == kind)
+    if trigger in ("manual", "schedule"):
+        q = q.where(SyncRun.trigger == trigger)
+    if status in ("queued", "running", "done", "failed"):
+        q = q.where(SyncRun.status.in_(("queued", "running")) if status == "running" else SyncRun.status == status)
+    pg = Page(db, q.order_by(SyncRun.id.desc()), page)
+    ctx = dict(page=pg, kind=kind, trigger=trigger, status=status, kinds=sync_runs.KINDS, describe=syncs.describe,
+               staff_names=dict(db.execute(select(Staff.id, Staff.full_name)).all()),
+               server_names=dict(db.execute(select(MT5Server.id, MT5Server.name)).all()))
+    return render(request, "admin/servers/sync_runs.html" if partial else "admin/servers/sync_history.html", **ctx)
+
+
+@router.get("/import/history/panel")
+def sync_panel(request: Request, kinds: str = "", live: int = 0, me: Staff = Depends(history_staff)):
+    """A page's progress panel alone (macros.sync_panel): polled every 2 s while one of its syncs runs."""
+    wanted = [k for k in kinds.split(",") if k in sync_runs.KINDS]
+    return render(request, "admin/servers/sync_panel.html", kinds=wanted, live=bool(live))
+
+
+@router.get("/import/account-groups")
+def import_groups(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+    return _import_page(request, db, "groups")
+
+
+@router.get("/import/trading-accounts")
+def import_accounts(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+    return _import_page(request, db, "accounts")
 
 
 @router.get("/configuration")
@@ -58,12 +110,12 @@ def configuration(request: Request, me: Staff = Depends(staff_perm(PERM)), db: S
                   simulators_allowed=not get_settings().is_prod)
 
 
-@router.get("/mt5-servers")
+@router.get("/configuration/servers")
 def server_list(request: Request, me: Staff = Depends(staff_perm(PERM))):
     return redirect(CONFIG)  # one server: its page is Configuration
 
 
-@router.get("/mt5-servers/new")
+@router.get("/configuration/servers/new")
 def server_new(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     existing = svc.the_server(db, enabled_only=False)
     if existing is not None:  # one MT5 server only
@@ -71,7 +123,7 @@ def server_new(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Sess
     return redirect(CONFIG)
 
 
-@router.post("/mt5-servers/new")
+@router.post("/configuration/servers/new")
 async def server_create(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     form = await request.form()
     created = {}
@@ -87,12 +139,12 @@ async def server_create(request: Request, me: Staff = Depends(staff_perm(PERM)),
     return redirect(CONFIG)
 
 
-@router.get("/mt5-servers/{server_id}")
+@router.get("/configuration/servers/{server_id}")
 def server_edit(request: Request, server_id: int, me: Staff = Depends(staff_perm(PERM))):
     return redirect(CONFIG)
 
 
-@router.post("/mt5-servers/{server_id}")
+@router.post("/configuration/servers/{server_id}")
 async def server_update(request: Request, server_id: int, me: Staff = Depends(staff_perm(PERM)),
                         db: Session = Depends(get_db)):
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
@@ -101,7 +153,7 @@ async def server_update(request: Request, server_id: int, me: Staff = Depends(st
                    "Server settings saved. Connections reconnect with the new settings.", CONFIG)
 
 
-@router.post("/mt5-servers/{server_id}/test")
+@router.post("/configuration/servers/{server_id}/test")
 def server_test(request: Request, server_id: int, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
     ok, message = svc.test_server(db, me, server)
@@ -109,22 +161,7 @@ def server_test(request: Request, server_id: int, me: Staff = Depends(staff_perm
     return back(request, CONFIG)
 
 
-@router.post("/mt5-servers/{server_id}/sync")
-def server_sync(request: Request, server_id: int, what: str = "accounts", me: Staff = Depends(staff_perm(PERM)),
-                db: Session = Depends(get_db)):
-    server = get_or_404(db, MT5Server, server_id, "MT5 server")
-    fn = mt5_sync.sync_trading_accounts if what == "accounts" else mt5_sync.sync_account_groups
-    try:
-        result = fn(db, server, me)
-    except ServiceError as exc:
-        db.rollback()
-        result = f"failed: {exc.message}"
-    text, level = sync_message({server.name: result})
-    flash(request, text, level)
-    return redirect("/admin/import/" + ("account-groups" if what == "groups" else "trading-accounts"))
-
-
-@router.post("/mt5-servers/{server_id}/delete")
+@router.post("/configuration/servers/{server_id}/delete")
 def server_delete(request: Request, server_id: int, purge: str = Form(""), confirm_name: str = Form(""),
                   me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
@@ -139,12 +176,7 @@ def server_delete(request: Request, server_id: int, purge: str = Form(""), confi
 
 
 # ---------------------------------------------------------------- restart components
-@router.get("/mt5-servers/{server_id}/restart")
-def restart_moved(server_id: int, me: Staff = Depends(staff_perm("mt5_servers.restart"))):
-    return redirect("/admin/restart")
-
-
-@router.get("/restart")
+@router.get("/server-tools/restart")
 def restart_page(request: Request, me: Staff = Depends(staff_perm("mt5_servers.restart")),
                  db: Session = Depends(get_db)):
     from app.mt5 import MT5Error
@@ -161,13 +193,13 @@ def restart_page(request: Request, me: Staff = Depends(staff_perm("mt5_servers.r
                   types=COMPONENT_TYPES, effects=server_health.RESTART_EFFECT)
 
 
-@router.post("/mt5-servers/{server_id}/restart")
+@router.post("/server-tools/restart/{server_id:int}")
 def restart_component(request: Request, server_id: int, component_id: int = Form(...), confirm_name: str = Form(""),
                       me: Staff = Depends(staff_perm("mt5_servers.restart")), db: Session = Depends(get_db)):
     from app.services import server_health
 
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
-    page = "/admin/restart"
+    page = "/admin/server-tools/restart"
 
     def run():
         main = next((c for c in server_health.live_components(server) if c.id == component_id and c.type == 0), None)
@@ -179,12 +211,7 @@ def restart_component(request: Request, server_id: int, component_id: int = Form
 
 
 # ---------------------------------------------------------------- symbols & pricing
-@router.get("/mt5-servers/{server_id}/pricing")
-def pricing_moved(server_id: int, me: Staff = Depends(staff_perm("symbols.manage"))):
-    return redirect("/admin/pricing")
-
-
-@router.get("/pricing")
+@router.get("/server-tools/pricing")
 def pricing_page(request: Request, me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     from app.services import pricing
 
@@ -198,17 +225,17 @@ def pricing_page(request: Request, me: Staff = Depends(staff_perm("symbols.manag
                   mt5_warning=error, website=market.website_form(db), card_symbols=market.CARD_SYMBOLS)
 
 
-@router.post("/pricing/website")
+@router.post("/server-tools/pricing/website")
 async def website_prices_save(request: Request, me: Staff = Depends(staff_perm("symbols.manage")),
                               db: Session = Depends(get_db)):
     form = await request.form()
     rows = [dict(symbol=s, name=n, category=c)
             for s, n, c in form_rows(form, "web_symbol", "web_name", "web_category")]
     return attempt(request, lambda: market.save_website_symbols(db, me, rows, client_ip(request)),
-                   "Website prices saved: {result} symbol(s), live within 30 seconds.", "/admin/pricing#website-prices")
+                   "Website prices saved: {result} symbol(s), live within 30 seconds.", "/admin/server-tools/pricing#website-prices")
 
 
-@router.post("/mt5-servers/{server_id}/pricing")
+@router.post("/server-tools/pricing/{server_id:int}")
 async def pricing_save(request: Request, server_id: int, me: Staff = Depends(staff_perm("symbols.manage")),
                        db: Session = Depends(get_db)):
     from app.services import pricing
@@ -223,18 +250,14 @@ async def pricing_save(request: Request, server_id: int, me: Staff = Depends(sta
         summary = pricing.save(db, me, server, rules, form.get("auto_enabled") == "on",
                                opt_int(form.get("auto_minutes")))
         return "Saved. " + pricing.describe(summary)
-    return attempt(request, run, "{result}", "/admin/pricing")
+    return attempt(request, run, "{result}", "/admin/server-tools/pricing")
 
 
-@router.post("/mt5-servers/{server_id}/pricing/apply")
+@router.post("/server-tools/pricing/{server_id:int}/apply")
 def pricing_apply(request: Request, server_id: int, me: Staff = Depends(staff_perm("symbols.manage")),
                   db: Session = Depends(get_db)):
     from app.services import pricing, symbols
 
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
 
-    def run():
-        r = symbols.sync_symbols(db, server, me)
-        return (f"Symbols synced from MT5: {r['symbols']}, {len(r['created'])} new, {len(r['updated'])} updated. "
-                + pricing.describe(pricing.apply(db, me, server)))
-    return attempt(request, run, "{result}", "/admin/pricing")
+    return syncs.start(request, db, me, "pricing", server.id, "/admin/server-tools/pricing")

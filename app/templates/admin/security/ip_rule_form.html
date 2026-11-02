@@ -5,16 +5,16 @@
 <div data-tabs>
   <section data-tab="Rule" id="rule">
     <div class="card mw-md mb-3"><div class="card-body">
-      <form method="post" action="/admin/ip-rules/{{ r.id }}">
+      <form method="post" action="/admin/security/ip-rules/{{ r.id }}">
         {{ csrf_input(csrf) }}
         {% include "admin/security/_rule_fields.html" %}
         <button class="btn btn-primary" type="submit">Save</button>
-        <a class="btn btn-link" href="/admin/ip-rules">Cancel</a>
+        <a class="btn btn-link" href="/admin/security/ip-rules">Cancel</a>
       </form>
     </div></div>
     <div class="card mw-md border-danger"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
       <div class="small text-muted">Deleting removes it from the CRM{% if r.apply_mt5 or r.mt5_state %} and from the MT5 firewall{% endif %}.</div>
-      {{ post_button("/admin/ip-rules/" ~ r.id ~ "/delete", '<i class="bi bi-trash"></i> Delete rule', csrf, "btn-outline-danger btn-sm",
+      {{ post_button("/admin/security/ip-rules/" ~ r.id ~ "/delete", '<i class="bi bi-trash"></i> Delete rule', csrf, "btn-outline-danger btn-sm",
                      confirm="Delete the rule for " ~ r.network ~ ((" and remove it from the MT5 firewall") if r.apply_mt5 or r.mt5_state else "") ~ "?", danger=True) }}
     </div></div>
   </section>
@@ -26,7 +26,7 @@
         <li class="list-group-item">{% if st.ok %}<i class="bi bi-check-circle text-success"></i>{% else %}<i class="bi bi-x-circle text-danger"></i>{% endif %}
           {{ srv.name if srv else "server " ~ sid }}: {{ st.message }} <span class="text-muted">({{ st.at[:16].replace("T", " ") }})</span></li>
       {% else %}<li class="list-group-item text-muted">Not written to any MT5 server yet.</li>{% endfor %}
-      <li class="list-group-item">{{ post_button("/admin/ip-rules/" ~ r.id ~ "/reapply", "Re-apply on MT5", csrf, "btn-outline-primary btn-sm") }}</li>
+      <li class="list-group-item">{{ post_button("/admin/security/ip-rules/" ~ r.id ~ "/reapply", "Re-apply on MT5", csrf, "btn-outline-primary btn-sm") }}</li>
     </ul></div>
   </section>
   {% endif %}

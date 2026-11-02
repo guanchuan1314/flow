@@ -2,20 +2,21 @@
 {% from "macros.html" import empty, post_button %}
 {% block page_title %}Liquidity providers{% endblock %}
 {% block content %}
+{% from "macros.html" import sync_panel %}{{ sync_panel(["liquidity"]) }}
 <p class="small text-muted">How each MT5 server connects to its liquidity providers: <strong>gateways</strong> send clients' orders to an LP
   (and can bring its quotes), <strong>data feeds</strong> bring in an LP's quotes. Creating, editing and deleting here changes MT5 first;
   <strong>Sync from MT5</strong> brings in changes made in MT5 Administrator. Which orders go to which gateway is set by the
-  <a href="/admin/routing?server={{ server.id if server else '' }}">routing rules</a>.</p>
+  <a href="/admin/trading-setup/routing?server={{ server.id if server else '' }}">routing rules</a>.</p>
 <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
   {% if server %}<div class="ms-auto d-flex gap-2">
-    {{ post_button("/admin/liquidity/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm",
+    {{ post_button("/admin/trading-setup/liquidity/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm",
                    fields={"server_id": server.id, "kind": kind}) }}
-    {{ post_button("/admin/liquidity/restart", '<i class="bi bi-bootstrap-reboot"></i> Restart all ' ~ kinds[kind]|lower ~ 's', csrf,
+    {{ post_button("/admin/trading-setup/liquidity/restart", '<i class="bi bi-bootstrap-reboot"></i> Restart all ' ~ kinds[kind]|lower ~ 's', csrf,
                    "btn-outline-danger btn-sm", fields={"server_id": server.id, "kind": kind}, danger=True, ok="Restart",
                    confirm="Restart every " ~ kinds[kind]|lower ~ " on " ~ server.name ~ "? MT5 can only restart them all together. " ~
                      ("Orders routed to a gateway can't reach the LP until it has reconnected, usually within a minute."
                       if kind == "gateway" else "Symbols priced by these feeds get no new quotes until they have reconnected, usually within a minute.")) }}
-    <a class="btn btn-success btn-sm" href="/admin/liquidity/new?server={{ server.id }}&kind={{ kind }}"><i class="bi bi-plus-lg"></i> New {{ kinds[kind]|lower }}</a>
+    <a class="btn btn-success btn-sm" href="/admin/trading-setup/liquidity/new?server={{ server.id }}&kind={{ kind }}"><i class="bi bi-plus-lg"></i> New {{ kinds[kind]|lower }}</a>
   </div>{% endif %}
 </div>
 <ul class="nav nav-tabs">
@@ -30,13 +31,13 @@
   <tbody>
   {% for c in rows %}
     <tr class="{% if not c.enabled %}text-muted{% endif %}">
-      <td><a href="/admin/liquidity/{{ c.id }}">{{ c.name }}</a></td>
+      <td><a href="/admin/trading-setup/liquidity/{{ c.id }}">{{ c.name }}</a></td>
       <td class="small mono">{{ c.module }}</td>
       <td class="small mono">{{ c.lp_server }}</td>
       <td class="small">{{ c.lp_login }}</td>
       <td class="small mono">{{ c.symbols|join(", ")|truncate(40) }}</td>
       {% if kind == "gateway" %}<td>{{ c.mt5_id }}</td>
-        <td class="small">{% if routes[c.id] %}{{ routes[c.id]|join(", ") }}{% else %}<a href="/admin/routing/new?server={{ server.id }}&gateway={{ c.id }}">none: route orders here</a>{% endif %}</td>{% else %}<td class="num">{{ c.translations|length }}</td>{% endif %}
+        <td class="small">{% if routes[c.id] %}{{ routes[c.id]|join(", ") }}{% else %}<a href="/admin/trading-setup/routing/new?server={{ server.id }}&gateway={{ c.id }}">none: route orders here</a>{% endif %}</td>{% else %}<td class="num">{{ c.translations|length }}</td>{% endif %}
       <td>{% if not c.enabled %}<span class="badge text-bg-secondary">disabled</span>
         {% elif c.state.connected %}<span class="badge text-bg-success">connected</span>
         {% else %}<span class="badge text-bg-warning">not connected</span>{% endif %}</td>

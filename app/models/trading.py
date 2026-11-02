@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db import Base
+from app.db import Base, utcnow
 
 Money = Numeric(18, 2)
 Lots = Numeric(18, 4)
@@ -139,6 +139,45 @@ class SyncJob(Base):
     @property
     def percent(self) -> int:
         return 100 if self.status == "done" else int(100 * self.done / self.total) if self.total else 0
+
+
+class SyncRun(Base):
+    """One synchronization from MT5 (account groups, trading accounts, trades, symbols, ...), started by a staff
+    member or by the schedule; it runs in the background (services.sync_runs)."""
+
+    __tablename__ = "sync_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)  # services.sync_runs.KINDS
+    server_id: Mapped[int | None] = mapped_column(ForeignKey("mt5_servers.id", ondelete="SET NULL"))  # None: every server
+    trigger: Mapped[str] = mapped_column(String(16), default="manual", index=True)  # manual | schedule
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("staff.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(12), default="queued", index=True)  # queued|running|done|failed
+    created_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    summary: Mapped[dict | None] = mapped_column(JSON)
+    message: Mapped[str] = mapped_column(String(1024), default="")
+    params: Mapped[dict | None] = mapped_column(JSON)  # what to do, e.g. the demo clean-up's logins and action
+    total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # progress: work items, 0 = unknown
+    done: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    @property
+    def active(self) -> bool:
+        return self.status in ("queued", "running")
+
+    @property
+    def percent(self) -> int | None:
+        """How far it is (0-100), or None while it can't tell."""
+        if self.status == "done":
+            return 100
+        return min(100, int(100 * self.done / self.total)) if self.total else None
+
+    @property
+    def seconds(self) -> float | None:
+        if self.started_at is None:
+            return None
+        return ((self.finished_at or utcnow()) - self.started_at).total_seconds()
 
 
 class SyncState(Base):

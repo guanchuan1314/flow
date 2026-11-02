@@ -69,9 +69,9 @@ def test_bad_password_shows_error(api, admin):
 
 
 def test_csrf_required(admin_web):
-    r = admin_web.post("/admin/departments/new", data={"name": "Sales"})
+    r = admin_web.post("/admin/staff/departments/new", data={"name": "Sales"})
     assert r.status_code == 403 and "session expired" in r.text
-    r = form_post(admin_web, "/admin/departments/new", "/admin/departments/new", {"name": "Sales"})
+    r = form_post(admin_web, "/admin/staff/departments/new", "/admin/staff/departments/new", {"name": "Sales"})
     assert r.status_code == 200 and "Department created" in r.text
 
 
@@ -125,13 +125,13 @@ def test_password_change_keeps_session_but_kills_others(api, admin):
 
 def test_permission_denied_page(api, admin_web, db):
     role = db.scalar(select(Role).where(Role.name == "Sales"))
-    form_post(admin_web, "/admin/staff/new", "/admin/staff/new", {
+    form_post(admin_web, "/admin/staff/members/new", "/admin/staff/members/new", {
         "email": "sales@b.com", "full_name": "Sam", "password": "Sales-Pass1", "role_ids": str(role.id)})
     form_post(admin_web, "/admin", "/admin/logout", {})
     web_login(api, "sales@b.com", "Sales-Pass1")
-    r = api.get("/admin/staff")
+    r = api.get("/admin/staff/members")
     assert r.status_code == 403 and "Access denied" in r.text
-    assert "/admin/staff" not in api.get("/admin").text  # menu hides it
+    assert "/admin/staff/members" not in api.get("/admin").text  # menu hides it
 
 
 # ---------------------------------------------------------------- every page renders
@@ -186,25 +186,25 @@ def test_every_admin_page_renders(admin_web, db, gw, account_groups):
     pages = [
         "/admin", "/admin/clients", "/admin/clients?q=trader", "/admin/clients/new", "/admin/kyc",
         *[f"/admin/clients/{ids['client']}?tab={t}" for t in ("overview", "accounts", "kyc", "finance", "notes", "activity")],
-        "/admin/accounts", f"/admin/accounts/{ids['login']}", "/admin/account-groups", "/admin/account-groups/new",
+        "/admin/accounts/trading-accounts", f"/admin/accounts/trading-accounts/{ids['login']}", "/admin/accounts/account-groups", "/admin/accounts/account-groups/new",
         "/admin/payment-methods", "/admin/payment-methods/new", "/admin/kyc-methods", "/admin/kyc-methods/new",
-        "/admin/orders", "/admin/orders?status=history", "/admin/ip-rules", "/admin/sync/jobs",
-        "/admin/symbols", "/admin/symbols/new", "/admin/liquidity", "/admin/liquidity?kind=feed",
-        "/admin/liquidity/new?kind=gateway", "/admin/liquidity/new?kind=feed&module=DXFeeder64.exe",
-        "/admin/liquidity/new?kind=gateway&module=LMAXGateway64.exe", "/admin/routing", "/admin/routing/new",
-        "/admin/trading-setup", "/admin/server-health", "/admin/trader-styles", "/admin/trader-styles?style=suggested&demo=1",
-        "/admin/configuration", "/admin/inactive-accounts", "/admin/restart", "/admin/pricing",
+        "/admin/orders", "/admin/orders?status=history", "/admin/security/ip-rules", "/admin/import/trades/jobs",
+        "/admin/trading-setup/symbols", "/admin/trading-setup/symbols/new", "/admin/trading-setup/liquidity", "/admin/trading-setup/liquidity?kind=feed",
+        "/admin/trading-setup/liquidity/new?kind=gateway", "/admin/trading-setup/liquidity/new?kind=feed&module=DXFeeder64.exe",
+        "/admin/trading-setup/liquidity/new?kind=gateway&module=LMAXGateway64.exe", "/admin/trading-setup/routing", "/admin/trading-setup/routing/new",
+        "/admin/trading-setup/overview", "/admin/server-tools/health", "/admin/accounts/trader-styles", "/admin/accounts/trader-styles?style=suggested&demo=1",
+        "/admin/configuration", "/admin/accounts/inactive-accounts", "/admin/server-tools/restart", "/admin/server-tools/pricing",
         "/admin/import/account-groups", "/admin/import/trading-accounts", "/admin/automation", "/admin/automation/new",
-        "/admin/trader-styles/setup", "/admin/server-health?only=warnings", "/admin/server-health?server=1",
-        "/admin/trader-styles?server=1",
-        f"/admin/account-groups/{ids['type']}", "/admin/payments", "/admin/payments?status=", f"/admin/payments/{payment_id}",
+        "/admin/accounts/trader-styles/setup", "/admin/server-tools/health?only=warnings", "/admin/server-tools/health?server=1",
+        "/admin/accounts/trader-styles?server=1",
+        f"/admin/accounts/account-groups/{ids['type']}", "/admin/payments", "/admin/payments?status=", f"/admin/payments/{payment_id}",
         f"/admin/payments/new?client_id={ids['client']}", "/admin/positions", "/admin/positions?partial=1",
-        "/admin/deals", "/admin/deals?kind=trades&date_from=2020-01-01", "/admin/sync",
+        "/admin/deals", "/admin/deals?kind=trades&date_from=2020-01-01", "/admin/import/trades",
         "/admin/copy", f"/admin/copy/{ids['strategy']}", "/admin/pamm", f"/admin/pamm/{ids['fund']}",
         "/admin/ibs", f"/admin/ibs/{ids['ib']}", "/admin/plans", "/admin/plans/new", "/admin/commissions",
-        "/admin/commissions?status=", "/admin/campaigns", "/admin/sources", "/admin/staff", "/admin/staff/new",
-        "/admin/staff/1", "/admin/roles", "/admin/roles/new", "/admin/roles/1", "/admin/departments", "/admin/audit",
-        "/admin/departments/new", "/admin/referral-links", "/admin/login-attempts", "/admin/me/security",
+        "/admin/commissions?status=", "/admin/campaigns", "/admin/sources", "/admin/staff/members", "/admin/staff/members/new",
+        "/admin/staff/members/1", "/admin/staff/roles", "/admin/staff/roles/new", "/admin/staff/roles/1", "/admin/staff/departments", "/admin/security/audit",
+        "/admin/staff/departments/new", "/admin/referral-links", "/admin/import/history", "/admin/import/history?partial=1", "/admin/security/login-attempts", "/admin/me/security",
     ]
     for url in pages:
         r = admin_web.get(url)
@@ -240,7 +240,7 @@ def test_admin_open_account_shows_credentials_once(admin_web, db, gw, account_gr
 
 def test_payment_approval_via_ui(api, admin_web, db, gw, account_groups):
     role = db.scalar(select(Role).where(Role.name == "Finance"))
-    form_post(admin_web, "/admin/staff/new", "/admin/staff/new", {
+    form_post(admin_web, "/admin/staff/members/new", "/admin/staff/members/new", {
         "email": "fin@b.com", "full_name": "Fin", "password": "Finance-Pass1", "role_ids": str(role.id)})
     c = register(admin_web, "payer@x.com")
     approve_kyc_direct(db, c["id"])
@@ -370,7 +370,7 @@ def test_audit_log_names_actions_and_shows_details_in_a_popup(admin_web, admin, 
     audit(db, admin, "account.status", "trading_account", 500123,
           {"before": "active", "after": "disabled", "logins": [1, 2], "sales": admin.id, "ok": True})
     db.commit()
-    page = admin_web.get("/admin/audit").text
+    page = admin_web.get("/admin/security/audit").text
     assert "Account status changed" in page and "Client registered" in page
     assert "account.status" not in page and "client.register" not in page  # no raw codes
     assert "Trading account 500123" in page
@@ -381,39 +381,69 @@ def test_audit_log_names_actions_and_shows_details_in_a_popup(admin_web, admin, 
     assert ">1, 2<" in details and ">Yes<" in details and admin.full_name in details
     assert "{" not in details  # never JSON
     # filter by area: only payment events
-    assert "Account status changed" not in admin_web.get("/admin/audit?action=payment").text
-    assert "Account status changed" in admin_web.get("/admin/audit?action=account").text
+    assert "Account status changed" not in admin_web.get("/admin/security/audit?action=payment").text
+    assert "Account status changed" in admin_web.get("/admin/security/audit?action=account").text
     assert c["id"]
 
 
 def test_departments_create_rename_delete(admin_web, db):
     from app.models import Department, Staff
 
-    page = admin_web.get("/admin/departments").text
-    assert 'href="/admin/departments/new"' in page
-    form_post(admin_web, "/admin/departments/new", "/admin/departments/new", {"name": "  Business   development "})
+    page = admin_web.get("/admin/staff/departments").text
+    assert 'href="/admin/staff/departments/new"' in page
+    form_post(admin_web, "/admin/staff/departments/new", "/admin/staff/departments/new", {"name": "  Business   development "})
     dep = db.scalar(select(Department).where(Department.name == "Business development"))
     assert dep
     admin = db.scalar(select(Staff).where(Staff.email == ADMIN[0]))
     admin.department_id = dep.id
     db.commit()
     dep_id, admin_id = dep.id, admin.id
-    assert admin.full_name in admin_web.get(f"/admin/departments/{dep.id}").text
-    form_post(admin_web, f"/admin/departments/{dep.id}", f"/admin/departments/{dep.id}", {"name": "BD"})
+    assert admin.full_name in admin_web.get(f"/admin/staff/departments/{dep.id}").text
+    form_post(admin_web, f"/admin/staff/departments/{dep.id}", f"/admin/staff/departments/{dep.id}", {"name": "BD"})
     db.expire_all()
     assert db.get(Department, dep.id).name == "BD"
-    r = form_post(admin_web, f"/admin/departments/{dep.id}", f"/admin/departments/{dep.id}/delete", {})
+    r = form_post(admin_web, f"/admin/staff/departments/{dep.id}", f"/admin/staff/departments/{dep.id}/delete", {})
     assert "BD" in r.text and "deleted." in r.text
     db.expire_all()
     assert db.get(Department, dep_id) is None and db.get(Staff, admin_id).department_id is None
-    page = admin_web.get("/admin/audit").text
+    page = admin_web.get("/admin/security/audit").text
     assert "Department renamed" in page and "Department deleted" in page
 
 
 def test_staff_and_security_pages_are_grouped_in_the_menu(admin_web):
-    page = admin_web.get("/admin/roles").text
+    page = admin_web.get("/admin/staff/roles").text
     tabs = page[page.index("crm-hub-tabs"):]
-    assert all(f'href="{u}"' in tabs[:600] for u in ("/admin/staff", "/admin/roles", "/admin/departments"))
-    page = admin_web.get("/admin/login-attempts").text
+    assert all(f'href="{u}"' in tabs[:600] for u in ("/admin/staff/members", "/admin/staff/roles", "/admin/staff/departments"))
+    page = admin_web.get("/admin/security/login-attempts").text
     tabs = page[page.index("crm-hub-tabs"):]
-    assert all(f'href="{u}"' in tabs[:600] for u in ("/admin/audit", "/admin/login-attempts", "/admin/ip-rules"))
+    assert all(f'href="{u}"' in tabs[:600] for u in ("/admin/security/audit", "/admin/security/login-attempts", "/admin/security/ip-rules"))
+
+
+def test_account_group_can_be_renamed(admin_web, db, account_groups):
+    from app.models import AccountGroup
+
+    url = f"/admin/accounts/account-groups/{account_groups['live']}"
+    fields = {"mt5_group": "real\\standard", "leverage_options": "100, 200, 500", "default_leverage": "100",
+              "min_deposit": "0", "spread_markup_points": "10", "max_accounts_per_client": "5", "enabled": "on",
+              "server_id": "1"}
+    r = form_post(admin_web, url, url, {**fields, "name": "  Standard   Plus "})
+    assert "Account group saved" in r.text
+    db.expire_all()
+    assert db.get(AccountGroup, account_groups["live"]).name == "Standard Plus"
+    r = form_post(admin_web, url, url, {**fields, "name": "Demo"})
+    assert "name already exists" in r.text
+
+
+def test_pages_live_under_their_menu_and_old_addresses_redirect(admin_web):
+    for old, new in (("/admin/symbols", "/admin/trading-setup/symbols"), ("/admin/trading-setup", "/admin/trading-setup/overview"),
+                     ("/admin/staff/1", "/admin/staff/members/1"), ("/admin/audit?action=client", "/admin/security/audit"),
+                     ("/admin/accounts", "/admin/accounts/trading-accounts"), ("/admin/sync", "/admin/import/trades"),
+                     ("/admin/server-health", "/admin/server-tools/health"), ("/admin/mt5-servers/1/pricing", "/admin/server-tools/pricing")):
+        r = admin_web.get(old)
+        assert r.status_code == 200 and r.url.path == new, (old, r.url)
+    assert admin_web.get("/admin/audit?action=client").url.query == b"action=client"
+    assert admin_web.get("/admin/staff/members/1/nothing-here").status_code == 404
+    assert admin_web.get("/admin/no-such-page").status_code == 404
+    menu = admin_web.get("/admin").text
+    assert 'href="/admin/trading-setup/overview"' in menu and 'href="/admin/staff/members"' in menu
+    assert 'href="/admin/security/audit"' in menu and 'href="/admin/server-tools/health"' in menu

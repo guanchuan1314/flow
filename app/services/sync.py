@@ -17,6 +17,7 @@ from app.mt5.gateway import MT5Deal, MT5Order
 from app.services import activity, events
 from app.services.accounts import apply_account_info
 from app.services.servers import the_server
+from app.services.sync_runs import report
 
 log = logging.getLogger(__name__)
 
@@ -322,8 +323,13 @@ def _empty_totals() -> dict:
 
 def _sync_logins(db: Session, gw: MT5Gateway, scope: list[int], server_id: int, totals: dict) -> dict:
     """Deals, positions, orders and account summaries of these (tracked) logins, added to `totals`."""
+    report(0, 4)  # progress of a background sync: four steps
     totals["new_deals"] += sync_deals(db, gw, scope, server_id)
+    report(1, 4)
     totals["open_positions"] += sync_positions(db, gw, scope, server_id)
+    report(2, 4)
     totals["open_orders"] += sync_orders(db, gw, scope, server_id)
+    report(3, 4)
     totals["accounts"] += sync_accounts(db, gw, scope, server_id)
+    report(4, 4)
     return totals

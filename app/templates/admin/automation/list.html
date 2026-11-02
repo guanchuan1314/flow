@@ -34,7 +34,7 @@
   <thead><tr><th>When</th><th>Rule</th><th>Target</th><th>Outcome</th><th>Message</th></tr></thead>
   <tbody>{% for x in runs %}
     <tr><td>{{ x.at|dt }}</td><td>{{ names.get(x.rule_id, x.rule_id) }}</td>
-      <td>{% if x.login %}<a href="/admin/accounts/{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
+      <td>{% if x.login %}<a href="/admin/accounts/trading-accounts/{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
       <td>{% if x.outcome == "done" %}<span class="badge text-bg-success">done</span>{% else %}<span class="badge text-bg-danger">failed</span>{% endif %}</td>
       <td>{{ x.message }}</td></tr>
   {% else %}{{ empty(5, "Nothing done yet.") }}{% endfor %}</tbody>

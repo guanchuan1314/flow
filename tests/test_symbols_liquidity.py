@@ -77,18 +77,18 @@ def test_symbol_with_open_trades_cannot_be_deleted(db, gw, server, trader):
 
 
 def test_symbol_screens(admin_web, db, gw, server):
-    r = form_post(admin_web, "/admin/symbols", "/admin/symbols/sync", {"server_id": "1"})
+    r = form_post(admin_web, "/admin/trading-setup/symbols", "/admin/trading-setup/symbols/sync", {"server_id": "1"})
     assert "9 symbols on MT5, 9 new" in r.text and "EURUSD" in r.text
-    r = form_post(admin_web, "/admin/symbols/new?server=1", "/admin/symbols/new",
+    r = form_post(admin_web, "/admin/trading-setup/symbols/new?server=1", "/admin/trading-setup/symbols/new",
                   {"server_id": "1", "name": "GOLD", "template": "XAUUSD", "description": "Gold spot", "digits": ""})
     assert "Symbol GOLD created on MT5" in r.text and gw.symbols["GOLD"].digits == 2
     sym = db.scalar(select(Symbol).where(Symbol.name == "GOLD"))
-    page = admin_web.get(f"/admin/symbols/{sym.id}")
+    page = admin_web.get(f"/admin/trading-setup/symbols/{sym.id}")
     assert page.status_code == 200 and "Gold spot" in page.text
-    r = form_post(admin_web, f"/admin/symbols/{sym.id}", f"/admin/symbols/{sym.id}",
+    r = form_post(admin_web, f"/admin/trading-setup/symbols/{sym.id}", f"/admin/trading-setup/symbols/{sym.id}",
                   {"description": "Gold vs dollar", "spread": "25", "trade_mode": "1"})
     assert "saved on MT5" in r.text and gw.symbols["GOLD"].spread == 25 and gw.symbols["GOLD"].trade_mode == 1
-    r = form_post(admin_web, f"/admin/symbols/{sym.id}", f"/admin/symbols/{sym.id}/delete", {})
+    r = form_post(admin_web, f"/admin/trading-setup/symbols/{sym.id}", f"/admin/trading-setup/symbols/{sym.id}/delete", {})
     assert "GOLD deleted on MT5" in r.text and "GOLD" not in gw.symbols
 
 
@@ -127,11 +127,11 @@ def test_liquidity_sync_create_update_delete(db, gw, server):
 
 
 def test_liquidity_screens(admin_web, db, gw, server):
-    r = form_post(admin_web, "/admin/liquidity?kind=feed", "/admin/liquidity/sync", {"server_id": "1", "kind": "feed"})
+    r = form_post(admin_web, "/admin/trading-setup/liquidity?kind=feed", "/admin/trading-setup/liquidity/sync", {"server_id": "1", "kind": "feed"})
     assert "0 gateways and 1 data feeds on MT5" in r.text and "MetaTrader 5 Demo Feeder" in r.text
-    page = admin_web.get("/admin/liquidity/new?server=1&kind=feed&module=DXFeeder64.exe")
+    page = admin_web.get("/admin/trading-setup/liquidity/new?server=1&kind=feed&module=DXFeeder64.exe")
     assert "demo.dxfeed.com:7300" in page.text and "Download History = No" in page.text
-    r = form_post(admin_web, "/admin/liquidity/new?server=1&kind=feed&module=DXFeeder64.exe", "/admin/liquidity/new",
+    r = form_post(admin_web, "/admin/trading-setup/liquidity/new?server=1&kind=feed&module=DXFeeder64.exe", "/admin/trading-setup/liquidity/new",
                   {"server_id": "1", "kind": "feed", "module": "DXFeeder64.exe", "name": "dxFeed", "enabled": "on",
                    "lp_server": "demo.dxfeed.com:7300", "flag": "1", "symbols": "Forex\\*\nMetals\\*",
                    "translations": "EUR/USD, EURUSD, 5\nXAU/USD, XAUUSD, 2, 1, 1",
@@ -141,16 +141,16 @@ def test_liquidity_screens(admin_web, db, gw, server):
     assert feed.symbols == ["Forex\\*", "Metals\\*"] and feed.params["Download History"] == "Yes"
     assert feed.translations[1] == {"source": "XAU/USD", "symbol": "XAUUSD", "digits": 2, "bid_markup": 1, "ask_markup": 1}
     c = db.scalar(select(LiquidityConnection).where(LiquidityConnection.name == "dxFeed"))
-    r = form_post(admin_web, f"/admin/liquidity/{c.id}", f"/admin/liquidity/{c.id}",
+    r = form_post(admin_web, f"/admin/trading-setup/liquidity/{c.id}", f"/admin/trading-setup/liquidity/{c.id}",
                   {"enabled": "on", "lp_server": "feed.dxfeed.com:7300", "flag": ["1", "2"], "other_flags": "8",
                    "symbols": "*", "translations": "", "params": "Download History = Yes"})
     assert "saved on MT5" in r.text
     feed = gw.links[("feed", "dxFeed")]
     assert feed.server == "feed.dxfeed.com:7300" and feed.flags == 1 | 2 | 8 and feed.translations == []
-    r = form_post(admin_web, f"/admin/liquidity/{c.id}", f"/admin/liquidity/{c.id}",
+    r = form_post(admin_web, f"/admin/trading-setup/liquidity/{c.id}", f"/admin/trading-setup/liquidity/{c.id}",
                   {"params": "no equals sign here"})
     assert "Name = Value" in r.text
-    r = form_post(admin_web, f"/admin/liquidity/{c.id}", f"/admin/liquidity/{c.id}/delete", {})
+    r = form_post(admin_web, f"/admin/trading-setup/liquidity/{c.id}", f"/admin/trading-setup/liquidity/{c.id}/delete", {})
     assert "Data feed dxFeed deleted on MT5" in r.text and ("feed", "dxFeed") not in gw.links
 
 

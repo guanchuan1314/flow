@@ -10,7 +10,7 @@
 {# step 1: choose the module #}
 <div class="card mw-lg"><div class="card-header">New {{ label|lower }} on <strong>{{ server.name if server else "—" }}</strong>:
   choose who to connect to</div><div class="card-body">
-  <form method="get" action="/admin/liquidity/new">
+  <form method="get" action="/admin/trading-setup/liquidity/new">
     <input type="hidden" name="server" value="{{ server.id if server else '' }}">
     <input type="hidden" name="kind" value="{{ kind }}">
     <p class="small text-muted">Each one is a module (connector) installed on the MT5 server{% if modules %}: this server has {{ modules|length }}{% endif %}.
@@ -29,14 +29,14 @@
     {% endfor %}
     {% if not modules and not mt5_warning %}<div class="form-text text-danger">The server reported no {{ label|lower }} modules.</div>{% endif %}
     <button class="btn btn-primary mt-2" type="submit">Next</button>
-    <a class="btn btn-link mt-2" href="/admin/liquidity?server={{ server.id if server else '' }}&kind={{ kind }}">Cancel</a>
+    <a class="btn btn-link mt-2" href="/admin/trading-setup/liquidity?server={{ server.id if server else '' }}&kind={{ kind }}">Cancel</a>
   </form>
 </div></div>
 {% else %}
 {% set src = c %}
 {% set m = module %}
 {% macro val(name, default="") -%}{{ src[name] if src else default }}{%- endmacro %}
-<form method="post" action="{{ '/admin/liquidity/new' if new else '/admin/liquidity/' ~ c.id }}" class="mw-lg">
+<form method="post" action="{{ '/admin/trading-setup/liquidity/new' if new else '/admin/trading-setup/liquidity/' ~ c.id }}" class="mw-lg">
   {{ csrf_input(csrf) }}
   <input type="hidden" name="other_flags" value="{{ other_flags }}">
   <div class="card mb-3"><div class="card-header">{{ label }} on <strong>{{ server.name }}</strong></div><div class="card-body"><div class="row">
@@ -127,7 +127,7 @@
   <div class="card mb-3"><div class="card-body d-flex justify-content-between align-items-center gap-2">
     <div class="small">{% if routes %}Routing rules sending orders here: <strong>{{ routes|join(", ") }}</strong>
       {% else %}<span class="text-warning-emphasis">No routing rule sends orders to this gateway yet.</span>{% endif %}</div>
-    <a class="btn btn-outline-primary btn-sm" href="/admin/routing/new?server={{ server.id }}&gateway={{ c.id }}"><i class="bi bi-signpost-split"></i> Route orders here</a>
+    <a class="btn btn-outline-primary btn-sm" href="/admin/trading-setup/routing/new?server={{ server.id }}&gateway={{ c.id }}"><i class="bi bi-signpost-split"></i> Route orders here</a>
   </div></div>
   {% endif %}
 
@@ -141,7 +141,7 @@
   </div></div></div>
 
   <button class="btn btn-primary" type="submit">{{ "Create on MT5" if new else "Save to MT5" }}</button>
-  <a class="btn btn-link" href="/admin/liquidity?server={{ server.id }}&kind={{ kind }}">Cancel</a>
+  <a class="btn btn-link" href="/admin/trading-setup/liquidity?server={{ server.id }}&kind={{ kind }}">Cancel</a>
 </form>
 {% endif %}
 
@@ -149,7 +149,7 @@
 <div class="card mw-lg border-danger mt-4"><div class="card-body d-flex justify-content-between align-items-center gap-2">
   <div class="small text-muted">Deleting removes this {{ label|lower }} from the MT5 server and from the CRM.
     {% if kind == "gateway" %}It can't be deleted while routing rules send orders to it.{% else %}Symbols priced only by it stop receiving quotes.{% endif %}</div>
-  {{ post_button("/admin/liquidity/" ~ c.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
+  {{ post_button("/admin/trading-setup/liquidity/" ~ c.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
                  confirm="Delete " ~ label|lower ~ " " ~ c.name ~ " on the MT5 server " ~ server.name ~ "?", danger=True) }}
 </div></div>
 {% endif %}

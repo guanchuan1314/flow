@@ -8,15 +8,16 @@ from sqlalchemy.orm import Session
 from app.core.errors import ServiceError
 from app.models import LiquidityConnection, MT5Server, Symbol
 from app.mt5 import MT5Gateway
-from app.services import liquidity, routing_rules, symbols
+from app.services import liquidity, routing_rules, symbols, sync_runs
 
 
 def sync_all(db: Session, server: MT5Server, actor=None, gw: MT5Gateway | None = None) -> dict:
     """Sync symbols, gateways and data feeds, and routing rules from MT5. A part that fails doesn't
     stop the others; its error is returned instead."""
     out = {}
-    for key, fn in (("symbols", symbols.sync_symbols), ("liquidity", liquidity.sync_liquidity),
-                    ("routes", routing_rules.sync_routes)):
+    for n, (key, fn) in enumerate((("symbols", symbols.sync_symbols), ("liquidity", liquidity.sync_liquidity),
+                                   ("routes", routing_rules.sync_routes))):
+        sync_runs.report(n, 3)
         try:
             out[key] = fn(db, server, actor, gw=gw)
         except ServiceError as exc:

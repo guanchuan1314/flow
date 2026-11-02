@@ -132,58 +132,58 @@ def test_symbol_sessions_round_trip(db, gw, server):
 def test_bulk_symbol_edit(db, gw, server, admin_web):
     symbols.sync_symbols(db, server, gw=gw)
     ids = [str(s.id) for s in db.scalars(select(Symbol).where(Symbol.name.in_(["EURUSD", "GBPUSD"])))]
-    r = form_post(admin_web, "/admin/symbols?server=1", "/admin/symbols/bulk",
+    r = form_post(admin_web, "/admin/trading-setup/symbols?server=1", "/admin/trading-setup/symbols/bulk",
                   {"server_id": "1", "ids": ids, "trade_mode": "3", "spread": "15", "volume_max": ""})
     assert "Saved on MT5: 2 symbols" in r.text
     assert gw.symbols["EURUSD"].trade_mode == gw.symbols["GBPUSD"].trade_mode == 3 and gw.symbols["GBPUSD"].spread == 15
     assert gw.symbols["USDJPY"].trade_mode == 4  # not ticked
-    r = form_post(admin_web, "/admin/symbols?server=1", "/admin/symbols/bulk",
+    r = form_post(admin_web, "/admin/trading-setup/symbols?server=1", "/admin/trading-setup/symbols/bulk",
                   {"server_id": "1", "ids": ids, "volume_min": "500"})
     assert "Nothing saved" in r.text and gw.symbols["EURUSD"].volume_min == Decimal("0.01")
 
 
 # ---------------------------------------------------------------- screens
 def test_routing_screens(admin_web, db, gw, server):
-    r = form_post(admin_web, "/admin/routing", "/admin/routing/sync", {"server_id": "1"})
+    r = form_post(admin_web, "/admin/trading-setup/routing", "/admin/trading-setup/routing/sync", {"server_id": "1"})
     assert "1 routing rules on MT5, 1 new" in r.text and "Auto Execution" in r.text
     liquidity.sync_liquidity(db, server, gw=gw)
     gwy = liquidity.create_connection(db, None, server_id=1, kind="gateway", name="Prime", module="IntegralGateway64.exe",
                                       fields={})
-    page = admin_web.get(f"/admin/routing/new?server=1&gateway={gwy.id}")
+    page = admin_web.get(f"/admin/trading-setup/routing/new?server=1&gateway={gwy.id}")
     assert page.status_code == 200 and f'value="{gwy.id}" selected' in page.text
-    r = form_post(admin_web, "/admin/routing/new?server=1", "/admin/routing/new", {
+    r = form_post(admin_web, "/admin/trading-setup/routing/new?server=1", "/admin/trading-setup/routing/new", {
         "server_id": "1", "name": "Real to Prime", "at_top": "on", "enabled": "on",
         "order_type": ["1", "2"], "request_mode": "all", "action": "1001", "target": str(gwy.id),
         "cond": ["1001", "", ""], "cond_rule": ["0", "0", "0"], "cond_value": ["real\\*", "", ""]})
     assert "Routing rule Real to Prime created on MT5" in r.text and "Send to gateway Prime" in r.text
     assert gw.routes[0].types == 3 and gw.routes[0].dealers[0]["login"] == gwy.gateway_login
     rule = db.scalar(select(RoutingRule).where(RoutingRule.name == "Real to Prime"))
-    assert "real\\*" in admin_web.get(f"/admin/routing/{rule.id}").text
+    assert "real\\*" in admin_web.get(f"/admin/trading-setup/routing/{rule.id}").text
 
-    r = form_post(admin_web, "/admin/routing", f"/admin/routing/{rule.id}/move", {"direction": "down"})
+    r = form_post(admin_web, "/admin/trading-setup/routing", f"/admin/trading-setup/routing/{rule.id}/move", {"direction": "down"})
     assert names(gw) == ["Auto Execution", "Real to Prime"]
-    form_post(admin_web, "/admin/routing", f"/admin/routing/{rule.id}/toggle", {})
+    form_post(admin_web, "/admin/trading-setup/routing", f"/admin/trading-setup/routing/{rule.id}/toggle", {})
     assert not gw.routes[1].enabled
-    r = form_post(admin_web, f"/admin/routing/{rule.id}", f"/admin/routing/{rule.id}", {
+    r = form_post(admin_web, f"/admin/trading-setup/routing/{rule.id}", f"/admin/trading-setup/routing/{rule.id}", {
         "order_type": ["1"], "request_mode": "chosen", "request_kind": ["8", "4"], "action": "1003",
         "cond": ["4"], "cond_rule": ["3"], "cond_value": ["25:00"]})
     assert "HH:MM" in r.text and gw.routes[1].action == 1001  # refused: MT5 untouched
-    r = form_post(admin_web, f"/admin/routing/{rule.id}", f"/admin/routing/{rule.id}", {
+    r = form_post(admin_web, f"/admin/trading-setup/routing/{rule.id}", f"/admin/trading-setup/routing/{rule.id}", {
         "enabled": "on", "order_type": ["1"], "request_mode": "chosen", "request_kind": ["8", "4"], "action": "1003",
         "cond": ["4"], "cond_rule": ["3"], "cond_value": ["22:00"]})
     assert "saved on MT5" in r.text
     assert gw.routes[1].action == 1003 and gw.routes[1].requests == 12 and gw.routes[1].dealers == []
-    r = form_post(admin_web, f"/admin/routing/{rule.id}", f"/admin/routing/{rule.id}/delete", {})
+    r = form_post(admin_web, f"/admin/trading-setup/routing/{rule.id}", f"/admin/trading-setup/routing/{rule.id}/delete", {})
     assert "deleted on MT5" in r.text and names(gw) == ["Auto Execution"]
 
 
 def test_trading_setup_page_and_sync_everything(admin_web, db, gw, server):
-    r = form_post(admin_web, "/admin/trading-setup", "/admin/trading-setup/sync", {"server_id": "1"})
+    r = form_post(admin_web, "/admin/trading-setup/overview", "/admin/trading-setup/overview/sync", {"server_id": "1"})
     assert "synced from MT5: 9 symbols, 0 gateways, 1 data feeds, 1 routing rules" in r.text
     assert "MetaTrader 5 Demo Feeder" in r.text and "Auto Execution" in r.text
     liquidity.create_connection(db, None, server_id=1, kind="gateway", name="Unrouted", module="LMAXGateway64.exe",
                                 fields={})
     o = mt5_setup.overview(db, server)
     assert "No enabled routing rule sends orders to gateway Unrouted." in o["warnings"]
-    page = admin_web.get("/admin/liquidity/new?server=1&kind=gateway")
+    page = admin_web.get("/admin/trading-setup/liquidity/new?server=1&kind=gateway")
     assert "Exchanges" in page.text and "Borsa Istanbul VIOP Gateway" in page.text

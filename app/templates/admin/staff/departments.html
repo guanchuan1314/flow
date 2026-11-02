@@ -2,10 +2,10 @@
 {% from "macros.html" import empty %}
 {% block page_title %}Departments{% endblock %}
 {% block content %}
-{% if staff.has_perm("staff.manage") %}<div class="d-flex justify-content-end mb-3"><a class="btn btn-success btn-sm" href="/admin/departments/new"><i class="bi bi-plus-lg"></i> New department</a></div>{% endif %}
+{% if staff.has_perm("staff.manage") %}<div class="d-flex justify-content-end mb-3"><a class="btn btn-success btn-sm" href="/admin/staff/departments/new"><i class="bi bi-plus-lg"></i> New department</a></div>{% endif %}
 <div class="card mw-md"><div class="table-responsive"><table class="table table-hover">
   <thead><tr><th>Department</th><th class="num">Staff</th></tr></thead>
-  <tbody>{% for d in rows %}<tr><td><a href="/admin/departments/{{ d.id }}">{{ d.name }}</a></td><td class="num">{{ counts.get(d.id, 0) }}</td></tr>
+  <tbody>{% for d in rows %}<tr><td><a href="/admin/staff/departments/{{ d.id }}">{{ d.name }}</a></td><td class="num">{{ counts.get(d.id, 0) }}</td></tr>
   {% else %}{{ empty(2, "No departments yet.") }}{% endfor %}</tbody>
 </table></div></div>
 {% endblock %}

@@ -85,6 +85,12 @@ def update_account_group(db: Session, actor, ag: AccountGroup, changes: dict) ->
     from app.services.mt5_sync import DEMO_GROUP_FIELDS, GROUP_FIELDS, push_group
 
     changes = {k: v for k, v in changes.items() if v is not None or k not in ("margin_call", "stop_out")}
+    if "name" in changes:
+        changes["name"] = " ".join(str(changes["name"]).split())
+        if not changes["name"]:
+            raise ServiceError("Give the account group a name")
+        if db.scalar(select(AccountGroup.id).where(AccountGroup.name == changes["name"], AccountGroup.id != ag.id)):
+            raise Conflict("Account group name already exists")
     moving = any(k in changes and changes[k] != getattr(ag, k) for k in ("server_id", "mt5_group"))
     if moving:
         if db.scalar(select(TradingAccount.id).where(TradingAccount.account_group_id == ag.id)):

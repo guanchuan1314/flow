@@ -29,6 +29,7 @@ from app.mt5 import set_gateway  # noqa: E402
 from app.mt5.mock import MockGateway  # noqa: E402
 from app.core.ratelimit import limiter  # noqa: E402
 from app.services import activity, events, ip_rules, notifications, server_health, staff as staff_svc  # noqa: E402
+from app.web import syncs  # noqa: E402
 
 ADMIN = ("admin@broker.com", "Admin-Pass1")
 STRONG = "Client-Pass1"
@@ -52,6 +53,7 @@ def fresh_db():
     ip_rules.invalidate()
     server_health._banner_cache.clear()
     activity.forget()
+    syncs.WAIT_SECONDS = 60  # a sync started from a page finishes before the page answers (results are asserted)
     yield
 
 

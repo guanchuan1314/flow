@@ -9,14 +9,15 @@ from app.mt5 import MT5Error, for_account_group, routed
 from app.services import accounts as svc
 from app.services import mt5_sync, trader_styles
 from app.services.clients import ensure_visible, visible_account, visible_client_ids
+from app.web import syncs
 from app.web.common import (
-    Page, attempt, flash, opt_dec, opt_enum, opt_int, redirect, render, req_dec, staff_perm, sync_message,
+    Page, attempt, flash, opt_dec, opt_enum, opt_int, redirect, render, req_dec, staff_perm,
 )
 
 router = APIRouter()
 
 
-@router.get("/accounts")
+@router.get("/accounts/trading-accounts")
 def list_accounts(request: Request, q: str = "", status: str = "", kind: str = "", origin: str = "", page: int = 1,
                   me: Staff = Depends(staff_perm("accounts.view")), db: Session = Depends(get_db)):
     query = select(TradingAccount).where(TradingAccount.client_id.in_(visible_client_ids(me)))
@@ -52,7 +53,7 @@ def open_account(request: Request, client_id: int, account_group_id: int = Form(
                   master_password=result["master_password"], investor_password=result["investor_password"])
 
 
-@router.get("/accounts/{login}")
+@router.get("/accounts/trading-accounts/{login}")
 def account_detail(request: Request, login: int, me: Staff = Depends(staff_perm("accounts.view")),
                    db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
@@ -64,22 +65,22 @@ def account_detail(request: Request, login: int, me: Staff = Depends(staff_perm(
                   style=trader_styles.badges(db, [acc]).get(acc.login))
 
 
-@router.post("/accounts/{login}/refresh")
+@router.post("/accounts/trading-accounts/{login}/refresh")
 def refresh(request: Request, login: int, me: Staff = Depends(staff_perm("accounts.view")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
     return attempt(request, lambda: svc.refresh_account(db, routed(), acc), "Account refreshed from MT5.",
-                   f"/admin/accounts/{login}")
+                   f"/admin/accounts/trading-accounts/{login}")
 
 
-@router.post("/accounts/{login}/leverage")
+@router.post("/accounts/trading-accounts/{login}/leverage")
 def leverage(request: Request, login: int, leverage: int = Form(...),
              me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
     return attempt(request, lambda: svc.change_leverage(db, routed(), me, acc, leverage),
-                   f"Leverage changed to 1:{leverage}.", f"/admin/accounts/{login}")
+                   f"Leverage changed to 1:{leverage}.", f"/admin/accounts/trading-accounts/{login}")
 
 
-@router.post("/accounts/{login}/password")
+@router.post("/accounts/trading-accounts/{login}/password")
 def reset_password(request: Request, login: int, which: str = Form("master"),
                    me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
@@ -87,31 +88,31 @@ def reset_password(request: Request, login: int, which: str = Form("master"),
         pwd = svc.reset_password(db, routed(), me, acc, investor=which == "investor")
     except (ServiceError, MT5Error) as exc:
         flash(request, getattr(exc, "message", str(exc)), "danger")
-        return redirect(f"/admin/accounts/{login}")
+        return redirect(f"/admin/accounts/trading-accounts/{login}")
     return render(request, "admin/accounts/credentials.html", account=acc, client=db.get(Client, acc.client_id),
                   reset_kind=which, new_password=pwd)
 
 
-@router.post("/accounts/{login}/trading")
+@router.post("/accounts/trading-accounts/{login}/trading")
 def trading(request: Request, login: int, enabled: str = Form(...),
             me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
     on = enabled == "1"
     return attempt(request, lambda: svc.set_trading_enabled(db, routed(), me, acc, on),
-                   "Trading enabled." if on else "Trading disabled.", f"/admin/accounts/{login}")
+                   "Trading enabled." if on else "Trading disabled.", f"/admin/accounts/trading-accounts/{login}")
 
 
-@router.post("/accounts/{login}/status")
+@router.post("/accounts/trading-accounts/{login}/status")
 def status(request: Request, login: int, status: str = Form(...),
            me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
 
     def run():
         svc.set_status(db, routed(), me, acc, opt_enum(AccountStatus, status, "status"))
-    return attempt(request, run, "Account status updated.", f"/admin/accounts/{login}")
+    return attempt(request, run, "Account status updated.", f"/admin/accounts/trading-accounts/{login}")
 
 
-@router.post("/accounts/{login}/transfer")
+@router.post("/accounts/trading-accounts/{login}/transfer")
 def transfer(request: Request, login: int, direction: str = Form(...), amount: str = Form(...),
              me: Staff = Depends(staff_perm("accounts.manage", "finance.create")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
@@ -121,26 +122,21 @@ def transfer(request: Request, login: int, direction: str = Form(...), amount: s
         value = req_dec(amount)
         fn = svc.transfer_to_mt5 if direction == "to_mt5" else svc.transfer_from_mt5
         fn(db, routed(), me, client, acc, value)
-    return attempt(request, run, "Transfer completed.", f"/admin/accounts/{login}")
+    return attempt(request, run, "Transfer completed.", f"/admin/accounts/trading-accounts/{login}")
 
 
 # ---------------------------------------------------------------- account groups
-@router.post("/account-groups/sync")
+@router.post("/accounts/account-groups/sync")
 def groups_sync(request: Request, me: Staff = Depends(staff_perm("account_groups.manage")), db: Session = Depends(get_db)):
-    text, level = sync_message(mt5_sync.sync_all(db, me, accounts=False))
-    flash(request, text + (" New groups are disabled until you review and enable them." if "new account" in text else ""),
-          level)
-    return redirect("/admin/account-groups")
+    return syncs.start(request, db, me, "account_groups", None, "/admin/accounts/account-groups")
 
 
-@router.post("/accounts/sync")
+@router.post("/accounts/trading-accounts/sync")
 def accounts_sync(request: Request, me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
-    text, level = sync_message(mt5_sync.sync_all(db, me, accounts=True))
-    flash(request, text, level)
-    return redirect("/admin/accounts")
+    return syncs.start(request, db, me, "trading_accounts", None, "/admin/accounts/trading-accounts")
 
 
-@router.get("/account-groups")
+@router.get("/accounts/account-groups")
 def groups_list(request: Request, me: Staff = Depends(staff_perm("account_groups.manage")), db: Session = Depends(get_db)):
     return render(request, "admin/accounts/groups.html", groups=db.scalars(select(AccountGroup).order_by(AccountGroup.id)).all())
 
@@ -149,14 +145,14 @@ def _servers(db: Session):
     return db.scalars(select(MT5Server).where(MT5Server.enabled.is_(True)).order_by(MT5Server.is_demo, MT5Server.name)).all()
 
 
-@router.get("/account-groups/new")
+@router.get("/accounts/account-groups/new")
 def group_new(request: Request, me: Staff = Depends(staff_perm("account_groups.manage")), db: Session = Depends(get_db)):
     groups = db.execute(select(AccountGroup.mt5_group, MT5Server.name).join(MT5Server, AccountGroup.server)
                         .where(AccountGroup.on_server.is_(True)).order_by(MT5Server.name, AccountGroup.mt5_group)).all()
     return render(request, "admin/accounts/group_form.html", t=None, servers=_servers(db), known_groups=groups)
 
 
-@router.get("/account-groups/{group_id}")
+@router.get("/accounts/account-groups/{group_id}")
 def group_edit(request: Request, group_id: int, me: Staff = Depends(staff_perm("account_groups.manage")),
               db: Session = Depends(get_db)):
     t = get_or_404(db, AccountGroup, group_id)
@@ -183,7 +179,7 @@ def _group_fields(name, mt5_group, is_demo, currency, leverage_options, default_
                 margin_call=opt_dec(margin_call), stop_out=opt_dec(stop_out), open_on_register=open_on_register == "on")
 
 
-@router.post("/account-groups/new")
+@router.post("/accounts/account-groups/new")
 def group_create(request: Request, name: str = Form(...), mt5_group: str = Form(...), is_demo: str = Form(""),
                 currency: str = Form("USD"), leverage_options: str = Form(...), default_leverage: str = Form(""),
                 min_deposit: str = Form("0"), demo_initial_balance: str = Form("10000"),
@@ -201,10 +197,10 @@ def group_create(request: Request, name: str = Form(...), mt5_group: str = Form(
             spread_markup_points, max_accounts_per_client, enabled, description, server_id, margin_call, stop_out,
             open_on_register))
     done = "Account group created, and its group created on MT5." if create_on_mt5 == "on" else "Account group created."
-    return attempt(request, run, done, "/admin/account-groups")
+    return attempt(request, run, done, "/admin/accounts/account-groups")
 
 
-@router.post("/account-groups/{group_id}")
+@router.post("/accounts/account-groups/{group_id}")
 def group_update(request: Request, group_id: int, name: str = Form(...), mt5_group: str = Form(...),
                 is_demo: str = Form(""), currency: str = Form("USD"), leverage_options: str = Form(...),
                 default_leverage: str = Form(""), min_deposit: str = Form("0"),
@@ -221,14 +217,13 @@ def group_update(request: Request, group_id: int, name: str = Form(...), mt5_gro
         for k in ("margin_call", "stop_out"):
             if fields[k] is None:  # left blank: keep the group's value
                 fields.pop(k)
-        fields.pop("name")  # the name identifies the product; keep it stable
         fields.pop("is_demo")  # existing accounts depend on this
         fields.pop("currency")
         svc.update_account_group(db, me, ag, fields)
-    return attempt(request, run, "Account group saved, and its MT5 group updated where needed.", "/admin/account-groups")
+    return attempt(request, run, "Account group saved, and its MT5 group updated where needed.", "/admin/accounts/account-groups")
 
 
-@router.post("/account-groups/{group_id}/delete")
+@router.post("/accounts/account-groups/{group_id}/delete")
 def group_delete(request: Request, group_id: int, accounts_action: str = Form(""), move_to: str = Form(""),
                 confirm_name: str = Form(""), me: Staff = Depends(staff_perm("account_groups.manage")),
                 db: Session = Depends(get_db)):
@@ -241,4 +236,4 @@ def group_delete(request: Request, group_id: int, accounts_action: str = Form(""
         done = svc.delete_account_group(db, me, ag, accounts_action or None, opt_int(move_to))
         return (f" {done['moved']} account(s) moved." if done["moved"] else "") + (
             f" {done['deleted']} MT5 login(s) deleted (kept in the CRM as archived)." if done["deleted"] else "")
-    return attempt(request, run, f"Account group {name} deleted, with its MT5 group.{{result}}", "/admin/account-groups")
+    return attempt(request, run, f"Account group {name} deleted, with its MT5 group.{{result}}", "/admin/accounts/account-groups")

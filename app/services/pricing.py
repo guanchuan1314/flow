@@ -247,6 +247,7 @@ def run_due(db: Session, gw: MT5Gateway | None = None) -> int:
     """Worker: for each server with auto sync on and due, sync its symbols from MT5 (new ones the LPs brought
     in, changed swaps) and apply the markups again. Returns how many servers ran."""
     from app.services import symbols as symbol_svc
+    from app.services import sync_runs
 
     ran = 0
     for server in db.scalars(select(MT5Server).where(MT5Server.enabled.is_(True)).order_by(MT5Server.id)).all():
@@ -257,13 +258,21 @@ def run_due(db: Session, gw: MT5Gateway | None = None) -> int:
         if last and datetime.fromisoformat(last) > utcnow() - timedelta(minutes=auto.get("minutes") or 60):
             continue
         try:
-            r = symbol_svc.sync_symbols(db, server, None, gw)
+            out = {}
+
+            def run() -> dict:  # kept in the synchronization history as a scheduled run
+                out["symbols"] = symbol_svc.sync_symbols(db, server, None, gw)
+                out["pricing"] = apply(db, None, server, gw)
+                return out
+            sync_runs.record(db, "pricing", server, run)
+            r = out["symbols"]
             result = f"{r['symbols']} symbols, {len(r['created'])} new, {len(r['updated'])} updated. " + \
-                describe(apply(db, None, server, gw))
-        except ServiceError as exc:
+                describe(out["pricing"])
+        except (ServiceError, MT5Error) as exc:
             db.rollback()
-            result = f"failed: {exc.message}"
-            log.error("symbol auto sync failed for '%s': %s", server.name, exc.message)
+            why = getattr(exc, "message", None) or str(exc)
+            result = f"failed: {why}"
+            log.error("symbol auto sync failed for '%s': %s", server.name, why)
         db.refresh(server)
         p = settings(server)
         p["auto_sync"] = {**p["auto_sync"], "last_run": utcnow().isoformat(), "last_result": result}

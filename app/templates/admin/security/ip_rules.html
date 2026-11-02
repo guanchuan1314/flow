@@ -13,7 +13,7 @@
       <tbody>
       {% for x in rules %}
         <tr class="{% if not x.enabled %}text-muted{% endif %}">
-          <td class="mono"><a href="/admin/ip-rules/{{ x.id }}">{{ x.network }}</a></td>
+          <td class="mono"><a href="/admin/security/ip-rules/{{ x.id }}">{{ x.network }}</a></td>
           <td>{% if x.action == "block" %}<span class="badge text-bg-danger">block</span>{% else %}<span class="badge text-bg-success">allow</span>{% endif %}</td>
           <td>{{ scopes[x.scope] }}</td>
           <td class="small">{{ x.description }}</td>
@@ -33,7 +33,7 @@
 
   <section data-tab="Add a rule" id="add">
     <div class="card mb-4"><div class="card-body">
-      <form method="post" action="/admin/ip-rules">
+      <form method="post" action="/admin/security/ip-rules">
         {{ csrf_input(csrf) }}
         {% include "admin/security/_rule_fields.html" %}
         <button class="btn btn-primary" type="submit">Add rule</button>

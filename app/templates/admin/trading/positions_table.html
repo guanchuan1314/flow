@@ -8,7 +8,7 @@
     {% set owner = owners.get(p.login) %}
     <tr>
       <td class="mono">{{ p.position_id }}</td>
-      <td><a href="/admin/accounts/{{ p.login }}">{{ p.login }}</a></td>
+      <td><a href="/admin/accounts/trading-accounts/{{ p.login }}">{{ p.login }}</a></td>
       <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
       <td>{{ p.symbol }}</td><td>{{ p.action|side }}</td>
       <td class="num">{{ p.volume|money }}</td><td class="num">{{ p.price_open|price }}</td><td class="num">{{ p.price_current|price }}</td>

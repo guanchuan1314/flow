@@ -31,13 +31,13 @@
 <div class="row g-3 mb-4">
   {{ tile("Clients", kpi.clients, "people", "/admin/clients") }}
   {{ tile("New this week", kpi.new_clients, "person-plus") }}
-  {{ tile("Live accounts", kpi.live_accounts, "wallet2", "/admin/accounts") }}
+  {{ tile("Live accounts", kpi.live_accounts, "wallet2", "/admin/accounts/trading-accounts") }}
   {{ tile("Client equity", kpi.equity|money, "safe") }}
   {{ tile("Deposits this month", kpi.deposits_month|money, "box-arrow-in-down") }}
   {{ tile("Withdrawals this month", kpi.withdrawals_month|money, "box-arrow-up") }}
   {{ tile("Open positions", kpi.open_positions, "activity", "/admin/positions") }}
   {% if kpi.sync_errors %}
-    {{ tile("Sync errors", kpi.sync_errors, "exclamation-triangle", "/admin/sync", warn=True) }}
+    {{ tile("Sync errors", kpi.sync_errors, "exclamation-triangle", "/admin/import/trades", warn=True) }}
   {% else %}
     {{ tile("Floating P/L", pnl(kpi.floating), "graph-up") }}
   {% endif %}

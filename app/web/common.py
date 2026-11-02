@@ -111,26 +111,29 @@ def _live_quotes() -> list[dict]:
 # where a tab shows to staff with any of its permissions.
 ADMIN_HUBS = {
     "setup": ("Trading setup", "diagram-3", [
-        ("/admin/trading-setup", "Overview", ("symbols.manage", "liquidity.manage", "routing.manage")),
-        ("/admin/symbols", "Symbols", ("symbols.manage",)),
-        ("/admin/liquidity", "Liquidity providers", ("liquidity.manage",)),
-        ("/admin/routing", "Routing", ("routing.manage",))]),
+        ("/admin/trading-setup/overview", "Overview", ("symbols.manage", "liquidity.manage", "routing.manage")),
+        ("/admin/trading-setup/symbols", "Symbols", ("symbols.manage",)),
+        ("/admin/trading-setup/liquidity", "Liquidity providers", ("liquidity.manage",)),
+        ("/admin/trading-setup/routing", "Routing", ("routing.manage",))]),
     "import": ("Import from MT5", "cloud-download", [
         ("/admin/import/account-groups", "Account groups", ("mt5_servers.manage",)),
         ("/admin/import/trading-accounts", "Trading accounts", ("mt5_servers.manage",)),
-        ("/admin/sync", "Trades", ("trading.view",))]),
+        ("/admin/import/trades", "Trades", ("trading.view",)),
+        ("/admin/import/history", "History", ("mt5_servers.manage", "account_groups.manage", "accounts.manage",
+                                              "accounts.cleanup", "trading.sync", "symbols.manage", "liquidity.manage",
+                                              "routing.manage"))]),
     "tools": ("Server tools", "tools", [
-        ("/admin/server-health", "Server health", ("mt5_health.view",)),
-        ("/admin/pricing", "Symbols & pricing", ("symbols.manage",)),
-        ("/admin/restart", "Restart components", ("mt5_servers.restart",))]),
+        ("/admin/server-tools/health", "Server health", ("mt5_health.view",)),
+        ("/admin/server-tools/pricing", "Symbols & pricing", ("symbols.manage",)),
+        ("/admin/server-tools/restart", "Restart components", ("mt5_servers.restart",))]),
     "staff": ("Staff", "person-badge", [
-        ("/admin/staff", "Staff", ("staff.view",)),
-        ("/admin/roles", "Roles", ("staff.view",)),
-        ("/admin/departments", "Departments", ("staff.view",))]),
+        ("/admin/staff/members", "Staff", ("staff.view",)),
+        ("/admin/staff/roles", "Roles", ("staff.view",)),
+        ("/admin/staff/departments", "Departments", ("staff.view",))]),
     "security": ("Security", "shield-lock", [
-        ("/admin/audit", "Audit log", ("security.view",)),
-        ("/admin/login-attempts", "Login attempts", ("security.view",)),
-        ("/admin/ip-rules", "IP access rules", ("security.ip_rules",))]),
+        ("/admin/security/audit", "Audit log", ("security.view",)),
+        ("/admin/security/login-attempts", "Login attempts", ("security.view",)),
+        ("/admin/security/ip-rules", "IP access rules", ("security.ip_rules",))]),
 }
 
 

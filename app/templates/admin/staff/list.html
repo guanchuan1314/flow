@@ -2,13 +2,13 @@
 {% from "macros.html" import empty %}
 {% block page_title %}Staff{% endblock %}
 {% block content %}
-{% if staff.has_perm("staff.manage") %}<div class="d-flex justify-content-end mb-3"><a class="btn btn-success btn-sm" href="/admin/staff/new"><i class="bi bi-plus-lg"></i> New staff member</a></div>{% endif %}
+{% if staff.has_perm("staff.manage") %}<div class="d-flex justify-content-end mb-3"><a class="btn btn-success btn-sm" href="/admin/staff/members/new"><i class="bi bi-plus-lg"></i> New staff member</a></div>{% endif %}
 <div class="card"><div class="table-responsive"><table class="table table-hover">
   <thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Department</th><th>2FA</th><th>IP allowlist</th><th>Last login</th><th>Status</th></tr></thead>
   <tbody>
   {% for s in rows %}
     <tr class="{% if not s.is_active %}text-muted{% endif %}">
-      <td><a href="/admin/staff/{{ s.id }}">{{ s.full_name }}</a></td><td>{{ s.email }}</td>
+      <td><a href="/admin/staff/members/{{ s.id }}">{{ s.full_name }}</a></td><td>{{ s.email }}</td>
       <td>{{ s.roles|map(attribute="name")|join(", ") }}</td><td>{{ deps.get(s.department_id, "") }}</td>
       <td>{% if s.totp_enabled %}<i class="bi bi-shield-check text-success"></i>{% else %}<i class="bi bi-shield-x text-danger"></i>{% endif %}</td>
       <td class="small">{{ s.allowed_ips|join(", ") or "any" }}</td><td class="small">{{ s.last_login_at|dt }}</td>

@@ -130,19 +130,19 @@ def test_setup_page_save_try_and_reset(admin_web, db, gw, server):  # noqa: F811
     d = Deals(db, login)
     for i in range(3):
         d.position(START + timedelta(hours=i), 90, reason=1)
-    page = admin_web.get("/admin/trader-styles/setup").text
+    page = admin_web.get("/admin/accounts/trader-styles/setup").text
     assert "Bigger after a loss" in page and "Martingale-like" in page
-    tried = admin_web.get(f"/admin/trader-styles/setup?login={login}").text
+    tried = admin_web.get(f"/admin/accounts/trader-styles/setup?login={login}").text
     assert f"Account {login}" in tried and "EA / algo" in tried
 
-    url = "/admin/trader-styles/setup"
+    url = "/admin/accounts/trader-styles/setup"
     r = form_post(admin_web, url, url, {
         "rule_order": ["1", "2"], "rule_key": ["quick", "rest"], "rule_name": ["Quick", "Everyone else"],
         "rule_kind": ["style", "style"], "rule_color": ["danger", "secondary"], "rule_group": ["", ""],
         "rule_enabled": ["on", "on"],
         "cond_rule": ["quick"], "cond_metric": ["quick_pct"], "cond_op": ["ge"], "cond_value": ["50"], "cond_value2": [""]})
     assert "Saved 2 styles and 0 tags" in r.text
-    listing = admin_web.get("/admin/trader-styles").text
+    listing = admin_web.get("/admin/accounts/trader-styles").text
     assert "Quick" in listing and "Set up styles" in listing
     r = form_post(admin_web, url, url, {"rule_order": ["1"], "rule_key": ["Bad key"], "rule_name": ["x"],
                                         "rule_kind": ["style"], "rule_color": ["info"], "rule_group": [""],

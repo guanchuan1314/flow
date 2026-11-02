@@ -5,7 +5,7 @@
 {% set locked = (r and r.name == "Admin") or not staff.has_perm("staff.manage") %}
 {% set modules = [] %}{% for p in permissions %}{% set m = p.split(".")[0] %}{% if m not in modules %}{% set _ = modules.append(m) %}{% endif %}{% endfor %}
 <div class="card mw-md"><div class="card-body">
-  <form method="post" action="/admin/roles/{{ r.id if r else 'new' }}">
+  <form method="post" action="/admin/staff/roles/{{ r.id if r else 'new' }}">
     {{ csrf_input(csrf) }}
     <fieldset {% if locked %}disabled{% endif %}>
     <div class="row">
@@ -29,7 +29,7 @@
     {% endfor %}
     </div>
     {% if not locked %}<button class="btn btn-primary" type="submit">Save role</button>{% endif %}
-    <a class="btn btn-link" href="/admin/roles">Back</a>
+    <a class="btn btn-link" href="/admin/staff/roles">Back</a>
     </fieldset>
   </form>
 </div></div>

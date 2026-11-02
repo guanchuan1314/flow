@@ -5,7 +5,7 @@
 {% set manage = staff.has_perm("copy.manage") %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
   {{ badge(s.status) }}
-  <span class="small text-muted">Master <a href="/admin/accounts/{{ s.master_login }}">{{ s.master_login }}</a> ·
+  <span class="small text-muted">Master <a href="/admin/accounts/trading-accounts/{{ s.master_login }}">{{ s.master_login }}</a> ·
     owner <a href="/admin/clients/{{ s.owner_client_id }}">{{ clients[s.owner_client_id].full_name }}</a> ·
     performance fee {{ s.performance_fee_pct|money }}% · min equity {{ s.min_investment|money }}</span>
   {% if manage %}
@@ -32,7 +32,7 @@
       {% for sub in subs %}
         <tr>
           <td><a href="/admin/clients/{{ sub.follower_client_id }}">{{ clients[sub.follower_client_id].full_name }}</a></td>
-          <td><a href="/admin/accounts/{{ sub.follower_login }}">{{ sub.follower_login }}</a></td>
+          <td><a href="/admin/accounts/trading-accounts/{{ sub.follower_login }}">{{ sub.follower_login }}</a></td>
           <td>{{ sub.allocation_mode|label }}</td><td class="num">{{ sub.ratio }}</td><td class="num">{{ sub.max_lot or "—" }}</td>
           <td>{{ badge(sub.status) }}</td><td class="num">{{ sub.high_water_mark|money }}</td><td class="num">{{ sub.fees_paid|money }}</td>
           <td class="text-end text-nowrap">

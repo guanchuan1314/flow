@@ -4,7 +4,7 @@
 {% block content %}
 {% set manage = staff.has_perm("staff.manage") %}
 <div class="card mw-md"><div class="card-body">
-  <form method="post" action="/admin/staff/{{ s.id if s else 'new' }}">
+  <form method="post" action="/admin/staff/members/{{ s.id if s else 'new' }}">
     {{ csrf_input(csrf) }}
     <fieldset {% if not manage %}disabled{% endif %}>
     <div class="row">
@@ -36,7 +36,7 @@
       </div>
     </div>
     {% if manage %}<button class="btn btn-primary" type="submit">Save</button>{% endif %}
-    <a class="btn btn-link" href="/admin/staff">Back</a>
+    <a class="btn btn-link" href="/admin/staff/members">Back</a>
     </fieldset>
   </form>
   {% if referral_link %}
@@ -56,7 +56,7 @@
   <hr>
   <div class="d-flex align-items-center gap-3">
     <span>Two-factor authentication: {% if s.totp_enabled %}<span class="badge text-bg-success">Enabled</span>{% else %}<span class="badge text-bg-secondary">Not set up</span>{% endif %}</span>
-    {% if s.totp_enabled %}{{ post_button("/admin/staff/" ~ s.id ~ "/reset-2fa", "Reset 2FA (lost device)", csrf, "btn-outline-warning btn-sm", confirm="Remove this person's 2FA? Verify their identity first.") }}{% endif %}
+    {% if s.totp_enabled %}{{ post_button("/admin/staff/members/" ~ s.id ~ "/reset-2fa", "Reset 2FA (lost device)", csrf, "btn-outline-warning btn-sm", confirm="Remove this person's 2FA? Verify their identity first.") }}{% endif %}
   </div>
   {% endif %}
 </div></div>

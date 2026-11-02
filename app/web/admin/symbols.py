@@ -9,14 +9,10 @@ from app.db import get_db
 from app.models import LiquidityConnection, Staff, Symbol
 from app.services import liquidity, symbols as svc
 from app.services.servers import require_server, the_server
+from app.web import syncs
 from app.web.common import Page, attempt, opt_dec, opt_int, render, staff_perm
 
 router = APIRouter()
-
-
-def _sync_text(name: str, r: dict, what: str) -> str:
-    text = f"{name}: {r.get(what, 0)} {what} on MT5, {len(r['created'])} new, {len(r['updated'])} updated"
-    return text + (f", {len(r['removed'])} removed (no longer on MT5)" if r["removed"] else "")
 
 
 # ---------------------------------------------------------------- symbols
@@ -62,7 +58,7 @@ def _choices() -> dict:
                 format_sessions=svc.format_sessions)
 
 
-@router.get("/symbols")
+@router.get("/trading-setup/symbols")
 def symbols_page(request: Request, q: str = "", page: int = 1,
                  me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     srv = the_server(db)
@@ -74,16 +70,13 @@ def symbols_page(request: Request, q: str = "", page: int = 1,
                   server=srv, q=q, **_choices())
 
 
-@router.post("/symbols/sync")
+@router.post("/trading-setup/symbols/sync")
 def symbols_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm("symbols.manage")),
                  db: Session = Depends(get_db)):
-    def run():
-        srv = require_server(db)
-        return _sync_text(srv.name, svc.sync_symbols(db, srv, me), "symbols")
-    return attempt(request, run, "{result}", f"/admin/symbols?server={server_id}")
+    return syncs.start(request, db, me, "symbols", syncs.server_id(db), f"/admin/trading-setup/symbols?server={server_id}")
 
 
-@router.get("/symbols/new")
+@router.get("/trading-setup/symbols/new")
 def symbol_new(request: Request, me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     srv = the_server(db)
     templates = db.scalars(select(Symbol).where(Symbol.server_id == (srv.id if srv else 0))
@@ -92,7 +85,7 @@ def symbol_new(request: Request, me: Staff = Depends(staff_perm("symbols.manage"
                   **_choices())
 
 
-@router.post("/symbols/new")
+@router.post("/trading-setup/symbols/new")
 def symbol_create(request: Request, server_id: str = Form(...), name: str = Form(...), template: str = Form(""),
                   form: SymbolForm = Depends(), me: Staff = Depends(staff_perm("symbols.manage")),
                   db: Session = Depends(get_db)):
@@ -101,10 +94,10 @@ def symbol_create(request: Request, server_id: str = Form(...), name: str = Form
             raise ServiceError("Choose the existing symbol to copy settings from")
         sym = svc.create_symbol(db, me, server_id=int(server_id), name=name, template=template, changes=form.changes())
         return sym.name
-    return attempt(request, run, "Symbol {result} created on MT5.", f"/admin/symbols?server={server_id}")
+    return attempt(request, run, "Symbol {result} created on MT5.", f"/admin/trading-setup/symbols?server={server_id}")
 
 
-@router.post("/symbols/bulk")
+@router.post("/trading-setup/symbols/bulk")
 def symbols_bulk(request: Request, server_id: str = Form(""), ids: list[str] = Form([]), form: SymbolForm = Depends(),
                  me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     def run():
@@ -115,10 +108,10 @@ def symbols_bulk(request: Request, server_id: str = Form(""), ids: list[str] = F
             raise ServiceError("Nothing saved. " + " ".join(f"{k}: {v}" for k, v in failed.items()))
         text = f"Saved on MT5: {len(done)} symbols ({', '.join(done[:8])}{'…' if len(done) > 8 else ''})."
         return text + (" Not saved: " + "; ".join(f"{k}: {v}" for k, v in failed.items()) if failed else "")
-    return attempt(request, run, "{result}", f"/admin/symbols?server={server_id}")
+    return attempt(request, run, "{result}", f"/admin/trading-setup/symbols?server={server_id}")
 
 
-@router.get("/symbols/{symbol_id}")
+@router.get("/trading-setup/symbols/{symbol_id}")
 def symbol_edit(request: Request, symbol_id: int, me: Staff = Depends(staff_perm("symbols.manage")),
                 db: Session = Depends(get_db)):
     sym = get_or_404(db, Symbol, symbol_id)
@@ -127,21 +120,21 @@ def symbol_edit(request: Request, symbol_id: int, me: Staff = Depends(staff_perm
                   usage=svc.usage(db, sym), **_choices())
 
 
-@router.post("/symbols/{symbol_id}")
+@router.post("/trading-setup/symbols/{symbol_id}")
 def symbol_update(request: Request, symbol_id: int, form: SymbolForm = Depends(),
                   me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     sym = get_or_404(db, Symbol, symbol_id)
     return attempt(request, lambda: svc.update_symbol(db, me, sym, form.changes(blank_text_clears=True)),
-                   f"Symbol {sym.name} saved on MT5.", f"/admin/symbols/{symbol_id}")
+                   f"Symbol {sym.name} saved on MT5.", f"/admin/trading-setup/symbols/{symbol_id}")
 
 
-@router.post("/symbols/{symbol_id}/delete")
+@router.post("/trading-setup/symbols/{symbol_id}/delete")
 def symbol_delete(request: Request, symbol_id: int, me: Staff = Depends(staff_perm("symbols.manage")),
                   db: Session = Depends(get_db)):
     sym = get_or_404(db, Symbol, symbol_id)
     name, server_id = sym.name, sym.server_id
     return attempt(request, lambda: svc.delete_symbol(db, me, sym), f"Symbol {name} deleted on MT5 and in the CRM.",
-                   f"/admin/symbols?server={server_id}")
+                   f"/admin/trading-setup/symbols?server={server_id}")
 
 
 # ---------------------------------------------------------------- liquidity providers
@@ -215,7 +208,7 @@ def _flags(kind: str, value: int) -> dict:
     return dict(flags=offered, flags_on=[bit for bit in offered if value & bit], other_flags=value & ~sum(offered))
 
 
-@router.get("/liquidity")
+@router.get("/trading-setup/liquidity")
 def liquidity_page(request: Request, kind: str = "gateway", me: Staff = Depends(staff_perm("liquidity.manage")),
                    db: Session = Depends(get_db)):
     srv, kind = the_server(db), _kind(kind)
@@ -229,19 +222,14 @@ def liquidity_page(request: Request, kind: str = "gateway", me: Staff = Depends(
                   kinds=liquidity.KINDS, counts=counts, routes={c.id: liquidity.routes_to(db, c) for c in rows})
 
 
-@router.post("/liquidity/sync")
+@router.post("/trading-setup/liquidity/sync")
 def liquidity_sync(request: Request, server_id: str = Form(""), kind: str = Form("gateway"),
                    me: Staff = Depends(staff_perm("liquidity.manage")), db: Session = Depends(get_db)):
-    def run():
-        srv = require_server(db)
-        r = liquidity.sync_liquidity(db, srv, me)
-        text = f"{srv.name}: {r['gateways']} gateways and {r['feeds']} data feeds on MT5, {len(r['created'])} new, " \
-               f"{len(r['updated'])} updated"
-        return text + (f", {len(r['removed'])} removed (no longer on MT5)" if r["removed"] else "")
-    return attempt(request, run, "{result}", f"/admin/liquidity?server={server_id}&kind={_kind(kind)}")
+    return syncs.start(request, db, me, "liquidity", syncs.server_id(db),
+                       f"/admin/trading-setup/liquidity?server={server_id}&kind={_kind(kind)}")
 
 
-@router.post("/liquidity/restart")
+@router.post("/trading-setup/liquidity/restart")
 def liquidity_restart(request: Request, server_id: str = Form(""), kind: str = Form("gateway"),
                       me: Staff = Depends(staff_perm("liquidity.manage")), db: Session = Depends(get_db)):
     kind = _kind(kind)
@@ -251,10 +239,10 @@ def liquidity_restart(request: Request, server_id: str = Form(""), kind: str = F
         liquidity.restart_all(db, me, srv, kind)
         return (f"{srv.name}: every {liquidity.KINDS[kind].lower()} is restarting. They reconnect to their LPs "
                 "within a minute; Sync from MT5 shows their status.")
-    return attempt(request, run, "{result}", f"/admin/liquidity?server={server_id}&kind={kind}")
+    return attempt(request, run, "{result}", f"/admin/trading-setup/liquidity?server={server_id}&kind={kind}")
 
 
-@router.get("/liquidity/new")
+@router.get("/trading-setup/liquidity/new")
 def link_new(request: Request, kind: str = "gateway", module: str = "",
              me: Staff = Depends(staff_perm("liquidity.manage")), db: Session = Depends(get_db)):
     srv, kind = the_server(db), _kind(kind)
@@ -271,7 +259,7 @@ def link_new(request: Request, kind: str = "gateway", module: str = "",
                   **_flags(kind, 1 if kind == "feed" else 0))
 
 
-@router.post("/liquidity/new")
+@router.post("/trading-setup/liquidity/new")
 def link_create(request: Request, server_id: str = Form(...), kind: str = Form(...), name: str = Form(...),
                 module: str = Form(...), map_symbols: str = Form(""), route_groups: str = Form(""),
                 route_symbols: str = Form(""), form: LinkForm = Depends(),
@@ -286,10 +274,10 @@ def link_create(request: Request, server_id: str = Form(...), kind: str = Form(.
                                            map_symbols=map_symbols == "on", route_groups=_lines(route_groups),
                                            route_symbols=_lines(route_symbols)).name
     return attempt(request, run, f"{liquidity.KINDS[kind]} {{result}} created on MT5.",
-                   f"/admin/liquidity?server={server_id}&kind={kind}")
+                   f"/admin/trading-setup/liquidity?server={server_id}&kind={kind}")
 
 
-@router.get("/liquidity/{link_id}")
+@router.get("/trading-setup/liquidity/{link_id}")
 def link_edit(request: Request, link_id: int, me: Staff = Depends(staff_perm("liquidity.manage")),
               db: Session = Depends(get_db)):
     c = get_or_404(db, LiquidityConnection, link_id)
@@ -299,19 +287,19 @@ def link_edit(request: Request, link_id: int, me: Staff = Depends(staff_perm("li
                   **_flags(c.kind, c.flags))
 
 
-@router.post("/liquidity/{link_id}")
+@router.post("/trading-setup/liquidity/{link_id}")
 def link_update(request: Request, link_id: int, form: LinkForm = Depends(),
                 me: Staff = Depends(staff_perm("liquidity.manage")), db: Session = Depends(get_db)):
     c = get_or_404(db, LiquidityConnection, link_id)
     return attempt(request, lambda: liquidity.update_connection(db, me, c, form.fields(), password=form.password),
-                   f"{liquidity.KINDS[c.kind]} {c.name} saved on MT5.", f"/admin/liquidity/{link_id}")
+                   f"{liquidity.KINDS[c.kind]} {c.name} saved on MT5.", f"/admin/trading-setup/liquidity/{link_id}")
 
 
-@router.post("/liquidity/{link_id}/delete")
+@router.post("/trading-setup/liquidity/{link_id}/delete")
 def link_delete(request: Request, link_id: int, me: Staff = Depends(staff_perm("liquidity.manage")),
                 db: Session = Depends(get_db)):
     c = get_or_404(db, LiquidityConnection, link_id)
     label, server_id, kind = f"{liquidity.KINDS[c.kind]} {c.name}", c.server_id, c.kind
     return attempt(request, lambda: liquidity.delete_connection(db, me, c), f"{label} deleted on MT5 and in the CRM.",
-                   f"/admin/liquidity?server={server_id}&kind={kind}")
+                   f"/admin/trading-setup/liquidity?server={server_id}&kind={kind}")
 

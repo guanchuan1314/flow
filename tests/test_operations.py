@@ -283,45 +283,45 @@ def test_styles_from_deal_reasons_and_moves(db, gw, server, admin):
 
 def test_operations_pages_post(admin_web, db, gw):  # noqa: F811
     old = old_users(db, gw, db.get(MT5Server, 1), "demo\\standard", 1, 400)[0]
-    r = form_post(admin_web, "/admin/server-health", "/admin/server-health/refresh", {"server_id": 1})
+    r = form_post(admin_web, "/admin/server-tools/health", "/admin/server-tools/health/refresh", {"server_id": 1})
     assert "Read from MT5 just now" in r.text and "Main Trade Server" in r.text and "Access Server Europe" in r.text
-    assert "Nothing needs attention." in admin_web.get("/admin/server-health?only=warnings").text
+    assert "Nothing needs attention." in admin_web.get("/admin/server-tools/health?only=warnings").text
 
     menu = admin_web.get("/admin/configuration").text  # MT5 > Server tools in the menu, not on Configuration
-    assert 'href="/admin/server-health"' in menu and 'href="/admin/inactive-accounts"' in menu
+    assert 'href="/admin/server-tools/health"' in menu and 'href="/admin/accounts/inactive-accounts"' in menu
     assert "card-header\">Server tools" not in menu
-    assert admin_web.get("/admin/demo-cleanup").url.path == "/admin/inactive-accounts"
-    assert admin_web.get("/admin/mt5-servers/1/inactive").url.path == "/admin/inactive-accounts"
+    assert admin_web.get("/admin/accounts/inactive-accounts").url.path == "/admin/accounts/inactive-accounts"
+    assert admin_web.get("/admin/mt5-servers/1/inactive").url.path == "/admin/accounts/inactive-accounts"  # old address
 
-    page = "/admin/mt5-servers/1/inactive"
+    page = "/admin/accounts/inactive-accounts"
     assert str(old) in admin_web.get(page).text
-    r = form_post(admin_web, page, page + "/mt5-days", {"group": "demo\\standard", "days": "45"})
+    r = form_post(admin_web, page, page + "/1/mt5-days", {"group": "demo\\standard", "days": "45"})
     assert "inactive for 45 days in: demo\\standard" in r.text and gw.groups["demo\\standard"].demo_inactivity == 45
-    r = form_post(admin_web, page, page + "/run", {"everything": "1", "action": "archive"})
-    assert "Archived 1 demo account(s) on MT5" in r.text and old in gw.archived
-    r = form_post(admin_web, page, page + "/settings", {"days": "60", "action": "archive", "groups": "demo*",
+    r = form_post(admin_web, page, page + "/1/run", {"everything": "1", "action": "archive"})
+    assert "archived 1 demo account(s) on MT5" in r.text and old in gw.archived
+    r = form_post(admin_web, page, page + "/1/settings", {"days": "60", "action": "archive", "groups": "demo*",
                                                         "enabled": "1"})
     assert "runs once a day" in r.text
-    r = form_post(admin_web, "/admin/trader-styles", "/admin/trader-styles/move", {"target": "1"})
+    r = form_post(admin_web, "/admin/accounts/trader-styles", "/admin/accounts/trader-styles/move", {"target": "1"})
     assert "Tick the accounts to move first" in r.text
 
 
 def test_mt5_menu_and_tabbed_pages(admin_web):  # noqa: F811
-    page = admin_web.get("/admin/symbols").text
+    page = admin_web.get("/admin/trading-setup/symbols").text
     nav = page[page.find('<nav class="nav'):page.find("</nav>")]
     assert nav.count('class="nav-group"') == 1  # only Accounts opens a nested menu
     accounts = nav[nav.find(">Accounts<"):nav.find(">Trading setup<")]
     assert all(t in accounts for t in ("Trading accounts", "Account groups", "Trader styles", "Inactive accounts"))
     # Trading setup, Import from MT5 and Server tools are one entry each, opening a page with tabs
-    assert 'href="/admin/trading-setup"><i class="bi bi-diagram-3"></i>Trading setup' in nav
+    assert 'href="/admin/trading-setup/overview"><i class="bi bi-diagram-3"></i>Trading setup' in nav
     assert 'href="/admin/import/account-groups"><i class="bi bi-cloud-download"></i>Import from MT5' in nav
-    assert 'href="/admin/server-health"><i class="bi bi-tools"></i>Server tools' in nav
-    assert nav.count("nav-link active") == 1 and 'nav-link active" href="/admin/trading-setup"' in nav  # on Symbols
+    assert 'href="/admin/server-tools/health"><i class="bi bi-tools"></i>Server tools' in nav
+    assert nav.count("nav-link active") == 1 and 'nav-link active" href="/admin/trading-setup/overview"' in nav  # on Symbols
     tabs = page[page.find("crm-hub-tabs"):page.find("</ul>", page.find("crm-hub-tabs"))]
     assert [t in tabs for t in (">Overview<", ">Symbols<", ">Liquidity providers<", ">Routing<")] == [True] * 4
-    assert 'nav-link active" href="/admin/symbols"' in tabs
-    for url, expect in (("/admin/sync", (">Account groups<", ">Trading accounts<", ">Trades<")),
-                        ("/admin/pricing", (">Server health<", ">Symbols &amp; pricing<", ">Restart components<"))):
+    assert 'nav-link active" href="/admin/trading-setup/symbols"' in tabs
+    for url, expect in (("/admin/import/trades", (">Account groups<", ">Trading accounts<", ">Trades<")),
+                        ("/admin/server-tools/pricing", (">Server health<", ">Symbols &amp; pricing<", ">Restart components<"))):
         text = admin_web.get(url).text
         tabs = text[text.find("crm-hub-tabs"):text.find("</ul>", text.find("crm-hub-tabs"))]
         assert all(t in tabs for t in expect), url
@@ -329,12 +329,12 @@ def test_mt5_menu_and_tabbed_pages(admin_web):  # noqa: F811
 
 # ---------------------------------------------------------------- restarts
 def test_restart_a_component_and_all_gateways(admin_web, db, gw):  # noqa: F811
-    page = "/admin/restart"
-    assert 'href="/admin/restart"' in admin_web.get("/admin/server-health").text  # a Server tools tab
+    page = "/admin/server-tools/restart"
+    assert 'href="/admin/server-tools/restart"' in admin_web.get("/admin/server-tools/health").text  # a Server tools tab
     text = admin_web.get(page).text
     assert "Access Server Asia" in text and "type Main Trade Server" in text
 
-    post = "/admin/mt5-servers/1/restart"
+    post = "/admin/server-tools/restart/1"
     r = form_post(admin_web, page, post, {"component_id": "4"})
     assert "Access Server Asia is restarting on MT5" in r.text and gw.restarts == [("component", 4)]
     r = form_post(admin_web, page, post, {"component_id": "1", "confirm_name": "main"})  # the main one: typed name
@@ -345,9 +345,9 @@ def test_restart_a_component_and_all_gateways(admin_web, db, gw):  # noqa: F811
     assert db.scalar(select(AuditLog).where(AuditLog.action == "mt5_server.restart")
                      .order_by(AuditLog.id.desc())).details["component"] == "Main Trade Server"
 
-    lp = "/admin/liquidity?server=1&kind=feed"
+    lp = "/admin/trading-setup/liquidity?server=1&kind=feed"
     assert "Restart all data feeds" in admin_web.get(lp).text
-    r = form_post(admin_web, lp, "/admin/liquidity/restart", {"server_id": "1", "kind": "feed"})
+    r = form_post(admin_web, lp, "/admin/trading-setup/liquidity/restart", {"server_id": "1", "kind": "feed"})
     assert "every data feed is restarting" in r.text and gw.restarts[-1] == ("links", "feed")
 
 
@@ -357,5 +357,55 @@ def test_symbol_sessions_picker_markup(admin_web, db, gw):  # noqa: F811
 
     symbols.sync_symbols(db, db.get(MT5Server, 1), None, gw)
     s = db.scalar(select(Symbol).where(Symbol.name == "EURUSD"))
-    page = admin_web.get(f"/admin/symbols/{s.id}").text
+    page = admin_web.get(f"/admin/trading-setup/symbols/{s.id}").text
     assert 'data-sessions="quote" data-day="1"' in page and 'data-fill="quote"' in page
+
+
+def test_demo_cleanup_runs_in_the_background_with_progress(admin_web, db, gw, monkeypatch):  # noqa: F811
+    import threading
+
+    from app.models import SyncRun
+    from app.services import sync_runs
+    from app.web import syncs
+
+    old = old_users(db, gw, db.get(MT5Server, 1), "demo\standard", 3, 400)
+    monkeypatch.setattr(demo_cleanup, "BATCH", 1)
+    monkeypatch.setattr(sync_runs, "SAVE_EVERY", 0)
+    monkeypatch.setattr(syncs, "WAIT_SECONDS", 0)
+    release, calls = threading.Event(), []
+    positions = gw.get_positions
+
+    def slow(logins):  # the second batch waits: the run is part way
+        calls.append(logins)
+        if len(calls) == 2:
+            release.wait(10)
+        return positions(logins)
+    monkeypatch.setattr(gw, "get_positions", slow)
+
+    page = "/admin/accounts/inactive-accounts"
+    try:
+        r = form_post(admin_web, page, page + "/1/run", {"everything": "1", "action": "archive"})
+        assert "started in the background" in r.text
+        for _ in range(100):  # the first account is done
+            db.expire_all()
+            run = db.scalar(select(SyncRun))
+            if run.done >= 1:
+                break
+            threading.Event().wait(0.05)
+        assert (run.kind, run.status, run.done, run.total, run.params["action"]) == ("demo_cleanup", "running", 1, 3, "archive")
+        again = admin_web.get(page).text  # a refresh still shows it
+        assert "Inactive demo accounts" in again and "1 of 3 done" in again and "progress-w-30" in again
+        assert 'hx-get="/admin/import/history/panel?kinds=demo_cleanup&live=1"' in again
+        assert acc_of(db, old[0]).status.value == "archived"  # saved batch by batch
+    finally:
+        release.set()
+    sync_runs.pool().submit(lambda: None).result()
+    for _ in range(100):
+        db.expire_all()
+        if not db.scalar(select(SyncRun)).active:
+            break
+        threading.Event().wait(0.05)
+    assert set(old) <= set(gw.archived)
+    panel = admin_web.get("/admin/import/history/panel?kinds=demo_cleanup&live=1").text
+    assert "Finished" in panel and "archived 3 demo account(s) on MT5" in panel and "Reload the page" in panel
+    assert "hx-get" not in panel  # done: it stops refreshing

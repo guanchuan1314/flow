@@ -94,8 +94,8 @@ def test_auto_sync_brings_in_new_symbols_and_applies_markups(db, gw, server):
 
 
 def test_pricing_page(admin_web, db, gw, server):  # noqa: F811
-    page, post = "/admin/pricing", "/admin/mt5-servers/1/pricing"
-    assert 'href="/admin/pricing"' in admin_web.get("/admin/server-health").text  # a Server tools tab
+    page, post = "/admin/server-tools/pricing", "/admin/server-tools/pricing/1"
+    assert 'href="/admin/server-tools/pricing"' in admin_web.get("/admin/server-tools/health").text  # a Server tools tab
     assert "Not on MT5 yet" not in admin_web.get(page).text
     r = form_post(admin_web, page, post, {"spread_groups": "real\\standard", "spread_symbols": "*", "spread_points": "12",
                                           "comm_groups": "", "comm_symbols": "", "comm_per_lot": "",

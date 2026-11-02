@@ -6,7 +6,7 @@
 <p class="small text-muted mb-0">How each account trades, measured from the deals stored in the CRM (no MT5 request): where its deals were placed
   (Expert Advisor, desktop, mobile, web, MQL5 signal), how long it holds positions, how often it trades, its sizing after losses, hedging and more.
   The styles and tags to detect, and the account group each style belongs in, are set up under <strong>Set up styles</strong>.</p>
-  {% if staff.has_perm("accounts.manage") %}<a class="btn btn-sm btn-outline-primary text-nowrap" href="/admin/trader-styles/setup"><i class="bi bi-sliders"></i> Set up styles</a>{% endif %}
+  {% if staff.has_perm("accounts.manage") %}<a class="btn btn-sm btn-outline-primary text-nowrap" href="/admin/accounts/trader-styles/setup"><i class="bi bi-sliders"></i> Set up styles</a>{% endif %}
 </div>
 
 <div class="card mb-3">
@@ -42,7 +42,7 @@
   Accounts of these styles in another group (with the same currency) are suggested for a move.</p>{% endif %}
 
 {% if server or every %}
-<form id="move" method="post" action="/admin/trader-styles/move">{{ csrf_input(csrf) }}<input type="hidden" name="back_to" value="{{ request.url.path }}?{{ request.url.query }}"></form>
+<form id="move" method="post" action="/admin/accounts/trader-styles/move">{{ csrf_input(csrf) }}<input type="hidden" name="back_to" value="{{ request.url.path }}?{{ request.url.query }}"></form>
 <div class="card">
   {% if staff.has_perm("accounts.manage") and rows %}
   <div class="card-header d-flex flex-wrap gap-2 align-items-center">
@@ -67,7 +67,7 @@
       <tr>
         {% if staff.has_perm("accounts.manage") %}<td><input class="form-check-input" type="checkbox" name="login" value="{{ a.login }}" form="move"
           {% if style == "suggested" %}checked{% endif %} aria-label="Tick {{ a.login }}"></td>{% endif %}
-        <td><a href="/admin/accounts/{{ a.login }}">{{ a.login }}</a></td>
+        <td><a href="/admin/accounts/trading-accounts/{{ a.login }}">{{ a.login }}</a></td>
         {% if every %}<td class="small">{{ a.server.name }}</td>{% endif %}
         <td><a href="/admin/clients/{{ row.client.id }}">{{ row.client.first_name }} {{ row.client.last_name }}</a></td>
         <td class="small">{{ a.group }}</td>

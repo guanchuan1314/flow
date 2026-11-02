@@ -41,6 +41,7 @@ async def lifespan(_: FastAPI):
         log.critical("Database schema is not up to date - run `python -m app.cli migrate`")
     # The API process also reacts to deals it ingests (e.g. a manual sync).
     events.register_default_handlers()
+    _recover_sync_runs()
     servers = _enabled_servers()
     for server in servers:  # connect early so /ready reflects reality
         try:
@@ -59,6 +60,18 @@ async def lifespan(_: FastAPI):
     yield
     if worker:
         worker.shutdown()
+
+
+def _recover_sync_runs() -> None:
+    """Background syncs this process was running when it stopped: marked as interrupted."""
+    from app.services import sync_runs
+
+    try:
+        with dbmod.SessionLocal() as db:
+            if sync_runs.recover_interrupted(db, "manual"):
+                log.warning("synchronizations interrupted by the restart were marked as failed")
+    except Exception:  # noqa: BLE001 - e.g. the table is not there before the migration
+        log.exception("could not check for interrupted synchronizations")
 
 
 def _enabled_servers():

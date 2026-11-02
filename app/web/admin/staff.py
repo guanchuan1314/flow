@@ -26,29 +26,29 @@ def _form_ctx(db: Session) -> dict:
             "managers": db.scalars(select(Staff).where(Staff.is_active.is_(True)).order_by(Staff.full_name)).all()}
 
 
-@router.get("/staff")
+@router.get("/staff/members")
 def staff_list(request: Request, me: Staff = Depends(staff_perm("staff.view")), db: Session = Depends(get_db)):
     rows = db.scalars(select(Staff).order_by(Staff.is_active.desc(), Staff.full_name)).all()
     deps = {d.id: d.name for d in db.scalars(select(Department))}
     return render(request, "admin/staff/list.html", rows=rows, deps=deps)
 
 
-@router.get("/staff/new")
+@router.get("/staff/members/new")
 def staff_new(request: Request, me: Staff = Depends(staff_perm("staff.manage")), db: Session = Depends(get_db)):
     return render(request, "admin/staff/form.html", s=None, **_form_ctx(db))
 
 
-@router.post("/staff/new")
+@router.post("/staff/members/new")
 async def staff_create(request: Request, me: Staff = Depends(staff_perm("staff.manage")), db: Session = Depends(get_db)):
     f = await request.form()
     return attempt(request, lambda: svc.create_staff(
         db, me, email=str(f.get("email", "")), full_name=str(f.get("full_name", "")).strip(),
         password=str(f.get("password", "")), role_ids=[int(x) for x in f.getlist("role_ids")],
         department_id=opt_int(f.get("department_id")), manager_id=opt_int(f.get("manager_id")),
-        allowed_ips=_ips(str(f.get("allowed_ips", "")))), "Staff member created.", "/admin/staff")
+        allowed_ips=_ips(str(f.get("allowed_ips", "")))), "Staff member created.", "/admin/staff/members")
 
 
-@router.get("/staff/{staff_id}")
+@router.get("/staff/members/{staff_id}")
 def staff_edit(request: Request, staff_id: int, me: Staff = Depends(staff_perm("staff.view")), db: Session = Depends(get_db)):
     s = get_or_404(db, Staff, staff_id, "Staff member")
     link = referral_link(staff_referral_code(db, s)) if s.has_perm("clients.referrals") else None
@@ -60,7 +60,7 @@ def staff_edit(request: Request, staff_id: int, me: Staff = Depends(staff_perm("
     return render(request, "admin/staff/form.html", s=s, referral_link=link, tagged_links=tagged, **_form_ctx(db))
 
 
-@router.post("/staff/{staff_id}")
+@router.post("/staff/members/{staff_id}")
 async def staff_update(request: Request, staff_id: int, me: Staff = Depends(staff_perm("staff.manage")),
                        db: Session = Depends(get_db)):
     target = get_or_404(db, Staff, staff_id, "Staff member")
@@ -71,31 +71,31 @@ async def staff_update(request: Request, staff_id: int, me: Staff = Depends(staf
     if target.id != me.id:
         changes["role_ids"] = [int(x) for x in f.getlist("role_ids")]
     return attempt(request, lambda: svc.update_staff(db, me, target, **changes), "Staff member saved.",
-                   f"/admin/staff/{staff_id}")
+                   f"/admin/staff/members/{staff_id}")
 
 
-@router.post("/staff/{staff_id}/reset-2fa")
+@router.post("/staff/members/{staff_id}/reset-2fa")
 def staff_reset_2fa(request: Request, staff_id: int, me: Staff = Depends(staff_perm("staff.manage")),
                     db: Session = Depends(get_db)):
     target = get_or_404(db, Staff, staff_id, "Staff member")
     return attempt(request, lambda: svc.reset_staff_2fa(db, me, target), "2FA reset; they will enrol again at next sign-in.",
-                   f"/admin/staff/{staff_id}")
+                   f"/admin/staff/members/{staff_id}")
 
 
 # ---------------------------------------------------------------- roles
-@router.get("/roles")
+@router.get("/staff/roles")
 def roles(request: Request, me: Staff = Depends(staff_perm("staff.view")), db: Session = Depends(get_db)):
     return render(request, "admin/staff/roles.html", rows=db.scalars(select(Role).order_by(Role.name)).all(),
                   permissions=PERMISSIONS, perm_label=labels.permission_label)
 
 
-@router.get("/roles/new")
+@router.get("/staff/roles/new")
 def role_new(request: Request, me: Staff = Depends(staff_perm("staff.manage"))):
     return render(request, "admin/staff/role_form.html", r=None, permissions=PERMISSIONS,
                   group_label=labels.permission_group)
 
 
-@router.post("/roles/new")
+@router.post("/staff/roles/new")
 async def role_create(request: Request, me: Staff = Depends(staff_perm("staff.manage")), db: Session = Depends(get_db)):
     f = await request.form()
     created = {}
@@ -103,27 +103,27 @@ async def role_create(request: Request, me: Staff = Depends(staff_perm("staff.ma
     def run():
         created["r"] = svc.create_role(db, me, str(f.get("name", "")).strip(), list(f.getlist("permissions")),
                                        str(f.get("description", "")).strip())
-    resp = attempt(request, run, "Role created.", "/admin/roles")
-    return redirect("/admin/roles") if "r" in created else resp
+    resp = attempt(request, run, "Role created.", "/admin/staff/roles")
+    return redirect("/admin/staff/roles") if "r" in created else resp
 
 
-@router.get("/roles/{role_id}")
+@router.get("/staff/roles/{role_id}")
 def role_edit(request: Request, role_id: int, me: Staff = Depends(staff_perm("staff.view")), db: Session = Depends(get_db)):
     return render(request, "admin/staff/role_form.html", r=get_or_404(db, Role, role_id, "Role"), permissions=PERMISSIONS,
                   group_label=labels.permission_group)
 
 
-@router.post("/roles/{role_id}")
+@router.post("/staff/roles/{role_id}")
 async def role_update(request: Request, role_id: int, me: Staff = Depends(staff_perm("staff.manage")),
                       db: Session = Depends(get_db)):
     role = get_or_404(db, Role, role_id, "Role")
     f = await request.form()
     return attempt(request, lambda: svc.update_role(db, me, role, list(f.getlist("permissions")),
                                                     str(f.get("description", "")).strip()),
-                   "Role saved.", f"/admin/roles/{role_id}")
+                   "Role saved.", f"/admin/staff/roles/{role_id}")
 
 
-@router.get("/departments")
+@router.get("/staff/departments")
 def departments(request: Request, me: Staff = Depends(staff_perm("staff.view")), db: Session = Depends(get_db)):
     rows = db.scalars(select(Department).order_by(Department.name)).all()
     counts = {}
@@ -132,18 +132,18 @@ def departments(request: Request, me: Staff = Depends(staff_perm("staff.view")),
     return render(request, "admin/staff/departments.html", rows=rows, counts=counts)
 
 
-@router.get("/departments/new")
+@router.get("/staff/departments/new")
 def department_new(request: Request, me: Staff = Depends(staff_perm("staff.manage"))):
     return render(request, "admin/staff/department_form.html", d=None, members=[])
 
 
-@router.post("/departments/new")
+@router.post("/staff/departments/new")
 def department_create(request: Request, name: str = Form(...), me: Staff = Depends(staff_perm("staff.manage")),
                       db: Session = Depends(get_db)):
-    return attempt(request, lambda: svc.create_department(db, me, name), "Department created.", "/admin/departments")
+    return attempt(request, lambda: svc.create_department(db, me, name), "Department created.", "/admin/staff/departments")
 
 
-@router.get("/departments/{department_id}")
+@router.get("/staff/departments/{department_id}")
 def department_edit(request: Request, department_id: int, me: Staff = Depends(staff_perm("staff.view")),
                     db: Session = Depends(get_db)):
     d = get_or_404(db, Department, department_id, "Department")
@@ -151,22 +151,22 @@ def department_edit(request: Request, department_id: int, me: Staff = Depends(st
     return render(request, "admin/staff/department_form.html", d=d, members=members)
 
 
-@router.post("/departments/{department_id}")
+@router.post("/staff/departments/{department_id}")
 def department_update(request: Request, department_id: int, name: str = Form(...),
                       me: Staff = Depends(staff_perm("staff.manage")), db: Session = Depends(get_db)):
     d = get_or_404(db, Department, department_id, "Department")
-    return attempt(request, lambda: svc.update_department(db, me, d, name), "Department saved.", "/admin/departments")
+    return attempt(request, lambda: svc.update_department(db, me, d, name), "Department saved.", "/admin/staff/departments")
 
 
-@router.post("/departments/{department_id}/delete")
+@router.post("/staff/departments/{department_id}/delete")
 def department_delete(request: Request, department_id: int, me: Staff = Depends(staff_perm("staff.manage")),
                       db: Session = Depends(get_db)):
     d = get_or_404(db, Department, department_id, "Department")
-    return attempt(request, lambda: svc.delete_department(db, me, d), f'Department "{d.name}" deleted.', "/admin/departments")
+    return attempt(request, lambda: svc.delete_department(db, me, d), f'Department "{d.name}" deleted.', "/admin/staff/departments")
 
 
 # ---------------------------------------------------------------- security
-@router.get("/audit")
+@router.get("/security/audit")
 def audit_log(request: Request, action: str = "", actor: str = "", entity: str = "", date_from: str = "", page: int = 1,
               me: Staff = Depends(staff_perm("security.view")), db: Session = Depends(get_db)):
     q = select(AuditLog)
@@ -190,7 +190,7 @@ def audit_log(request: Request, action: str = "", actor: str = "", entity: str =
                   entities=sorted(labels.ENTITIES.items(), key=lambda kv: kv[1]))
 
 
-@router.get("/login-attempts")
+@router.get("/security/login-attempts")
 def login_attempts(request: Request, email: str = "", failed: int = 0, page: int = 1,
                    me: Staff = Depends(staff_perm("security.view")), db: Session = Depends(get_db)):
     q = select(LoginAttempt)

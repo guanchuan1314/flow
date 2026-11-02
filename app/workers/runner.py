@@ -17,6 +17,7 @@ import logging
 import queue
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -29,7 +30,7 @@ from app.mt5.gateway import MT5Deal
 from app.core.errors import ServiceError
 from app.services import (
     activity, automation, client_sync, copy_trading, demo_cleanup, events, ip_rules, mt5_sync, pamm, pricing,
-    server_health, sync, sync_jobs,
+    server_health, sync, sync_jobs, sync_runs,
 )
 
 log = logging.getLogger("worker")
@@ -54,6 +55,7 @@ class Worker:
         self._backoff: dict[int, tuple[float, float]] = {}  # server_id -> (retry_at, delay)
         self._poll_saved: dict[int, float] = {}  # server_id -> when poll_stats was last written
         self._last_nav = 0.0
+        self._poll_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="poll")  # one thread per MT5 server
 
     def _gateway(self, server_id: int) -> MT5Gateway:
         return self._fixed_gw or get_gateway(server_id)
@@ -173,22 +175,27 @@ class Worker:
         servers = self._enabled_servers()
         for gone in set(self._subs) - {s.id for s in servers}:  # disabled or deleted in the admin
             self._unsubscribe(gone)
-        for server in servers:
-            gw = self._connect(server)
-            if gw is None:
-                continue
-            with SessionLocal() as db:
-                try:
-                    stats = sync.poll(db, gw, server.id)
-                    if stats["new_deals"]:
-                        log.info("poll '%s': %s", server.name, stats)
-                    self._record_poll(db, server.id, stats, interval)
-                except Exception as exc:  # noqa: BLE001
-                    db.rollback()
-                    log.exception("poll sync failed for server '%s'", server.name)
-                    self._mark(server.id, False, str(exc))
+        if len(servers) > 1:  # each server in its own thread: a slow one doesn't hold up the others
+            list(self._poll_pool.map(lambda server: self._poll_server(server, interval), servers))
+        elif servers:
+            self._poll_server(servers[0], interval)
         self._heartbeat()
         return max(1.0, interval - (time.monotonic() - started))
+
+    def _poll_server(self, server: MT5Server, interval: int) -> None:
+        gw = self._connect(server)
+        if gw is None:
+            return
+        with SessionLocal() as db:
+            try:
+                stats = sync.poll(db, gw, server.id)
+                if stats["new_deals"]:
+                    log.info("poll '%s': %s", server.name, stats)
+                self._record_poll(db, server.id, stats, interval)
+            except Exception as exc:  # noqa: BLE001
+                db.rollback()
+                log.exception("poll sync failed for server '%s'", server.name)
+                self._mark(server.id, False, str(exc))
 
     def _record_poll(self, db, server_id: int, stats: dict, interval: int) -> None:
         """Keep the latest poll on the server row for the Server health page, at most once a minute."""
@@ -301,11 +308,12 @@ class Worker:
         for server in db.scalars(select(MT5Server).where(MT5Server.enabled.is_(True))).all():
             if server.accounts_synced_at is not None and server.accounts_synced_at > due:
                 continue
-            try:
-                mt5_sync.sync_trading_accounts(db, server, None, self._fixed_gw)
-            except ServiceError as exc:
-                db.rollback()
-                log.error("scheduled MT5 import failed for '%s': %s", server.name, exc.message)
+            name = server.name
+            try:  # kept in the synchronization history as a scheduled run
+                sync_runs.record(db, "trading_accounts", server,
+                                 lambda: mt5_sync.sync_trading_accounts(db, server, None, self._fixed_gw))
+            except (ServiceError, MT5Error) as exc:
+                log.error("scheduled MT5 import failed for '%s': %s", name, getattr(exc, "message", None) or exc)
 
     def _jobs_step(self) -> float:
         """Run the next background sync task queued in the admin (MT5 > Import from MT5 > Trade sync)."""
@@ -322,6 +330,8 @@ class Worker:
             try:
                 if sync_jobs.recover_interrupted(db):
                     log.info("requeued interrupted sync tasks")
+                if sync_runs.recover_interrupted(db, "schedule"):
+                    log.info("scheduled synchronizations interrupted by the restart were marked as failed")
             except Exception:  # noqa: BLE001
                 db.rollback()
                 log.exception("could not requeue interrupted sync tasks")
@@ -349,4 +359,5 @@ class Worker:
             self._unsubscribe(server_id)
         for t in self.threads:
             t.join(timeout=10)
+        self._poll_pool.shutdown(wait=False, cancel_futures=True)
         log.info("worker stopped")

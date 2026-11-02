@@ -40,11 +40,11 @@
   a style without conditions catches every account left. A style can name the account group it belongs in, so accounts of that style
   elsewhere are suggested for a move. <strong>Tags</strong> are extra badges: every tag whose conditions hold is shown.
   Accounts with fewer placed deals than the list's minimum show as "Too few trades"; accounts matching no style as "Unclassified".
-  <a href="/admin/trader-styles">Back to Trader styles</a></p>
+  <a href="/admin/accounts/trader-styles">Back to Trader styles</a></p>
 
 <div data-tabs>
   <section data-tab="Styles &amp; tags" data-tab-count="{{ rules|length }}" id="styles">
-    <form method="post" action="/admin/trader-styles/setup">
+    <form method="post" action="/admin/accounts/trader-styles/setup">
       {{ csrf_input(csrf) }}
       <datalist id="rule-keys">{% for r in rules %}<option value="{{ r.key }}">{{ r.name }}</option>{% endfor %}</datalist>
       <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Styles and tags</span>
@@ -69,7 +69,7 @@
       </div>
       <button class="btn btn-primary" type="submit">Save</button>
     </form>
-    <div class="mt-3 pt-3 border-top">{{ post_button("/admin/trader-styles/setup", "Reset to the default styles", csrf, "btn-outline-danger btn-sm",
+    <div class="mt-3 pt-3 border-top">{{ post_button("/admin/accounts/trader-styles/setup", "Reset to the default styles", csrf, "btn-outline-danger btn-sm",
                                      fields={"reset": "1"}, confirm="Replace every style and tag with the defaults?", danger=True, ok="Reset") }}</div>
   </section>
 

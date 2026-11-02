@@ -8,6 +8,7 @@ from app.db import get_db
 from app.models import LiquidityConnection, RoutingRule, Staff
 from app.services import liquidity, mt5_setup, routing_rules as svc
 from app.services.servers import require_server, the_server
+from app.web import syncs
 from app.web.common import WebForbidden, attempt, opt_int, render, staff_perm, web_staff
 
 router = APIRouter()
@@ -21,33 +22,17 @@ def any_setup_perm(staff: Staff = Depends(web_staff)) -> Staff:
 
 
 # ---------------------------------------------------------------- trading setup
-@router.get("/trading-setup")
+@router.get("/trading-setup/overview")
 def setup_page(request: Request, me: Staff = Depends(any_setup_perm), db: Session = Depends(get_db)):
     srv = the_server(db)
     return render(request, "admin/trading_setup.html", server=srv,
                   o=mt5_setup.overview(db, srv) if srv else None, kinds=liquidity.KINDS)
 
 
-@router.post("/trading-setup/sync")
+@router.post("/trading-setup/overview/sync")
 def setup_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(any_setup_perm),
                db: Session = Depends(get_db)):
-    def run():
-        srv = require_server(db)
-        r = mt5_setup.sync_all(db, srv, me)
-        parts, errors = [], []
-        for key, label in (("symbols", "symbols"), ("liquidity", None), ("routes", "routing rules")):
-            res = r[key]
-            if "error" in res:
-                errors.append(res["error"])
-            elif key == "liquidity":
-                parts.append(f"{res['gateways']} gateways, {res['feeds']} data feeds")
-            else:
-                parts.append(f"{res[key]} {label}")
-        if errors and not parts:
-            raise ServiceError(" ".join(errors))
-        return f"{srv.name} synced from MT5: " + ", ".join(parts) + "." + (" Not synced: " + " ".join(errors)
-                                                                             if errors else "")
-    return attempt(request, run, "{result}", f"/admin/trading-setup?server={server_id}")
+    return syncs.start(request, db, me, "trading_setup", syncs.server_id(db), f"/admin/trading-setup/overview?server={server_id}")
 
 
 # ---------------------------------------------------------------- routing rules
@@ -113,7 +98,7 @@ def _rule_ctx(db: Session, rule: RoutingRule | None, server) -> dict:
                 **_choices(db, server.id if server else 0))
 
 
-@router.get("/routing")
+@router.get("/trading-setup/routing")
 def routing_page(request: Request, me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
     srv = the_server(db)
     rows = svc.rules(db, srv.id) if srv else []
@@ -123,27 +108,22 @@ def routing_page(request: Request, me: Staff = Depends(staff_perm("routing.manag
                   added={r.name for r in rows})
 
 
-@router.post("/routing/preset")
+@router.post("/trading-setup/routing/preset")
 def routing_preset(request: Request, key: str = Form(...), value: str = Form(""),
                    me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
     def run():
         rule = svc.add_load_preset(db, me, require_server(db).id, key, value)
         return f"Rule '{rule.name}' added on MT5 at the top, switched off. Switch it on when you want it to apply."
-    return attempt(request, run, "{result}", "/admin/routing")
+    return attempt(request, run, "{result}", "/admin/trading-setup/routing")
 
 
-@router.post("/routing/sync")
+@router.post("/trading-setup/routing/sync")
 def routing_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm("routing.manage")),
                  db: Session = Depends(get_db)):
-    def run():
-        srv = require_server(db)
-        r = svc.sync_routes(db, srv, me)
-        text = f"{srv.name}: {r['routes']} routing rules on MT5, {len(r['created'])} new, {len(r['updated'])} updated"
-        return text + (f", {len(r['removed'])} removed (no longer on MT5)" if r["removed"] else "")
-    return attempt(request, run, "{result}", f"/admin/routing?server={server_id}")
+    return syncs.start(request, db, me, "routing", syncs.server_id(db), f"/admin/trading-setup/routing?server={server_id}")
 
 
-@router.get("/routing/new")
+@router.get("/trading-setup/routing/new")
 def rule_new(request: Request, gateway: str = "",
              me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
     srv = the_server(db)
@@ -154,17 +134,17 @@ def rule_new(request: Request, gateway: str = "",
                   preset_action=svc.ACTION_DEALER if gateway.isdigit() else 1006, **ctx)
 
 
-@router.post("/routing/new")
+@router.post("/trading-setup/routing/new")
 def rule_create(request: Request, server_id: str = Form(...), name: str = Form(...), at_top: str = Form(""),
                 form: RuleForm = Depends(), me: Staff = Depends(staff_perm("routing.manage")),
                 db: Session = Depends(get_db)):
     def run():
         return svc.create_rule(db, me, server_id=int(server_id), name=name, values=form.values(db, int(server_id)),
                                at_top=at_top == "on").name
-    return attempt(request, run, "Routing rule {result} created on MT5.", f"/admin/routing?server={server_id}")
+    return attempt(request, run, "Routing rule {result} created on MT5.", f"/admin/trading-setup/routing?server={server_id}")
 
 
-@router.get("/routing/{rule_id}")
+@router.get("/trading-setup/routing/{rule_id}")
 def rule_edit(request: Request, rule_id: int, me: Staff = Depends(staff_perm("routing.manage")),
               db: Session = Depends(get_db)):
     rule = get_or_404(db, RoutingRule, rule_id)
@@ -172,35 +152,35 @@ def rule_edit(request: Request, rule_id: int, me: Staff = Depends(staff_perm("ro
                   **_rule_ctx(db, rule, rule.server))
 
 
-@router.post("/routing/{rule_id}")
+@router.post("/trading-setup/routing/{rule_id}")
 def rule_update(request: Request, rule_id: int, form: RuleForm = Depends(),
                 me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
     rule = get_or_404(db, RoutingRule, rule_id)
     return attempt(request, lambda: svc.update_rule(db, me, rule, form.values(db, rule.server_id, rule.conditions)),
-                   f"Routing rule {rule.name} saved on MT5.", f"/admin/routing/{rule_id}")
+                   f"Routing rule {rule.name} saved on MT5.", f"/admin/trading-setup/routing/{rule_id}")
 
 
-@router.post("/routing/{rule_id}/toggle")
+@router.post("/trading-setup/routing/{rule_id}/toggle")
 def rule_toggle(request: Request, rule_id: int, me: Staff = Depends(staff_perm("routing.manage")),
                 db: Session = Depends(get_db)):
     rule = get_or_404(db, RoutingRule, rule_id)
     state = "disabled" if rule.enabled else "enabled"
     return attempt(request, lambda: svc.update_rule(db, me, rule, {"enabled": not rule.enabled}),
-                   f"Routing rule {rule.name} {state} on MT5.", f"/admin/routing?server={rule.server_id}")
+                   f"Routing rule {rule.name} {state} on MT5.", f"/admin/trading-setup/routing?server={rule.server_id}")
 
 
-@router.post("/routing/{rule_id}/move")
+@router.post("/trading-setup/routing/{rule_id}/move")
 def rule_move(request: Request, rule_id: int, direction: str = Form(...),
               me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
     rule = get_or_404(db, RoutingRule, rule_id)
     return attempt(request, lambda: svc.move_rule(db, me, rule, direction), None,
-                   f"/admin/routing?server={rule.server_id}")
+                   f"/admin/trading-setup/routing?server={rule.server_id}")
 
 
-@router.post("/routing/{rule_id}/delete")
+@router.post("/trading-setup/routing/{rule_id}/delete")
 def rule_delete(request: Request, rule_id: int, me: Staff = Depends(staff_perm("routing.manage")),
                 db: Session = Depends(get_db)):
     rule = get_or_404(db, RoutingRule, rule_id)
     name, server_id = rule.name, rule.server_id
     return attempt(request, lambda: svc.delete_rule(db, me, rule), f"Routing rule {name} deleted on MT5 and in the CRM.",
-                   f"/admin/routing?server={server_id}")
+                   f"/admin/trading-setup/routing?server={server_id}")

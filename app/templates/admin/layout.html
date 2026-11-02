@@ -59,10 +59,10 @@
             or staff.has_perm("mt5_health.view") or staff.has_perm("trading.view") or staff.has_perm("automation.manage")
             %}<div class="nav-section">MT5</div>{% endif %}
       {{ navgroup("wallet2", "Accounts", [
-           ("/admin/accounts", "wallet2", "Trading accounts", "accounts.view"),
-           ("/admin/account-groups", "sliders", "Account groups", "account_groups.manage"),
-           ("/admin/trader-styles", "robot", "Trader styles", "accounts.view"),
-           ("/admin/inactive-accounts", "archive", "Inactive accounts", "accounts.cleanup")]) }}
+           ("/admin/accounts/trading-accounts", "wallet2", "Trading accounts", "accounts.view"),
+           ("/admin/accounts/account-groups", "sliders", "Account groups", "account_groups.manage"),
+           ("/admin/accounts/trader-styles", "robot", "Trader styles", "accounts.view"),
+           ("/admin/accounts/inactive-accounts", "archive", "Inactive accounts", "accounts.cleanup")]) }}
       {{ navhub("setup") }}
       {{ navlink("/admin/automation", "lightning-charge", "Automation", "automation.manage") }}
       {{ navhub("import") }}
@@ -126,7 +126,7 @@
         <div class="flex-grow-1">{% if a.error %}MT5 could not be read at {{ a.since.strftime("%H:%M") }} UTC ({{ a.error }}).
           {% else %}<strong>MT5 {{ a.kind }} "{{ a.name }}" is disconnected</strong> since {{ a.since.strftime("%Y-%m-%d %H:%M") }} UTC.
           {% if a.access %}Clients connected to it are cut off, or moved to another access server if they have one.{% endif %}{% endif %}</div>
-        <a class="alert-link text-nowrap" href="/admin/server-health?server={{ a.server_id }}">Server health</a>
+        <a class="alert-link text-nowrap" href="/admin/server-tools/health?server={{ a.server_id }}">Server health</a>
       </div>{% endfor %}{% endif %}
       {{ show_flashes(flashes) }}
       {% set hub = hub_of(path) %}{% set tabs = hub_items(hub, staff) if hub else [] %}

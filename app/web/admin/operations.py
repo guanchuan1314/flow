@@ -11,13 +11,14 @@ from app.models import AccountGroup, MT5Server, Staff
 from app.mt5 import routed
 from app.services import demo_cleanup, server_health, trader_styles
 from app.services.servers import require_server, the_server
+from app.web import syncs
 from app.web.common import attempt, flash, form_rows, opt_int, redirect, render, staff_perm
 
 router = APIRouter()
 
 
 # ---------------------------------------------------------------- server health
-@router.get("/server-health")
+@router.get("/server-tools/health")
 def health_page(request: Request, server: str = "all", only: str = "", me: Staff = Depends(staff_perm("mt5_health.view")),
                 db: Session = Depends(get_db)):
     """One server, or every enabled server (server=all, the default) on one page.
@@ -35,7 +36,7 @@ def health_page(request: Request, server: str = "all", only: str = "", me: Staff
                   summary=reports, reports=shown)
 
 
-@router.post("/server-health/refresh")
+@router.post("/server-tools/health/refresh")
 def health_refresh(request: Request, server_id: str = Form("all"), me: Staff = Depends(staff_perm("mt5_health.view")),
                    db: Session = Depends(get_db)):
     def run():
@@ -44,7 +45,7 @@ def health_refresh(request: Request, server_id: str = Form("all"), me: Staff = D
         if error:
             raise ServiceError(f"Could not read from MT5: {srv.name}: {error}")
         return "Read from MT5 just now."
-    return attempt(request, run, "{result}", f"/admin/server-health?server={server_id or 'all'}")
+    return attempt(request, run, "{result}", f"/admin/server-tools/health?server={server_id or 'all'}")
 
 
 # ---------------------------------------------------------------- trader styles
@@ -55,7 +56,7 @@ def _live_groups(db: Session, server_id: int | None) -> list[AccountGroup]:
     return list(db.scalars(q.order_by(AccountGroup.server_id, AccountGroup.name)))
 
 
-@router.get("/trader-styles")
+@router.get("/accounts/trader-styles")
 def styles_page(request: Request, server: str = "", days: int = 30, min_deals: int = 10, style: str = "",
                 demo: str = "", me: Staff = Depends(staff_perm("accounts.view")), db: Session = Depends(get_db)):
     every = server == "all"
@@ -75,7 +76,7 @@ def styles_page(request: Request, server: str = "", days: int = 30, min_deals: i
                   style_groups=trader_styles.style_groups(db, srv) if srv else {})
 
 
-@router.get("/trader-styles/setup")
+@router.get("/accounts/trader-styles/setup")
 def styles_setup(request: Request, login: str = "", days: int = 30, me: Staff = Depends(staff_perm("accounts.manage")),
                  db: Session = Depends(get_db)):
     """The styles and tags to detect, with their conditions; `login` tries them on one account."""
@@ -98,7 +99,7 @@ def styles_setup(request: Request, login: str = "", days: int = 30, me: Staff = 
                   login=login, days=days)
 
 
-@router.post("/trader-styles/setup")
+@router.post("/accounts/trader-styles/setup")
 async def styles_setup_save(request: Request, me: Staff = Depends(staff_perm("accounts.manage")),
                             db: Session = Depends(get_db)):
     form = await request.form()
@@ -114,22 +115,22 @@ async def styles_setup_save(request: Request, me: Staff = Depends(staff_perm("ac
                                                             "cond_value2", strip=False))
         trader_styles.save_rules(db, me, srv, new)
         return f"Saved {sum(r['kind'] == 'style' for r in new)} styles and {sum(r['kind'] == 'tag' for r in new)} tags."
-    return attempt(request, run, "{result}", "/admin/trader-styles/setup")
+    return attempt(request, run, "{result}", "/admin/accounts/trader-styles/setup")
 
 
-@router.post("/trader-styles/groups")
+@router.post("/accounts/trader-styles/groups")
 def styles_groups(request: Request, ea: str = Form(""), manual: str = Form(""),
                   me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     def run():
         trader_styles.save_style_groups(db, me, require_server(db), {"ea": opt_int(ea), "manual": opt_int(manual)})
-    return attempt(request, run, "Saved where each style belongs.", "/admin/trader-styles")
+    return attempt(request, run, "Saved where each style belongs.", "/admin/accounts/trader-styles")
 
 
-@router.post("/trader-styles/move")
+@router.post("/accounts/trader-styles/move")
 def styles_move(request: Request, server_id: str = Form(""), target: str = Form(""), login: list[str] = Form([]),
                 back_to: str = Form(""), me: Staff = Depends(staff_perm("accounts.manage")),
                 db: Session = Depends(get_db)):
-    url = back_to if back_to.startswith("/admin/trader-styles") else "/admin/trader-styles"
+    url = back_to if back_to.startswith("/admin/accounts/trader-styles") else "/admin/accounts/trader-styles"
     logins = [int(x) for x in login if x.strip().isdigit()]
     if not logins:
         flash(request, "Tick the accounts to move first.", "warning")
@@ -148,20 +149,10 @@ def styles_move(request: Request, server_id: str = Form(""), target: str = Form(
 
 
 # ---------------------------------------------------------------- inactive demo accounts (from MT5 servers)
-@router.get("/demo-cleanup")
-def cleanup_moved(me: Staff = Depends(staff_perm("accounts.cleanup"))):
-    return redirect(INACTIVE)  # the page moved to MT5 > Server tools > Inactive accounts
+INACTIVE = "/admin/accounts/inactive-accounts"
 
 
-INACTIVE = "/admin/inactive-accounts"
-
-
-@router.get("/mt5-servers/{server_id}/inactive")
-def cleanup_old_url(server_id: int, me: Staff = Depends(staff_perm("accounts.cleanup"))):
-    return redirect(INACTIVE)
-
-
-@router.get("/inactive-accounts")
+@router.get("/accounts/inactive-accounts")
 def cleanup_page(request: Request, me: Staff = Depends(staff_perm("accounts.cleanup")), db: Session = Depends(get_db)):
     srv = get_or_404(db, MT5Server, getattr(the_server(db), "id", 0))
     mt5_groups, mt5_error = [], None
@@ -176,7 +167,7 @@ def cleanup_page(request: Request, me: Staff = Depends(staff_perm("accounts.clea
                   refresh_minutes=get_settings().activity_refresh_minutes)
 
 
-@router.post("/mt5-servers/{server_id}/inactive/settings")
+@router.post("/accounts/inactive-accounts/{server_id:int}/settings")
 def cleanup_settings(request: Request, server_id: int, enabled: str = Form(""), days: str = Form("90"),
                      action: str = Form("archive"), groups: str = Form(""),
                      me: Staff = Depends(staff_perm("accounts.cleanup")), db: Session = Depends(get_db)):
@@ -190,7 +181,7 @@ def cleanup_settings(request: Request, server_id: int, enabled: str = Form(""), 
     return attempt(request, run, "{result}", INACTIVE)
 
 
-@router.post("/mt5-servers/{server_id}/inactive/mt5-days")
+@router.post("/accounts/inactive-accounts/{server_id:int}/mt5-days")
 def cleanup_mt5_days(request: Request, server_id: int, group: list[str] = Form([]), days: str = Form(""),
                      me: Staff = Depends(staff_perm("accounts.cleanup")), db: Session = Depends(get_db)):
     srv = get_or_404(db, MT5Server, server_id)
@@ -209,7 +200,7 @@ def cleanup_mt5_days(request: Request, server_id: int, group: list[str] = Form([
     return redirect(url)
 
 
-@router.post("/mt5-servers/{server_id}/inactive/run")
+@router.post("/accounts/inactive-accounts/{server_id:int}/run")
 def cleanup_run(request: Request, server_id: int, action: str = Form(""), login: list[str] = Form([]),
                 everything: str = Form(""), me: Staff = Depends(staff_perm("accounts.cleanup")),
                 db: Session = Depends(get_db)):
@@ -220,15 +211,4 @@ def cleanup_run(request: Request, server_id: int, action: str = Form(""), login:
         flash(request, "Tick the accounts first, or use the button for all of them.", "warning")
         return redirect(url)
 
-    def run():
-        r = demo_cleanup.run(db, me, srv, logins=logins, action=action or None)
-        verb = "Archived" if r["action"] == "archive" else "Deleted"
-        text = f"{verb} {r['done']} demo account(s) on MT5."
-        if r["active_again"]:
-            text += f" {r['active_again']} kept: they connected since the CRM last looked."
-        if r["failed"]:
-            text += f" Not done for {r['failed']}: " + "; ".join(r["errors"][:5])
-        if r["remaining"]:
-            text += f" {r['remaining']} more qualify: run it again (at most {demo_cleanup.MAX_PER_RUN} per run)."
-        return text
-    return attempt(request, run, "{result}", url)
+    return syncs.start(request, db, me, "demo_cleanup", srv.id, url, {"logins": logins, "action": action or None})

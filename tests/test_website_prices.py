@@ -52,9 +52,9 @@ def test_validation(synced):
 
 
 def test_pricing_page_saves_the_list(admin_web, synced):  # noqa: F811
-    page = admin_web.get("/admin/pricing").text
+    page = admin_web.get("/admin/server-tools/pricing").text
     assert "Website prices" in page and 'data-add-row="web-tpl"' in page and "data-sortable" in page
-    r = form_post(admin_web, "/admin/pricing", "/admin/pricing/website",
+    r = form_post(admin_web, "/admin/server-tools/pricing", "/admin/server-tools/pricing/website",
                   {"web_symbol": ["GBPUSD", "EURUSD"], "web_name": ["", ""], "web_category": ["", ""]})
     assert "Website prices saved: 2 symbol(s)" in r.text
     assert [q["symbol"] for q in admin_web.get("/quotes.json").json()["quotes"]] == ["GBPUSD", "EURUSD"]

@@ -28,6 +28,7 @@ from app.models import (
     Position, StrategyStatus, SubscriptionStatus, TradingAccount,
 )
 from app.mt5 import MT5Error, MT5Gateway, get_gateway
+from app.services import sync_runs
 from app.services.mt5_sync import excluded
 
 log = logging.getLogger(__name__)
@@ -142,12 +143,14 @@ def run(db: Session, actor, server: MT5Server, gw: MT5Gateway | None = None, log
     except MT5Error as exc:
         raise ServiceError(f"Could not check the accounts on MT5: {exc}", 502) from exc
     done, failed, back = [], {}, []
+    sync_runs.report(0, len(targets))
     for i in range(0, len(targets), BATCH):
         batch = targets[i:i + BATCH]
         try:  # what MT5 says now: used since the CRM's last refresh, or trading?
             busy = {p.login for p in gw.get_positions(batch)} | {o.login for o in gw.get_orders(batch)}
         except MT5Error as exc:
             failed.update({x: f"not checked on MT5: {exc}" for x in batch})
+            sync_runs.report(i + len(batch), len(targets))
             continue
         used = [x for x in batch if seen.get(x) and seen[x] >= cutoff]
         back += used
@@ -166,13 +169,16 @@ def run(db: Session, actor, server: MT5Server, gw: MT5Gateway | None = None, log
                 except MT5Error as exc:
                     refused[login] = str(exc)
         failed.update(refused)
-        done += [x for x in go if x not in refused]
-    for i in range(0, len(done), 1000):
-        for acc in db.scalars(select(TradingAccount).where(TradingAccount.login.in_(done[i:i + 1000]))):
+        gone = [x for x in go if x not in refused]
+        done += gone
+        # saved batch by batch: what MT5 has already archived or deleted stays recorded if the run stops halfway
+        for acc in db.scalars(select(TradingAccount).where(TradingAccount.login.in_(gone))) if gone else []:
             acc.status, acc.on_server = AccountStatus.archived, False
-    for acc in db.scalars(select(TradingAccount).where(TradingAccount.login.in_(back))) if back else []:
-        acc.last_access_at = seen[acc.login]  # connected since the last refresh: active again
-        acc.last_activity_at = max(acc.last_activity_at or seen[acc.login], seen[acc.login])
+        for acc in db.scalars(select(TradingAccount).where(TradingAccount.login.in_(used))) if used else []:
+            acc.last_access_at = seen[acc.login]  # connected since the last refresh: active again
+            acc.last_activity_at = max(acc.last_activity_at or seen[acc.login], seen[acc.login])
+        db.commit()
+        sync_runs.report(i + len(batch), len(targets))
     now = utcnow()
     result = {"at": now.isoformat(), "action": action, "done": len(done), "failed": len(failed),
               "active_again": len(back), "errors": [f"{login}: {why}" for login, why in list(failed.items())[:10]],
@@ -194,8 +200,8 @@ def run_due(db: Session, gw: MT5Gateway | None = None) -> int:
         last = cfg.get("last_run")
         if not cfg["enabled"] or (last and utcnow() - datetime.fromisoformat(last) < timedelta(hours=23)):
             continue
-        try:
-            run(db, None, server, gw)
+        try:  # kept in the synchronization history as a scheduled run
+            sync_runs.record(db, "demo_cleanup", server, lambda: run(db, None, server, gw))
             ran += 1
         except (MT5Error, ServiceError) as exc:
             db.rollback()

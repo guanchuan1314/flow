@@ -138,6 +138,13 @@ FIELDS = {
     "connections": "Connections", "group": "Group", "leverage": "Leverage", "investor": "Investor password",
     "enabled": "Enabled", "currency": "Currency", "fields": "Fields", "changed": "Changed", "name": "Name",
     "tag": "Tag", "code": "Referral code", "referral_link": "Referral link", "staff": "Staff",
+    # synchronization results (Import from MT5 > History)
+    "seen": "MT5 accounts", "created": "New", "updated": "Updated", "missing": "No longer on MT5",
+    "removed": "Removed (no longer on MT5)", "clients_created": "New clients", "clients_linked": "Linked to clients",
+    "conflicts": "Conflicts", "failed_groups": "Groups that failed", "account_groups": "Account groups",
+    "groups": "MT5 groups", "new_deals": "New deals", "open_positions": "Open positions", "open_orders": "Open orders",
+    "accounts": "Accounts updated", "symbols": "Symbols", "gateways": "Gateways", "feeds": "Data feeds",
+    "routes": "Routing rules", "liquidity": "Liquidity providers", "pricing": "Pricing", "swaps": "Symbol swaps",
 }
 
 

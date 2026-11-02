@@ -146,21 +146,23 @@ Entries appear only for staff with the permission shown.
 | Section | Entries (permission) |
 |---|---|
 | (top) | Dashboard |
-| **Clients** | Clients (`clients.view`), KYC queue (`kyc.review`), KYC methods (`kyc.methods`) |
-| **MT5** | **Accounts ▸** Trading accounts (`accounts.view`), Account groups (`account_groups.manage`), Trader styles (`accounts.view`) |
+| **Clients** | Clients (`clients.view`), Referral links (`clients.referrals`), KYC queue (`kyc.review`), KYC methods (`kyc.methods`) |
+| **MT5** | **Accounts ▸** Trading accounts (`accounts.view`), Account groups (`account_groups.manage`), Trader styles (`accounts.view`), Inactive accounts (`accounts.cleanup`) |
 | | **Trading setup ▸** Overview, Symbols (`symbols.manage`), Liquidity providers (`liquidity.manage`), Routing (`routing.manage`) |
 | | **Automation** (`automation.manage`) |
-| | **Import from MT5 ▸** Account groups, Trading accounts (`mt5_servers.manage`), Trade sync (`trading.view`) |
-| | **Server tools ▸** Server health (`mt5_health.view`), Symbols & pricing (`symbols.manage`), Inactive accounts (`accounts.cleanup`), Restart components (`mt5_servers.restart`) |
+| | **Import from MT5 ▸** Account groups, Trading accounts (`mt5_servers.manage`), Trades (`trading.view`), History (any sync permission) |
+| | **Server tools ▸** Server health (`mt5_health.view`), Symbols & pricing (`symbols.manage`), Restart components (`mt5_servers.restart`) |
 | | **Configuration** (`mt5_servers.manage`) |
 | **Finance** | Payments (`finance.view`), Payment methods (`finance.methods`) |
 | **Trading** | Open positions, Deals, Orders (`trading.view`) |
 | **Copy trading** | MAM strategies, PAMM funds (`copy.view`) |
 | **Marketing** | IBs, Commission plans, Commissions, Campaigns, Lead sources (`marketing.view`) |
-| **Administration** | Staff, Roles, Departments (`staff.view`), Audit log, Login attempts (`security.view`), IP access rules (`security.ip_rules`), Branding (`settings.branding`) |
+| **Administration** | **Staff ▸** Staff, Roles, Departments (`staff.view`); **Security ▸** Audit log, Login attempts (`security.view`), IP access rules (`security.ip_rules`); Branding (`settings.branding`) |
 
-Groups marked ▸ open beside the menu on hover (under the group on a phone). The user menu has
-**Password & 2FA** and **Sign out**.
+Groups marked ▸ open beside the menu on hover (under the group on a phone), or show their pages as tabs. A page
+in a group lives under the group's address: `/admin/<group>/<page>`, e.g. `/admin/trading-setup/symbols`,
+`/admin/staff/roles`, `/admin/security/audit`. Older addresses (`/admin/symbols`, `/admin/audit`, …) redirect.
+The user menu has **Password & 2FA** and **Sign out**.
 
 ## Features
 
@@ -189,7 +191,7 @@ Groups marked ▸ open beside the menu on hover (under the group on a phone). Th
     (symbols, margin and commission settings) under the new name.
   - **Update** writes margin call and stop-out (and, for demo groups, default leverage and starting balance) to
     MT5. Changes made in MT5 Administrator are read back on each import and when the edit page opens.
-  - **CRM-only settings:** name, minimum deposit, leverage choices, spread markup, availability, and for demo
+  - **CRM-only settings:** name (can be changed at any time), minimum deposit, leverage choices, spread markup, availability, and for demo
     groups **open automatically for new clients** (the account is created at registration).
   - **Delete** also deletes the MT5 group. Accounts still in it can be **moved** to another group (balances,
     positions and history stay) or **force deleted** (MT5 logins deleted, Flow keeps them archived; the
@@ -203,6 +205,17 @@ Groups marked ▸ open beside the menu on hover (under the group on a phone). Th
 The import runs every `MT5_IMPORT_INTERVAL_MINUTES` (15) and on demand (MT5 → Import from MT5). It is
 idempotent and never deletes anything.
 
+**Every sync button runs in the background** (import account groups or trading accounts, sync trades,
+symbols, liquidity providers, routing, trading setup, symbols & pricing, and archiving or deleting inactive demo
+accounts), on a pool of `SYNC_THREADS` (4) threads, so several run at once; a sync over every server runs the
+servers in parallel. The page answers at once and shows a **progress bar** (e.g. "1,500 of 4,000 done"), updated
+every 2 seconds and kept in the database, so it is there again after a refresh or when you come back later; when
+the sync ends it shows the result. The same sync is never started twice at once. **MT5 → Import from MT5 →
+History** lists every sync: what, which server, started by whom or by the schedule (the MT5 import, the symbol
+auto sync, the daily demo clean-up), its progress or how long it took, and its result (details in a pop-up). A
+sync cut short by a restart is marked as such; the demo clean-up saves each batch of 500 accounts as it goes, so
+what MT5 already archived or deleted stays recorded.
+
 - **Account groups → MT5 groups.** New groups arrive **disabled** so you can name them and set leverage and
   pricing first. Groups whose name starts with `demo` become demo groups. Groups gone from MT5 are flagged
   "not on server" and disabled. `MT5_SYNC_EXCLUDE_GROUPS` skips manager / system groups.
@@ -214,8 +227,9 @@ idempotent and never deletes anything.
 - **Live sync** (worker): deals are pushed in real time and polled every `SYNC_INTERVAL_SECONDS`; open orders,
   order history and open positions are kept in step. **Polling follows activity:** accounts with an open
   position or order, or a deal in the last `SYNC_ACTIVE_MINUTES`, are polled every pass; idle ones every
-  `SYNC_IDLE_INTERVAL_SECONDS`, spread evenly. Results are under **Trading → Deals / Orders / Open positions**.
-- **Trade sync** (MT5 → Import from MT5 → Trade sync) re-reads missing history as a background task for all
+  `SYNC_IDLE_INTERVAL_SECONDS`, spread evenly. With several MT5 servers each is polled in its own thread, so a
+  slow server does not hold up the others. Results are under **Trading → Deals / Orders / Open positions**.
+- **Trade sync** (MT5 → Import from MT5 → Trades) re-reads missing history as a background task for all
   accounts or a list of logins and a period: in batches of 50 accounts and one-month slices it adds the deals
   and orders Flow is missing (no duplicates), then refreshes positions, open orders and balances. The page
   shows live progress; tasks can be cancelled, and an interrupted task restarts automatically.
@@ -302,7 +316,7 @@ and archives or deletes them on MT5.
 
 **MT5 → Accounts → Trader styles** classifies each account from the deals stored in Flow (no MT5 request).
 
-- **Set up** (`/admin/trader-styles/setup`): **styles** are checked in order, first match wins (a style without
+- **Set up** (`/admin/accounts/trader-styles/setup`): **styles** are checked in order, first match wins (a style without
   conditions catches the rest); **tags** are extra badges, every match shown. Each has a name, colour, on/off,
   conditions (metric ≥, ≤ or between) and, for styles, an optional suggested account group.
 - **Metrics** over the period: deals, active days, deals per day; share by EA, desktop, mobile, web, signal and
@@ -440,7 +454,7 @@ overwritten by the scripts, except the ones you pass as parameters. The most imp
 | Branding (defaults) | `APP_NAME`, `ACCENT_COLOR`, `BRAND_TAGLINE`, `COMPANY_LEGAL_NAME`, `REGULATORY_TEXT`, `SUPPORT_EMAIL`, `SUPPORT_PHONE`, `MT5_SERVER_NAME` |
 | Website | `MT5_DOWNLOAD_*`, `MT5_WEBTERMINAL_URL`, `PUBLIC_SYMBOLS` (default price list until Website prices is saved) |
 | Business | `BASE_CURRENCY`, `DEPOSIT_INSTRUCTIONS`, `COPY_MAX_OPEN_AGE_SECONDS`, `COPY_LOT_STEP`, `COPY_MIN_LOT` |
-| Worker / sync | `SYNC_INTERVAL_SECONDS` (10), `SYNC_IDLE_INTERVAL_SECONDS` (300), `SYNC_ACTIVE_MINUTES` (30), `SYNC_OVERLAP_SECONDS` (120), `ACTIVITY_REFRESH_MINUTES` (5), `HEALTH_INTERVAL_MINUTES` (5), `HEALTH_KEEP_DAYS` (7), `MT5_IMPORT_INTERVAL_MINUTES` (15) |
+| Worker / sync | `SYNC_INTERVAL_SECONDS` (10), `SYNC_IDLE_INTERVAL_SECONDS` (300), `SYNC_ACTIVE_MINUTES` (30), `SYNC_OVERLAP_SECONDS` (120), `ACTIVITY_REFRESH_MINUTES` (5), `HEALTH_INTERVAL_MINUTES` (5), `HEALTH_KEEP_DAYS` (7), `MT5_IMPORT_INTERVAL_MINUTES` (15), `SYNC_THREADS` (4) |
 | Files / logs | `STORAGE_DIR` (KYC documents and proofs; back it up), `LOG_DIR`, `LOG_LEVEL` |
 
 **Branding.** Administration → Branding (permission `settings.branding`) overrides the branding defaults in

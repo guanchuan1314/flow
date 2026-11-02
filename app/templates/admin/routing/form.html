@@ -5,7 +5,7 @@
 {% set new = r is none %}
 {% set types_on = r.types if r else 255 %}
 {% set action = preset_action %}
-<form method="post" action="{{ '/admin/routing/new' if new else '/admin/routing/' ~ r.id }}" class="mw-lg">
+<form method="post" action="{{ '/admin/trading-setup/routing/new' if new else '/admin/trading-setup/routing/' ~ r.id }}" class="mw-lg">
   {{ csrf_input(csrf) }}
   <input type="hidden" name="other_requests" value="{{ other_requests }}">
   <div class="card mb-3"><div class="card-header">Rule on <strong>{{ server.name if server else "—" }}</strong></div><div class="card-body"><div class="row">
@@ -82,19 +82,19 @@
         {% for g in gateways %}<option value="{{ g.id }}" {% if target == g.id %}selected{% endif %}>{{ g.name }}{% if not g.enabled %} (disabled){% endif %}</option>{% endfor %}
       </select>
       <div class="form-text">For "Send to a gateway or dealer": orders go to this LP.
-        {% if not gateways %}This server has no gateway yet: <a href="/admin/liquidity/new?server={{ server.id if server else '' }}&kind=gateway">add one</a>.{% endif %}</div></div>
+        {% if not gateways %}This server has no gateway yet: <a href="/admin/trading-setup/liquidity/new?server={{ server.id if server else '' }}&kind=gateway">add one</a>.{% endif %}</div></div>
     {{ field("dealer_logins", "And / or dealer logins", other_logins, col="col-md-6", placeholder="e.g. 1001 1002",
              help="Manager logins that handle the requests by hand, separated by spaces.") }}
   </div></div></div>
 
   <button class="btn btn-primary" type="submit">{{ "Create on MT5" if new else "Save to MT5" }}</button>
-  <a class="btn btn-link" href="/admin/routing?server={{ server.id if server else '' }}">Cancel</a>
+  <a class="btn btn-link" href="/admin/trading-setup/routing?server={{ server.id if server else '' }}">Cancel</a>
 </form>
 
 {% if not new %}
 <div class="card mw-lg border-danger mt-4"><div class="card-body d-flex justify-content-between align-items-center gap-2">
   <div class="small text-muted">Deleting removes the rule from the MT5 server and from the CRM; the requests it caught then go to the rules below it.</div>
-  {{ post_button("/admin/routing/" ~ r.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
+  {{ post_button("/admin/trading-setup/routing/" ~ r.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
                  confirm="Delete routing rule " ~ r.name ~ " on the MT5 server " ~ server.name ~ "?", danger=True) }}
 </div></div>
 {% endif %}

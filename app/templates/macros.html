@@ -103,3 +103,29 @@
 {% macro add_row_button(tpl_id, target, label, cls="mb-3") -%}
   <button type="button" class="btn btn-sm btn-outline-secondary {{ cls }}" data-add-row="{{ tpl_id }}" data-target="{{ target }}"><i class="bi bi-plus"></i> {{ label }}</button>
 {%- endmacro %}
+
+{# Progress of this page's background syncs (web.syncs.panel): a bar while one runs, refreshed every 2 s, then its
+   result. Read from the database, so it is there again after a refresh or when you come back later. #}
+{% macro sync_panel(kinds, live=False) -%}
+  {% set items = sync_panel_runs(kinds) %}{% set running = items|selectattr("run.active")|list %}
+  <div class="sync-panel" {% if running %}hx-get="/admin/import/history/panel?kinds={{ kinds|join(',') }}&live=1" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% for x in items %}{% set r = x.run %}
+    <div class="card mb-3 {% if not r.active %}border-{{ 'danger' if x.level == 'danger' else 'success' }}-subtle{% endif %}"><div class="card-body py-2">
+      <div class="d-flex flex-wrap justify-content-between gap-2 small mb-1">
+        <span><strong>{{ x.label }}</strong> · {{ x.server }} · started by {{ x.by }} {{ r.created_at|dt }}</span>
+        <a href="/admin/import/history?kind={{ r.kind }}">History</a></div>
+      {% if r.active %}
+        {% set pct = r.percent %}
+        <div class="progress" role="progressbar" aria-label="{{ x.label }} progress" aria-valuenow="{{ pct or 0 }}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar progress-bar-striped progress-bar-animated progress-w-{{ ((pct // 5) * 5) if pct is not none else 100 }}">{% if pct is not none %}{{ pct }}%{% endif %}</div></div>
+        <div class="small text-muted mt-1">{% if r.status == "queued" %}Waiting to start…{% elif r.total %}{{ r.done|num }} of {{ r.total|num }} done{% else %}Running…{% endif %}</div>
+      {% else %}
+        <div class="small {% if x.level == 'danger' %}text-danger{% elif x.level == 'warning' %}text-warning-emphasis{% endif %}">
+          <i class="bi bi-{{ 'x-circle' if x.level == 'danger' else 'check-circle' }} me-1"></i>{{ "Failed" if r.status == "failed" else "Finished" }}
+          {{ r.finished_at|dt }}: {{ x.text }}
+          {% if live %}<a class="ms-1" href="">Reload the page</a> to see the changes.{% endif %}</div>
+      {% endif %}
+    </div></div>
+  {% endfor %}
+  </div>
+{%- endmacro %}

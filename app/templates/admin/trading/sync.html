@@ -2,6 +2,7 @@
 {% from "macros.html" import post_button, empty, badge, csrf_input %}
 {% block page_title %}Trade sync{% endblock %}
 {% block content %}
+{% from "macros.html" import sync_panel %}{{ sync_panel(["trades"]) }}
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body">
     <div class="kpi-label">MT5 servers</div>
@@ -15,7 +16,7 @@
   </div></div></div>
 </div>
 {% if staff.has_perm("trading.sync") %}
-<div class="mb-3">{{ post_button("/admin/sync", '<i class="bi bi-arrow-repeat"></i> Run full sync now', csrf, "btn-primary") }}
+<div class="mb-3">{{ post_button("/admin/import/trades", '<i class="bi bi-arrow-repeat"></i> Run full sync now', csrf, "btn-primary") }}
   <span class="small text-muted ms-2">The background worker syncs automatically every {{ settings().sync_interval_seconds }} s and receives deals in real time.</span></div>
 {% endif %}
 <div data-tabs>
@@ -27,7 +28,7 @@
     <p class="small text-muted">Re-reads deals and orders from MT5 for a period and adds whatever the CRM is missing
       (nothing is duplicated), then refreshes open positions, open orders and balances. It runs in the background:
       you can leave this page and come back.</p>
-    <form method="post" action="/admin/sync/jobs" class="row g-2 align-items-end">
+    <form method="post" action="/admin/import/trades/jobs" class="row g-2 align-items-end">
       {{ csrf_input(csrf) }}
       <div class="col-md-3"><label class="form-label small" for="job-logins">Accounts</label>
         <input class="form-control form-control-sm" id="job-logins" name="logins" placeholder="All, or logins: 500123, 500124"></div>
@@ -74,7 +75,7 @@
     <thead><tr><th>Login</th><th>Last successful deal sync</th><th>Error</th></tr></thead>
     <tbody>
     {% for e in errors %}
-      <tr><td><a href="/admin/accounts/{{ e.login }}">{{ e.login }}</a></td><td>{{ e.last_deal_sync_at|dt }}</td><td class="small text-danger">{{ e.last_error }}</td></tr>
+      <tr><td><a href="/admin/accounts/trading-accounts/{{ e.login }}">{{ e.login }}</a></td><td>{{ e.last_deal_sync_at|dt }}</td><td class="small text-danger">{{ e.last_error }}</td></tr>
     {% else %}{{ empty(3, "No sync errors.") }}{% endfor %}
     </tbody>
   </table></div>

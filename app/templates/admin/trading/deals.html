@@ -23,7 +23,7 @@
       {% set owner = owners.get(d.login) %}
       <tr>
         <td class="small">{{ d.time|dt }}</td><td class="mono">{{ d.ticket }}</td>
-        <td><a href="/admin/accounts/{{ d.login }}">{{ d.login }}</a></td>
+        <td><a href="/admin/accounts/trading-accounts/{{ d.login }}">{{ d.login }}</a></td>
         <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
         <td>{{ d.action|side }}{% if d.action < 2 %} <span class="text-muted small">{{ ["in", "out", "in/out", "out by"][d.entry] if d.entry < 4 else "" }}</span>{% endif %}</td>
         <td>{{ d.symbol }}</td>

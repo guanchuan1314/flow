@@ -67,9 +67,9 @@ def _update(db, server, **changes):
 # ---------------------------------------------------------------- admin screens
 def test_admin_adds_edits_and_tests_the_server(web, admin, db, no_server):
     web_login(web, *ADMIN)
-    assert web.get("/admin/mt5-servers").url.path == "/admin/configuration"  # the old list is gone
+    assert web.get("/admin/configuration/servers").url.path == "/admin/configuration"  # the old list is gone
     assert "Save &amp; test connection" in web.get("/admin/configuration").text  # not set up yet: add it here
-    r = form_post(web, "/admin/mt5-servers/new", "/admin/mt5-servers/new", {
+    r = form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {
         "name": "Main", "kind": "simulator", "terminal_name": "Broker-Server", "timeout_seconds": "10", "enabled": "on"})
     assert "saved. Connection test: Connected successfully" in r.text
     server = db.scalar(select(MT5Server).where(MT5Server.name == "Main"))
@@ -77,13 +77,13 @@ def test_admin_adds_edits_and_tests_the_server(web, admin, db, no_server):
     config = web.get("/admin/configuration").text
     assert "Broker-Server" in config and "Test connection" in config
 
-    r = form_post(web, f"/admin/mt5-servers/{server.id}", f"/admin/mt5-servers/{server.id}", {
+    r = form_post(web, f"/admin/configuration/servers/{server.id}", f"/admin/configuration/servers/{server.id}", {
         "name": "Main 2", "kind": "simulator", "terminal_name": "Broker-Server2", "timeout_seconds": "10",
         "enabled": "on"})
     assert "Server settings saved" in r.text
     db.expire_all()
     assert db.get(MT5Server, server.id).terminal_name == "Broker-Server2"
-    r = form_post(web, "/admin/configuration", f"/admin/mt5-servers/{server.id}/test", {})
+    r = form_post(web, "/admin/configuration", f"/admin/configuration/servers/{server.id}/test", {})
     assert "Connected successfully" in r.text
 
 
@@ -91,22 +91,22 @@ def test_a_second_server_is_refused(web, admin, db):
     with pytest.raises(Conflict, match="one MT5 server"):
         servers.create_server(db, None, name="Another", kind=ServerKind.simulator)
     web_login(web, *ADMIN)
-    r = web.get("/admin/mt5-servers/new")  # the form sends you to the existing server
+    r = web.get("/admin/configuration/servers/new")  # the form sends you to the existing server
     assert r.url.path == "/admin/configuration" and "instead of adding another" in r.text
 
 
 def test_manager_password_is_encrypted_and_never_shown(web, admin, db, no_server):
     web_login(web, *ADMIN)
-    form_post(web, "/admin/mt5-servers/new", "/admin/mt5-servers/new", {
+    form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {
         "name": "Real", "kind": "manager", "address": "127.0.0.1:1", "manager_login": "1001",
         "password": "Sup3r-Secret!", "timeout_seconds": "2", "enabled": "on"})
     server = db.scalar(select(MT5Server).where(MT5Server.name == "Real"))
     assert server.manager_password_enc and "Sup3r-Secret!" not in server.manager_password_enc
     assert decrypt_secret(server.manager_password_enc) == "Sup3r-Secret!"
-    page = web.get(f"/admin/mt5-servers/{server.id}").text
+    page = web.get(f"/admin/configuration/servers/{server.id}").text
     assert "Sup3r-Secret!" not in page and "unchanged" in page
     # saving without a password keeps the stored one
-    form_post(web, f"/admin/mt5-servers/{server.id}", f"/admin/mt5-servers/{server.id}", {
+    form_post(web, f"/admin/configuration/servers/{server.id}", f"/admin/configuration/servers/{server.id}", {
         "name": "Real", "kind": "manager", "address": "127.0.0.1:1", "manager_login": "1001", "password": "",
         "timeout_seconds": "2", "enabled": "on"})
     db.expire_all()
@@ -116,7 +116,7 @@ def test_manager_password_is_encrypted_and_never_shown(web, admin, db, no_server
 @pytest.mark.skipif(importlib.util.find_spec("MT5Manager") is None, reason="MT5Manager not installed")
 def test_unreachable_real_server_reports_the_error(web, admin, db, no_server):
     web_login(web, *ADMIN)
-    r = form_post(web, "/admin/mt5-servers/new", "/admin/mt5-servers/new", {
+    r = form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {
         "name": "Offline", "kind": "manager", "address": "127.0.0.1:1", "manager_login": "1001", "password": "x",
         "timeout_seconds": "2", "enabled": "on"})
     assert "Connection test:" in r.text and "Network error" in r.text
@@ -125,10 +125,10 @@ def test_unreachable_real_server_reports_the_error(web, admin, db, no_server):
 
 def test_server_form_validation(web, admin, db, no_server):
     web_login(web, *ADMIN)
-    r = form_post(web, "/admin/mt5-servers/new", "/admin/mt5-servers/new", {
+    r = form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {
         "name": "Bad", "kind": "manager", "address": "not a host!", "manager_login": "1", "password": "x"})
     assert "Address must look like" in r.text
-    r = form_post(web, "/admin/mt5-servers/new", "/admin/mt5-servers/new", {"name": "", "kind": "simulator"})
+    r = form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {"name": "", "kind": "simulator"})
     assert "Name is required" in r.text
 
 
@@ -241,24 +241,24 @@ def test_deleting_an_account_group_deletes_its_mt5_group(db, groups):
 
 def test_account_group_form_creates_the_group_on_mt5(web, admin, db):
     web_login(web, *ADMIN)
-    assert 'name="server_id" value="1"' in web.get("/admin/account-groups/new").text  # no server to choose
+    assert 'name="server_id" value="1"' in web.get("/admin/accounts/account-groups/new").text  # no server to choose
     form = {"name": "Raw", "mt5_group": "real\\raw", "server_id": "1", "currency": "USD",
             "leverage_options": "100, 200", "default_leverage": "100", "enabled": "on"}
-    r = form_post(web, "/admin/account-groups/new", "/admin/account-groups/new", {**form, "create_on_mt5": "on"})
+    r = form_post(web, "/admin/accounts/account-groups/new", "/admin/accounts/account-groups/new", {**form, "create_on_mt5": "on"})
     assert "copy settings from" in r.text  # template missing: refused
-    r = form_post(web, "/admin/account-groups/new", "/admin/account-groups/new",
+    r = form_post(web, "/admin/accounts/account-groups/new", "/admin/accounts/account-groups/new",
                   {**form, "create_on_mt5": "on", "template_group": "real\\ecn"})
     assert "group created on MT5" in r.text
     assert mt5.get_gateway(1).get_groups("real\\raw")
 
     raw = db.scalar(select(AccountGroup).where(AccountGroup.name == "Raw"))
-    page = web.get(f"/admin/account-groups/{raw.id}")
+    page = web.get(f"/admin/accounts/account-groups/{raw.id}")
     assert "Stop-out level" in page.text and "Delete account group" in page.text
-    r = form_post(web, f"/admin/account-groups/{raw.id}", f"/admin/account-groups/{raw.id}",
+    r = form_post(web, f"/admin/accounts/account-groups/{raw.id}", f"/admin/accounts/account-groups/{raw.id}",
                   {**form, "stop_out": "35", "margin_call": ""})
     assert "MT5 group updated" in r.text
     assert mt5.get_gateway(1).get_group("real\\raw").stop_out == Decimal("35")
-    r = form_post(web, f"/admin/account-groups/{raw.id}", f"/admin/account-groups/{raw.id}/delete", {})
+    r = form_post(web, f"/admin/accounts/account-groups/{raw.id}", f"/admin/accounts/account-groups/{raw.id}/delete", {})
     assert "deleted, with its MT5 group" in r.text
     assert mt5.get_gateway(1).get_group("real\\raw") is None
 

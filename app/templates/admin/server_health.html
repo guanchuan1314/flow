@@ -27,7 +27,7 @@
     </select>
   </form>
   {% if summary %}<div class="ms-auto">
-    {{ post_button("/admin/server-health/refresh", '<i class="bi bi-arrow-repeat"></i> ' ~ "Read now", csrf,
+    {{ post_button("/admin/server-tools/health/refresh", '<i class="bi bi-arrow-repeat"></i> ' ~ "Read now", csrf,
                    "btn-primary btn-sm", fields={"server_id": chosen}) }}</div>{% endif %}
 </div>
 
@@ -102,7 +102,7 @@
         </div>
         <div class="col-lg-4">
           {{ trend("One sync pass", r.poll_trend, " s") }}
-          {% if staff.has_perm("accounts.cleanup") %}<a href="/admin/inactive-accounts">Inactive demo accounts</a>:
+          {% if staff.has_perm("accounts.cleanup") %}<a href="/admin/accounts/inactive-accounts">Inactive demo accounts</a>:
             {% if r.cleanup and r.cleanup.done is defined %}last run {{ r.cleanup.at[:10] }}, {{ r.cleanup.done }} {{ "archived" if r.cleanup.action == "archive" else "deleted" }}.
             {% else %}unused demo accounts also cost the server memory.{% endif %}{% endif %}
         </div>

@@ -37,9 +37,9 @@ def test_ea_condition_takes_yes_or_no(db, gw):
 
 
 def test_presets_on_the_routing_page(admin_web, db, gw):  # noqa: F811
-    page = admin_web.get("/admin/routing").text
+    page = admin_web.get("/admin/trading-setup/routing").text
     assert "Reduce the server&#39;s load" in page or "Reduce the server's load" in page
-    r = form_post(admin_web, "/admin/routing", "/admin/routing/preset",
+    r = form_post(admin_web, "/admin/trading-setup/routing", "/admin/trading-setup/routing/preset",
                   {"server_id": "1", "key": "busy_account_delay", "value": "400"})
     assert "added on MT5 at the top, switched off" in r.text
     assert gw.routes[0].name == "Load: delay accounts with many deals today" and not gw.routes[0].enabled

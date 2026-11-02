@@ -10,7 +10,7 @@
       {% for s in rows %}
         <tr>
           <td><a href="/admin/copy/{{ s.id }}">{{ s.name }}</a></td>
-          <td><a href="/admin/accounts/{{ s.master_login }}">{{ s.master_login }}</a></td>
+          <td><a href="/admin/accounts/trading-accounts/{{ s.master_login }}">{{ s.master_login }}</a></td>
           <td><a href="/admin/clients/{{ s.owner_client_id }}">{{ owners[s.owner_client_id].full_name }}</a></td>
           <td>{{ badge(s.status) }}</td>
           <td>{{ "Public" if s.is_public else "Private" }}</td>

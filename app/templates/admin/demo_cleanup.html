@@ -2,6 +2,7 @@
 {% from "macros.html" import alert, csrf_input, post_button %}
 {% block page_title %}Inactive demo accounts · {{ server.name }}{% endblock %}
 {% block content %}
+{% from "macros.html" import sync_panel %}{{ sync_panel(["demo_cleanup"]) }}
 <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
   <a class="small" href="/admin/configuration"><i class="bi bi-arrow-left"></i> Configuration</a>
 </div>
@@ -21,14 +22,14 @@
         <span><strong>{{ found.total }}</strong> demo account(s) inactive for {{ found.days }}+ days</span>
         {% for why, n in found.skipped.items() %}{% if n %}<span class="small text-muted">· {{ n }} kept: {{ why }}</span>{% endif %}{% endfor %}
         {% if found.candidates %}
-        <form id="clean" method="post" action="/admin/mt5-servers/{{ server.id }}/inactive/run" data-confirm="Archive or delete the ticked demo accounts on MT5?" data-confirm-variant="danger" data-confirm-ok="Go ahead">
+        <form id="clean" method="post" action="/admin/accounts/inactive-accounts/{{ server.id }}/run" data-confirm="Archive or delete the ticked demo accounts on MT5?" data-confirm-variant="danger" data-confirm-ok="Go ahead">
           {{ csrf_input(csrf) }}</form>
         <span class="ms-auto d-flex gap-2 align-items-center">
           <select class="form-select form-select-sm w-auto" name="action" form="clean" aria-label="Action">
             {% for k, label in actions.items() %}<option value="{{ k }}" {% if cfg.action == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
           <button class="btn btn-sm btn-danger" type="submit" form="clean">Apply to ticked</button>
-          {{ post_button("/admin/mt5-servers/" ~ server.id ~ "/inactive/run", (("Archive" if cfg.action == "archive" else "Delete") ~ " all (at most " ~ max_per_run ~ ")"), csrf,
+          {{ post_button("/admin/accounts/inactive-accounts/" ~ server.id ~ "/run", (("Archive" if cfg.action == "archive" else "Delete") ~ " all (at most " ~ max_per_run ~ ")"), csrf,
              "btn-outline-danger btn-sm", confirm=(("Archive" if cfg.action == "archive" else "Delete") ~ " all " ~ found.total ~ " inactive demo accounts on MT5?"), danger=True,
              fields={"everything": "1", "action": cfg.action}) }}
         </span>{% endif %}
@@ -40,7 +41,7 @@
           <th>Login</th><th>Group</th><th>Client</th><th>Email</th><th>Last connection</th><th>Last trade</th><th>Registered</th></tr></thead>
         <tbody>{% for c in found.candidates %}
           <tr><td><input class="form-check-input" type="checkbox" name="login" value="{{ c.login }}" form="clean" aria-label="Tick {{ c.login }}"></td>
-            <td><a href="/admin/accounts/{{ c.login }}">{{ c.login }}</a></td><td>{{ c.group }}</td><td>{{ c.name }}</td><td>{{ c.email }}</td>
+            <td><a href="/admin/accounts/trading-accounts/{{ c.login }}">{{ c.login }}</a></td><td>{{ c.group }}</td><td>{{ c.name }}</td><td>{{ c.email }}</td>
             <td>{{ c.last_access.strftime("%Y-%m-%d") if c.last_access else "never" }}</td>
             <td>{{ c.last_trade.strftime("%Y-%m-%d") if c.last_trade else "never" }}</td>
             <td>{{ c.registration.strftime("%Y-%m-%d") if c.registration else "" }}</td></tr>
@@ -53,7 +54,7 @@
   <section data-tab="Clean-up settings" id="settings">
     <div class="card mw-sm">
       <div class="card-header">CRM clean-up settings</div>
-      <form method="post" action="/admin/mt5-servers/{{ server.id }}/inactive/settings" class="card-body">
+      <form method="post" action="/admin/accounts/inactive-accounts/{{ server.id }}/settings" class="card-body">
         {{ csrf_input(csrf) }}
         <div class="mb-2"><label class="form-label small" for="c-days">No activity for at least</label>
           <div class="input-group input-group-sm"><input class="form-control" id="c-days" type="number" name="days" min="{{ min_days }}" value="{{ cfg.days }}" required>
@@ -79,7 +80,7 @@
         {% if mt5_error %}{{ alert(mt5_error, "danger", "small mb-0") }}
         {% elif not mt5_groups %}<span class="text-muted">This server has no demo groups.</span>
         {% else %}
-        <form id="mt5days" method="post" action="/admin/mt5-servers/{{ server.id }}/inactive/mt5-days">{{ csrf_input(csrf) }}</form>
+        <form id="mt5days" method="post" action="/admin/accounts/inactive-accounts/{{ server.id }}/mt5-days">{{ csrf_input(csrf) }}</form>
         <div class="table-responsive"><table class="table table-sm align-middle mb-2">
           <thead><tr><th><input class="form-check-input" type="checkbox" data-check-all="group" aria-label="Tick all groups"></th>
             <th>Group</th><th class="text-end">Now</th><th class="text-end">Accounts in the CRM</th><th class="text-end">Inactive {{ found.days }}+ days</th></tr></thead>

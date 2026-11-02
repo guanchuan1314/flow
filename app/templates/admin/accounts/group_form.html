@@ -7,63 +7,79 @@
 <p class="small text-muted mw-md">Fields marked <span class="badge text-bg-info">MT5</span> are the MT5 group's own settings:
   saving writes them to the group, and changes made in MT5 Administrator show up here.
   {% if t and t.synced_at %}Last read from MT5 {{ t.synced_at|dt }}.{% endif %}</p>
+{% set mt5 = ' <span class="badge text-bg-info">MT5</span>'|safe %}
 <div class="card mw-md"><div class="card-body">
-  <form method="post" action="/admin/account-groups/{{ t.id if t else 'new' }}">
+  <form method="post" action="/admin/accounts/account-groups/{{ t.id if t else 'new' }}">
     {{ csrf_input(csrf) }}
+    <input type="hidden" name="server_id" value="{{ t.server_id if t else (servers[0].id if servers else '') }}">
+    {% if not servers %}{{ no_server_alert() }}{% endif %}
+
+    <h2 class="form-section">Group</h2>
     <div class="row">
-      {% if t %}
-        <input type="hidden" name="name" value="{{ t.name }}">
-        <div class="col-md-6 mb-3"><div class="form-label">Name</div><div class="form-control-plaintext fw-semibold">{{ t.name }}
-          <small class="text-muted">({{ "demo" if t.is_demo else "live" }}, {{ t.currency }})</small></div></div>
-      {% else %}
-        {{ field("name", "Name", required=True, col="col-md-6", placeholder="Standard, ECN, Cent…") }}
-      {% endif %}
-      <input type="hidden" name="server_id" value="{{ t.server_id if t else (servers[0].id if servers else '') }}">
-      {% if not servers %}<div class="col-12">{{ no_server_alert() }}</div>{% endif %}
+      {{ field("name", "Name", t.name if t else "", required=True, col="col-md-6", placeholder="Standard, ECN, Cent…",
+               help="What clients and staff see.") }}
       {{ field("mt5_group", "MT5 group", t.mt5_group if t else "", required=True, col="col-md-6",
                help="Exact group path on MT5, e.g. real\\standard or demo\\standard") }}
-      {% if not t %}
-        <div class="col-md-6 mb-3">
-          <div class="form-check mt-md-4">
-            <input class="form-check-input" type="checkbox" name="create_on_mt5" id="f-create">
-            <label class="form-check-label" for="f-create">Create this group on MT5</label>
-          </div>
-          <div class="form-text">Leave unticked if the group already exists on the server.</div>
+      {% if t %}
+        <div class="col-md-6 mb-3"><div class="form-label">Type and currency</div>
+          <div class="form-control-plaintext">{{ "Demo" if t.is_demo else "Live" }} · {{ t.currency }}</div>
+          <div class="form-text">Fixed: the group's accounts depend on them.</div></div>
+      {% else %}
+        <div class="col-md-3 mb-3">
+          <label class="form-label" for="f-is_demo">Type</label>
+          <select class="form-select" id="f-is_demo" name="is_demo"><option value="">Live</option><option value="on">Demo</option></select>
         </div>
+        {{ field("currency", "Currency", "USD", col="col-md-3") }}
         <div class="col-md-6 mb-3">
           <label class="form-label" for="f-template">Copy settings from group</label>
           <input class="form-control" id="f-template" name="template_group" list="known-groups" placeholder="real\standard">
           <datalist id="known-groups">
             {% for g, server in known_groups %}<option value="{{ g }}">{{ server }}</option>{% endfor %}
           </datalist>
-          <div class="form-text">Only used with "Create this group on MT5". An existing MT5 group;
-            the new group copies its symbols, margin and commission settings. Review it in MT5 Administrator afterwards.</div>
+          <div class="form-text">Only with "Create this group on MT5": the new group copies this group's symbols,
+            margin and commission settings.</div>
         </div>
-        {{ field("currency", "Currency", "USD", col="col-md-3") }}
-        <div class="col-md-3 mb-3 d-flex align-items-end"><div class="form-check">
-          <input class="form-check-input" type="checkbox" name="is_demo" id="f-demo"><label class="form-check-label" for="f-demo">Demo accounts</label></div></div>
+        <div class="col-12 mb-3"><div class="form-check">
+          <input class="form-check-input" type="checkbox" name="create_on_mt5" id="f-create">
+          <label class="form-check-label" for="f-create">Create this group on MT5</label>
+          <div class="form-text">Leave unticked if the group already exists on the server.</div></div></div>
       {% endif %}
-      {% set mt5 = ' <span class="badge text-bg-info">MT5</span>'|safe %}
-      <div class="col-md-3 mb-3">
-        <label class="form-label" for="f-margin_call">Margin call level{{ mt5 }}</label>
+    </div>
+
+    <h2 class="form-section">Margin{{ mt5 }}</h2>
+    <div class="row">
+      <div class="col-md-6 mb-3">
+        <label class="form-label" for="f-margin_call">Margin call level</label>
         <input class="form-control" id="f-margin_call" name="margin_call" type="number" step="0.01"
                value="{{ t.margin_call if t and t.margin_call is not none else '' }}" {% if not t %}placeholder="from the group"{% endif %}>
       </div>
-      <div class="col-md-3 mb-3">
-        <label class="form-label" for="f-stop_out">Stop-out level{{ mt5 }}</label>
+      <div class="col-md-6 mb-3">
+        <label class="form-label" for="f-stop_out">Stop-out level</label>
         <input class="form-control" id="f-stop_out" name="stop_out" type="number" step="0.01"
                value="{{ t.stop_out if t and t.stop_out is not none else '' }}" {% if not t %}placeholder="from the group"{% endif %}>
       </div>
-      <div class="col-md-6 mb-3 d-flex align-items-end"><div class="form-text">In the group's margin mode (usually margin level %).
-        Leave blank to keep the group's values.</div></div>
-      {{ field("leverage_options", "Leverage options", (t.leverage_options|map("string")|join(", ")) if t else "50, 100, 200, 500", required=True, col="col-md-4", help="Comma separated") }}
-      {{ field("default_leverage", "Default leverage" ~ (mt5 if not t or t.is_demo else ""), t.default_leverage if t else 100, type="number", col="col-md-2") }}
-      {{ field("min_deposit", "Minimum deposit", t.min_deposit if t else 0, type="number", step="0.01", col="col-md-3") }}
-      {{ field("demo_initial_balance", "Demo starting balance" ~ (mt5 if not t or t.is_demo else ""), t.demo_initial_balance if t else 10000, type="number", step="0.01", col="col-md-3") }}
-      {{ field("spread_markup_points", "Spread markup (points)", t.spread_markup_points if t else 0, type="number", col="col-md-3",
+      <div class="col-12 form-text mt-n2 mb-3">In the group's margin mode (usually margin level %). Leave blank to keep the group's values.</div>
+    </div>
+
+    <h2 class="form-section">Leverage</h2>
+    <div class="row">
+      {{ field("leverage_options", "Leverage options", (t.leverage_options|map("string")|join(", ")) if t else "50, 100, 200, 500",
+               required=True, col="col-md-6", help="Comma separated") }}
+      {{ field("default_leverage", "Default leverage" ~ (mt5 if not t or t.is_demo else ""), t.default_leverage if t else 100,
+               type="number", col="col-md-6", help="One of the options; new accounts start with it.") }}
+    </div>
+
+    <h2 class="form-section">Accounts</h2>
+    <div class="row">
+      {{ field("min_deposit", "Minimum deposit", t.min_deposit if t else 0, type="number", step="0.01", col="col-md-6") }}
+      {{ field("max_accounts_per_client", "Max accounts per client", t.max_accounts_per_client if t else 5, type="number", col="col-md-6") }}
+      {% if not t or t.is_demo %}
+      {{ field("demo_initial_balance", "Demo starting balance" ~ mt5, t.demo_initial_balance if t else 10000, type="number",
+               step="0.01", col="col-md-6", help="Demo groups only.") }}
+      {% else %}<input type="hidden" name="demo_initial_balance" value="{{ t.demo_initial_balance }}">{% endif %}
+      {{ field("spread_markup_points", "Spread markup (points)", t.spread_markup_points if t else 0, type="number", col="col-md-6",
                help="Markup configured on the MT5 group; used for spread-share IB rebates.") }}
-      {{ field("max_accounts_per_client", "Max accounts per client", t.max_accounts_per_client if t else 5, type="number", col="col-md-3") }}
-      {{ field("description", "Description", t.description if t else "", col="col-md-12") }}
+      {{ field("description", "Description", t.description if t else "", col="col-12") }}
       <div class="col-12 mb-3"><div class="form-check">
         <input class="form-check-input" type="checkbox" name="enabled" id="f-enabled" {% if not t or t.enabled %}checked{% endif %}>
         <label class="form-check-label" for="f-enabled">Available for new accounts</label></div></div>
@@ -75,7 +91,7 @@
       {% endif %}
     </div>
     <button class="btn btn-primary" type="submit">Save</button>
-    <a class="btn btn-link" href="/admin/account-groups">Cancel</a>
+    <a class="btn btn-link" href="/admin/accounts/account-groups">Cancel</a>
   </form>
 </div></div>
 {% if t %}
@@ -86,7 +102,7 @@
   {% if preview.accounts %}
     <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#delete-type"><i class="bi bi-trash"></i> Delete</button>
   {% else %}
-    {{ post_button("/admin/account-groups/" ~ t.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
+    {{ post_button("/admin/accounts/account-groups/" ~ t.id ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
                    confirm="Delete " ~ t.name ~ " and MT5 group " ~ t.mt5_group ~ " on MT5? This cannot be undone.",
                    danger=True) }}
   {% endif %}
@@ -95,7 +111,7 @@
 {% if preview.accounts %}
 <div class="modal fade" id="delete-type" tabindex="-1" aria-labelledby="delete-type-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-    <form method="post" action="/admin/account-groups/{{ t.id }}/delete">
+    <form method="post" action="/admin/accounts/account-groups/{{ t.id }}/delete">
       {{ csrf_input(csrf) }}
       <div class="modal-header"><h5 class="modal-title" id="delete-type-title">Delete {{ t.name }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>

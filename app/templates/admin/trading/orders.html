@@ -22,7 +22,7 @@
       {% set owner = owners.get(o.login) %}
       <tr>
         <td class="small">{{ o.time_setup|dt }}</td><td class="mono">{{ o.ticket }}</td>
-        <td><a href="/admin/accounts/{{ o.login }}">{{ o.login }}</a></td>
+        <td><a href="/admin/accounts/trading-accounts/{{ o.login }}">{{ o.login }}</a></td>
         <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
         <td>{{ types.get(o.type, o.type) }}</td>
         <td>{{ o.symbol }}</td>

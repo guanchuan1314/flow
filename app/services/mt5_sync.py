@@ -28,6 +28,7 @@ from app.mt5 import MT5Error, MT5Gateway, get_gateway
 from app.mt5.gateway import MT5Group, MT5User
 from app.services import clients as client_svc
 from app.services import sync
+from app.services import sync_runs
 
 log = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -238,7 +239,8 @@ def sync_trading_accounts(db: Session, server: MT5Server, actor=None, gw: MT5Gat
     seen: set[int] = set()
     new_logins: list[int] = []
     pending = 0
-    for group, ag in groups.items():
+    for n, (group, ag) in enumerate(groups.items()):
+        sync_runs.report(n, len(groups))  # progress: MT5 groups read
         if excluded(group):
             continue
         try:

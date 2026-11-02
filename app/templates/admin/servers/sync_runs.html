@@ -1,0 +1,37 @@
+{% from "macros.html" import empty, pagination %}
+{# Refreshed every 3 s (htmx) while a sync on it is waiting or running. #}
+<div id="sync-runs" {% if page.items|selectattr("active")|list %}hx-get="/admin/import/history?partial=1&kind={{ kind }}&trigger={{ trigger }}&status={{ status }}&page={{ page.page }}"
+     hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+    <thead><tr><th>Started</th><th>What</th><th>Started by</th><th>Status</th><th class="num">Took</th><th>Result</th><th></th></tr></thead>
+    <tbody>
+    {% set colors = {"queued": "secondary", "running": "primary", "done": "success", "failed": "danger"} %}
+    {% for r in page.items %}
+      {% set text, level = describe(r) %}
+      {% set who = staff_names.get(r.created_by_id, "Staff #" ~ r.created_by_id) if r.created_by_id else ("Schedule" if r.trigger == "schedule" else "System") %}
+      <tr>
+        <td class="small text-nowrap">{{ r.created_at|dt }}</td>
+        <td class="small text-nowrap">{{ kinds[r.kind] }}<div class="text-muted">{{ server_names.get(r.server_id, "All servers") if r.server_id else "All servers" }}</div></td>
+        <td class="small">{% if r.trigger == "schedule" %}<span class="badge text-bg-light border"><i class="bi bi-clock"></i> Schedule</span>{% else %}{{ who }}{% endif %}</td>
+        <td><span class="badge text-bg-{{ colors[r.status] }}">{% if r.status == "running" %}<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>{% endif %}{{ r.status|label }}</span></td>
+        <td class="num small text-nowrap">{% if r.seconds is not none %}{{ "%.1f"|format(r.seconds) }} s{% else %}—{% endif %}</td>
+        <td class="small {% if level == 'danger' %}text-danger{% elif level == 'warning' %}text-warning-emphasis{% endif %}">
+          {% if r.active %}{% set pct = r.percent %}
+            <div class="progress" role="progressbar" aria-label="Sync {{ r.id }} progress" aria-valuenow="{{ pct or 0 }}" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar progress-bar-striped progress-bar-animated progress-w-{{ ((pct // 5) * 5) if pct is not none else 100 }}">{% if pct is not none %}{{ pct }}%{% endif %}</div></div>
+            <div class="text-muted mt-1">{% if r.total %}{{ r.done|num }} of {{ r.total|num }} done{% else %}{{ text }}{% endif %}</div>
+          {% else %}{{ text|truncate(220) }}{% endif %}</td>
+        <td class="text-end">{% set rows = r.summary|detail_rows(staff_names) if r.summary else [] %}{% if rows or r.message %}
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-details="sync-{{ r.id }}"
+                  data-details-title="{{ kinds[r.kind] }} · {{ r.created_at|dt }}"><i class="bi bi-card-text"></i> Details</button>
+          <template id="sync-{{ r.id }}"><dl class="row mb-0 small">
+            <dt class="col-sm-4">Started by</dt><dd class="col-sm-8">{{ who }}</dd>
+            <dt class="col-sm-4">Result</dt><dd class="col-sm-8 text-break">{{ text }}</dd>
+            {% for name, value in rows %}<dt class="col-sm-4">{{ name }}</dt><dd class="col-sm-8 text-break">{{ value }}</dd>{% endfor %}
+          </dl></template>{% endif %}</td>
+      </tr>
+    {% else %}{{ empty(7, "No synchronizations yet.") }}{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, request) }}
+</div>

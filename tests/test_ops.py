@@ -92,14 +92,14 @@ def test_sync_task_cancel_and_validation(db, gw, trader):
 
 
 def test_sync_task_screen_shows_progress(admin_web, db, gw, trader):
-    r = form_post(admin_web, "/admin/sync", "/admin/sync/jobs",
+    r = form_post(admin_web, "/admin/import/trades", "/admin/import/trades/jobs",
                   {"date_from": (utcnow() - timedelta(days=5)).date().isoformat(), "logins": str(trader),
                    "include_orders": "on"})
     assert "queued; progress is shown below" in r.text
-    part = admin_web.get("/admin/sync/jobs")
+    part = admin_web.get("/admin/import/trades/jobs")
     assert 'hx-trigger="every 2s"' in part.text  # polls while the task is waiting / running
     sync_jobs.run_next(db)
-    part = admin_web.get("/admin/sync/jobs")
+    part = admin_web.get("/admin/import/trades/jobs")
     assert "Done" in part.text and "hx-trigger" not in part.text
 
 
@@ -133,10 +133,10 @@ def test_deleting_a_server_never_touches_mt5(admin_web, db, gw, second_server):
     db.delete(db.get(PaymentRequest, req.id))
     db.commit()
 
-    r = form_post(admin_web, f"/admin/mt5-servers/{srv.id}", f"/admin/mt5-servers/{srv.id}/delete",
+    r = form_post(admin_web, f"/admin/configuration/servers/{srv.id}", f"/admin/configuration/servers/{srv.id}/delete",
                   {"purge": "on", "confirm_name": "wrong"})
     assert "Type the server name" in r.text
-    r = form_post(admin_web, f"/admin/mt5-servers/{srv.id}", f"/admin/mt5-servers/{srv.id}/delete",
+    r = form_post(admin_web, f"/admin/configuration/servers/{srv.id}", f"/admin/configuration/servers/{srv.id}/delete",
                   {"purge": "on", "confirm_name": "Old server"})
     assert "Nothing was changed on the MT5 server" in r.text
     db.expire_all()
@@ -193,18 +193,18 @@ def test_ip_rule_is_mirrored_to_mt5(db, gw):
 
 
 def test_ip_rules_admin_screens(admin_web, db, gw):
-    r = form_post(admin_web, "/admin/ip-rules", "/admin/ip-rules",
+    r = form_post(admin_web, "/admin/security/ip-rules", "/admin/security/ip-rules",
                   {"network": "198.51.100.66", "action": "block", "scope": "all", "enabled": "on", "apply_mt5": "on",
                    "description": "bot"})
     assert "Applied on 1 MT5 server" in r.text
     rule = db.scalar(select(IpRule))
-    assert "from CRM" in admin_web.get("/admin/ip-rules?firewall=1").text
-    r = form_post(admin_web, f"/admin/ip-rules/{rule.id}", f"/admin/ip-rules/{rule.id}/delete", {})
+    assert "from CRM" in admin_web.get("/admin/security/ip-rules?firewall=1").text
+    r = form_post(admin_web, f"/admin/security/ip-rules/{rule.id}", f"/admin/security/ip-rules/{rule.id}/delete", {})
     assert "IP rule deleted" in r.text and gw.get_firewall() == []
 
 
 # ---------------------------------------------------------------- naming
 def test_account_groups_naming(admin_web, account_groups):
-    r = admin_web.get("/admin/account-groups")
+    r = admin_web.get("/admin/accounts/account-groups")
     assert r.status_code == 200 and "Account groups" in r.text and "Account types" not in r.text
     assert admin_web.get("/admin/account-types").status_code == 404

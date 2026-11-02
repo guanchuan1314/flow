@@ -2,13 +2,14 @@
 {% from "macros.html" import empty %}
 {% block page_title %}Account groups{% endblock %}
 {% block content %}
+{% from "macros.html" import sync_panel %}{{ sync_panel(["account_groups"]) }}
 {% from "macros.html" import post_button %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <p class="small text-muted mb-0">Account groups map to MT5 groups. <strong>Sync from MT5</strong> imports every group of the MT5 server;
     new ones arrive disabled so you can name and price them before clients see them.</p>
   <div class="d-flex gap-2">
-    {{ post_button("/admin/account-groups/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm") }}
-    <a class="btn btn-success btn-sm" href="/admin/account-groups/new"><i class="bi bi-plus-lg"></i> New account group</a>
+    {{ post_button("/admin/accounts/account-groups/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm") }}
+    <a class="btn btn-success btn-sm" href="/admin/accounts/account-groups/new"><i class="bi bi-plus-lg"></i> New account group</a>
   </div>
 </div>
 <div class="card"><div class="table-responsive"><table class="table table-hover">
@@ -16,7 +17,7 @@
   <tbody>
   {% for t in groups %}
     <tr>
-      <td><a href="/admin/account-groups/{{ t.id }}">{{ t.name }}</a>
+      <td><a href="/admin/accounts/account-groups/{{ t.id }}">{{ t.name }}</a>
         {% if t.source == "mt5" %}<span class="badge text-bg-light border" title="Imported from MT5 {{ t.synced_at|dt }}">from MT5</span>{% endif %}
         {% if not t.on_server %}<span class="badge text-bg-danger" title="The MT5 group no longer exists">not on server</span>{% endif %}</td>
       <td class="mono">{{ t.mt5_group }}</td>

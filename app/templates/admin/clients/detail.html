@@ -90,7 +90,7 @@
       <tbody>
       {% for a in accounts %}
         <tr>
-          <td><a href="/admin/accounts/{{ a.login }}">{{ a.login }}</a> {% if a.is_demo %}<span class="badge text-bg-info">demo</span>{% endif %}
+          <td><a href="/admin/accounts/trading-accounts/{{ a.login }}">{{ a.login }}</a> {% if a.is_demo %}<span class="badge text-bg-info">demo</span>{% endif %}
             {% if a.purpose.value != "trading" %}<span class="badge text-bg-dark">{{ a.purpose|label }}</span>{% endif %}</td>
           <td>{{ a.account_group.name if a.account_group else "" }}</td>
           <td class="mono small">{{ a.group }}</td>
@@ -109,7 +109,7 @@
 <div class="card mw-sm">
   <div class="card-header">Open new MT5 account</div>
   <div class="card-body">
-    {% if not account_groups %}<p class="text-muted mb-0">No account groups are enabled. <a href="/admin/account-groups">Configure account groups</a>.</p>
+    {% if not account_groups %}<p class="text-muted mb-0">No account groups are enabled. <a href="/admin/accounts/account-groups">Configure account groups</a>.</p>
     {% else %}
     <form method="post" action="/admin/clients/{{ c.id }}/accounts" data-confirm="Create a new MT5 account for {{ c.full_name }}?">
       {{ csrf_input(csrf) }}

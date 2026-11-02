@@ -2,15 +2,16 @@
 {% from "macros.html" import empty, post_button %}
 {% block page_title %}Routing{% endblock %}
 {% block content %}
+{% from "macros.html" import sync_panel %}{{ sync_panel(["routing"]) }}
 <p class="small text-muted">What MT5 does with each trade request: confirm it, send it to a gateway (your LP) or a dealer, delay, requote or
   reject it. MT5 checks the enabled rules <strong>from the top</strong>: the first rule that matches and ends in a final action decides.
   Delays and SL / TP clearing change the request and let MT5 go on to the next rule. Changes here are made on MT5 first;
   <strong>Sync from MT5</strong> brings in changes made in MT5 Administrator.</p>
 <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
   {% if server %}<div class="ms-auto d-flex gap-2">
-    {{ post_button("/admin/routing/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm",
+    {{ post_button("/admin/trading-setup/routing/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm",
                    fields={"server_id": server.id}) }}
-    <a class="btn btn-success btn-sm" href="/admin/routing/new?server={{ server.id }}"><i class="bi bi-plus-lg"></i> New rule</a>
+    <a class="btn btn-success btn-sm" href="/admin/trading-setup/routing/new?server={{ server.id }}"><i class="bi bi-plus-lg"></i> New rule</a>
   </div>{% endif %}
 </div>
 <div data-tabs>
@@ -21,15 +22,15 @@
       {% for r, d in rows %}
         <tr class="{% if not r.enabled %}text-muted{% endif %}">
           <td class="num">{{ loop.index }}</td>
-          <td><a href="/admin/routing/{{ r.id }}">{{ r.name }}</a></td>
+          <td><a href="/admin/trading-setup/routing/{{ r.id }}">{{ r.name }}</a></td>
           <td class="small">{{ d.what }}{% for c in d.conditions %}<br><span class="mono">{{ c }}</span>{% endfor %}</td>
           <td class="small">{{ d.action }}{% if not d.final %} <span class="badge text-bg-light border">then next rule</span>{% endif %}</td>
-          <td>{{ post_button("/admin/routing/" ~ r.id ~ "/toggle", "enabled" if r.enabled else "disabled", csrf,
+          <td>{{ post_button("/admin/trading-setup/routing/" ~ r.id ~ "/toggle", "enabled" if r.enabled else "disabled", csrf,
                              "btn-sm " ~ ("btn-success" if r.enabled else "btn-outline-secondary"),
                              confirm=("Disable" if r.enabled else "Enable") ~ " rule " ~ r.name ~ " on MT5?") }}</td>
           <td class="text-end text-nowrap">
-            {% if not loop.first %}{{ post_button("/admin/routing/" ~ r.id ~ "/move", '<i class="bi bi-arrow-up"></i><span class="visually-hidden">Move up</span>', csrf, fields={"direction": "up"}) }}{% endif %}
-            {% if not loop.last %}{{ post_button("/admin/routing/" ~ r.id ~ "/move", '<i class="bi bi-arrow-down"></i><span class="visually-hidden">Move down</span>', csrf, fields={"direction": "down"}) }}{% endif %}
+            {% if not loop.first %}{{ post_button("/admin/trading-setup/routing/" ~ r.id ~ "/move", '<i class="bi bi-arrow-up"></i><span class="visually-hidden">Move up</span>', csrf, fields={"direction": "up"}) }}{% endif %}
+            {% if not loop.last %}{{ post_button("/admin/trading-setup/routing/" ~ r.id ~ "/move", '<i class="bi bi-arrow-down"></i><span class="visually-hidden">Move down</span>', csrf, fields={"direction": "down"}) }}{% endif %}
           </td>
         </tr>
       {% else %}{{ empty(6, "No routing rules yet. Use Sync from MT5 to import this server's rules, or create one.") }}{% endfor %}
@@ -43,7 +44,7 @@
       <p class="small text-muted">Ready-made rules that cut the requests a busy server handles. Each is added at the <strong>top, switched off</strong>:
         it changes nothing until you enable it under Rules. Closing a position is never refused by them.</p>
       {% for key, p in presets.items() %}
-      <form method="post" action="/admin/routing/preset" class="row g-2 align-items-end border-top pt-2 mt-2">
+      <form method="post" action="/admin/trading-setup/routing/preset" class="row g-2 align-items-end border-top pt-2 mt-2">
         <input type="hidden" name="_csrf" value="{{ csrf }}"><input type="hidden" name="server_id" value="{{ server.id }}">
         <input type="hidden" name="key" value="{{ key }}">
         <div class="col-lg-7"><div class="fw-semibold small">{{ p.name }}{% if p.name in added %} <span class="badge text-bg-light border">added</span>{% endif %}</div>

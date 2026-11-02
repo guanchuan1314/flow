@@ -1,12 +1,12 @@
 {% extends "admin/layout.html" %}
 {% block page_title %}Roles{% endblock %}
 {% block content %}
-{% if staff.has_perm("staff.manage") %}<div class="d-flex justify-content-end mb-3"><a class="btn btn-success btn-sm" href="/admin/roles/new"><i class="bi bi-plus-lg"></i> New role</a></div>{% endif %}
+{% if staff.has_perm("staff.manage") %}<div class="d-flex justify-content-end mb-3"><a class="btn btn-success btn-sm" href="/admin/staff/roles/new"><i class="bi bi-plus-lg"></i> New role</a></div>{% endif %}
 <div class="card"><div class="table-responsive"><table class="table table-hover">
   <thead><tr><th>Role</th><th>Description</th><th>Permissions</th></tr></thead>
   <tbody>
   {% for r in rows %}
-    <tr><td><a href="/admin/roles/{{ r.id }}">{{ r.name }}</a>{% if r.is_system %} <span class="badge text-bg-light border">default</span>{% endif %}</td>
+    <tr><td><a href="/admin/staff/roles/{{ r.id }}">{{ r.name }}</a>{% if r.is_system %} <span class="badge text-bg-light border">default</span>{% endif %}</td>
       <td class="small">{{ r.description }}</td>
       <td class="small">{% for p in r.permissions %}<span class="badge text-bg-light border me-1"{% if p in permissions %} title="{{ permissions[p] }}"{% endif %}>{{ perm_label(p) }}</span>{% endfor %}</td></tr>
   {% endfor %}
