@@ -1,6 +1,6 @@
 """Back-office side of background synchronizations (services.sync_runs): start one from a page, show its
 progress on that page (sync_panel in macros.html, kept across refreshes), and say what a run did, there and in
-Import from MT5 > History."""
+Imports > History."""
 
 from concurrent.futures import TimeoutError as FutureTimeout
 
@@ -12,7 +12,7 @@ from app.core.errors import ServiceError
 from app.db import SessionLocal
 from app.models import MT5Server, Staff, SyncRun
 from app.services import demo_cleanup, pricing, sync_runs
-from app.web.common import flash, redirect, sync_message, templates
+from app.web.common import Page, flash, redirect, render, sync_message, templates
 
 # Syncs always run in the background: the page answers at once and shows the progress. Tests set this to wait
 # for the result instead (so they can check it on the next page).
@@ -43,6 +43,12 @@ def _one(kind: str, r: dict) -> str:
         text = (f"{r['new_deals']} new deals, {r['open_positions']} open positions, {r['open_orders']} open orders, "
                 f"{r['accounts']} accounts updated")
         return text + (f"; errors: {'; '.join(r['errors'][:3])}" if r.get("errors") else "")
+    if kind == "positions":
+        return f"{r['open_positions']} open positions"
+    if kind == "orders":
+        return f"{r['open_orders']} open orders, {r['new_deals']} new deals"
+    if kind == "deals":
+        return f"{r['new_deals']} new deals"
     if kind == "trading_setup":
         return _setup(r)
     if kind == "symbols":
@@ -59,6 +65,21 @@ def _one(kind: str, r: dict) -> str:
             text += f" Not done for {r['failed']}: " + "; ".join(r["errors"][:5])
         if r["remaining"]:
             text += f" {r['remaining']} more qualify: run it again (at most {demo_cleanup.MAX_PER_RUN} per run)."
+        return text
+    if kind == "trade_cleanup":
+        text = f"deleted {r['done']} {r['what']} on MT5 and in the CRM."
+        if r["kept"]:
+            text += f" {r['kept']} kept: their position is still open, or they are balance or credit deals."
+        if r["failed"]:
+            text += f" Not done for {r['failed']}: " + "; ".join(r["errors"][:5])
+        if r["remaining"]:
+            text += f" {r['remaining']} more match: run it again."
+        return text
+    if kind == "compact":
+        text = (f"compacted {r['accounts']} account(s): {r['deals']} deals into {r['lines']} summaries, "
+                f"{r['orders']} orders removed.")
+        if r["skipped"] or r["failed"]:
+            text += f" Needs a look ({r['skipped'] + r['failed']}): " + "; ".join(r["errors"][:5])
         return text
     if kind == "pricing":
         s = r["symbols"]
@@ -91,6 +112,29 @@ def describe(run: SyncRun) -> tuple[str, str]:
         else:
             parts.append(f"{name}: {_one(run.kind, r)}")
     return (" · ".join(parts) or "Nothing to sync."), ("danger" if run.status == "failed" else level)
+
+
+def history(db: Session, query, page: int, per_page: int = 50) -> dict:
+    """What servers/sync_runs.html shows: a page of these runs."""
+    return dict(page=Page(db, query, page, per_page), kinds=sync_runs.KINDS, describe=describe,
+                staff_names=dict(db.execute(select(Staff.id, Staff.full_name)).all()),
+                server_names=dict(db.execute(select(MT5Server.id, MT5Server.name)).all()))
+
+
+def history_page(request, db: Session, title: str = "Synchronization history", only: tuple | None = None, kind: str = "",
+                 trigger: str = "", status: str = "", partial: int = 0, page: int = 1):
+    """A history page with its filters: Imports > History, or a menu's History tab (`only` its kinds)."""
+    choices = {k: name for k, name in sync_runs.KINDS.items() if only is None or k in only}
+    q = select(SyncRun).where(SyncRun.kind.in_(choices))
+    if kind in choices:
+        q = q.where(SyncRun.kind == kind)
+    if trigger in ("manual", "schedule"):
+        q = q.where(SyncRun.trigger == trigger)
+    if status in ("queued", "running", "done", "failed"):
+        q = q.where(SyncRun.status.in_(("queued", "running")) if status == "running" else SyncRun.status == status)
+    ctx = dict(title=title, everything=only is None, choices=choices, kind=kind, trigger=trigger, status=status,
+               **history(db, q.order_by(SyncRun.id.desc()), page))
+    return render(request, "admin/servers/sync_runs.html" if partial else "admin/servers/sync_history.html", **ctx)
 
 
 def server_id(db: Session) -> int | None:

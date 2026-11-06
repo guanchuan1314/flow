@@ -132,12 +132,12 @@ def test_symbol_sessions_round_trip(db, gw, server):
 def test_bulk_symbol_edit(db, gw, server, admin_web):
     symbols.sync_symbols(db, server, gw=gw)
     ids = [str(s.id) for s in db.scalars(select(Symbol).where(Symbol.name.in_(["EURUSD", "GBPUSD"])))]
-    r = form_post(admin_web, "/admin/trading-setup/symbols?server=1", "/admin/trading-setup/symbols/bulk",
+    r = form_post(admin_web, "/admin/symbols/data?server=1", "/admin/symbols/data/bulk",
                   {"server_id": "1", "ids": ids, "trade_mode": "3", "spread": "15", "volume_max": ""})
     assert "Saved on MT5: 2 symbols" in r.text
     assert gw.symbols["EURUSD"].trade_mode == gw.symbols["GBPUSD"].trade_mode == 3 and gw.symbols["GBPUSD"].spread == 15
     assert gw.symbols["USDJPY"].trade_mode == 4  # not ticked
-    r = form_post(admin_web, "/admin/trading-setup/symbols?server=1", "/admin/trading-setup/symbols/bulk",
+    r = form_post(admin_web, "/admin/symbols/data?server=1", "/admin/symbols/data/bulk",
                   {"server_id": "1", "ids": ids, "volume_min": "500"})
     assert "Nothing saved" in r.text and gw.symbols["EURUSD"].volume_min == Decimal("0.01")
 

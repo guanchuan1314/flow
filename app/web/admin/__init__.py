@@ -19,21 +19,25 @@ MOVED = {
     "accounts": "accounts/trading-accounts", "account-groups": "accounts/account-groups",
     "trader-styles": "accounts/trader-styles", "inactive-accounts": "accounts/inactive-accounts",
     "demo-cleanup": "accounts/inactive-accounts",
-    "trading-setup": "trading-setup/overview", "symbols": "trading-setup/symbols",
+    "trading-setup": "trading-setup/overview", "symbols": "symbols/data",
     "liquidity": "trading-setup/liquidity", "routing": "trading-setup/routing",
-    "sync": "import/trades",
-    "server-health": "server-tools/health", "pricing": "server-tools/pricing", "restart": "server-tools/restart",
+    "positions": "trades/positions/data", "orders": "trades/orders/data", "deals": "trades/deals/data",
+    "sync": "trades/deals/sync", "trades": "trades/positions",
+    "server-health": "server-tools/health", "pricing": "import/pricing", "restart": "server-tools/restart",
     "staff": "staff/members", "roles": "staff/roles", "departments": "staff/departments",
     "audit": "security/audit", "login-attempts": "security/login-attempts", "ip-rules": "security/ip-rules",
     "mt5-servers": "configuration/servers",
 }
+_OLD_SYMBOLS = "trading-setup/symbols"
 _SERVER_PAGES = re.compile(r"mt5-servers/\d+/(inactive|pricing|restart)")
-_SERVER_PAGE_MOVED = {"inactive": "accounts/inactive-accounts", "pricing": "server-tools/pricing",
+_SERVER_PAGE_MOVED = {"inactive": "accounts/inactive-accounts", "pricing": "import/pricing",
                       "restart": "server-tools/restart"}
 
 
 def moved_to(path: str) -> str | None:
-    """The new address of an old back-office page path ("symbols/12" -> "trading-setup/symbols/12"), or None."""
+    """The new address of an old back-office page path ("symbols/12" -> "symbols/data/12"), or None."""
+    if path == _OLD_SYMBOLS or path.startswith(_OLD_SYMBOLS + "/"):
+        return "symbols/data" + path[len(_OLD_SYMBOLS):]
     if any(path == new or path.startswith(new + "/") for new in MOVED.values()):
         return None  # already a current address
     m = _SERVER_PAGES.fullmatch(path)

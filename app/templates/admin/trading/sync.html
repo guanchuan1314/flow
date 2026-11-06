@@ -1,26 +1,27 @@
 {% extends "admin/layout.html" %}
 {% from "macros.html" import post_button, empty, badge, csrf_input %}
-{% block page_title %}Trade sync{% endblock %}
+{% block page_title %}{{ noun|capitalize }} sync{% endblock %}
 {% block content %}
-{% from "macros.html" import sync_panel %}{{ sync_panel(["trades"]) }}
+{% from "macros.html" import sync_panel %}{{ sync_panel([what, "trades"]) }}
 <div class="row g-3 mb-4">
-  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body">
+  <div class="col-6 col-md-3"><div class="card kpi h-100"><div class="card-body">
     <div class="kpi-label">MT5 servers</div>
     <div class="kpi-value">{{ servers|selectattr("enabled")|list|length }} <small class="fs-6 text-muted">enabled</small></div>
   </div></div></div>
-  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Tracked accounts</div><div class="kpi-value">{{ tracked }}</div></div></div></div>
-  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body"><div class="kpi-label">Deals / orders stored</div><div class="kpi-value">{{ deal_count }} <small class="fs-6 text-muted">/ {{ order_count }}</small></div></div></div></div>
-  <div class="col-6 col-md-3"><div class="card kpi"><div class="card-body">
+  <div class="col-6 col-md-3"><div class="card kpi h-100"><div class="card-body"><div class="kpi-label">Tracked accounts</div><div class="kpi-value">{{ tracked }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card kpi h-100"><div class="card-body"><div class="kpi-label">{{ noun|capitalize }} stored</div><div class="kpi-value">{{ stored }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card kpi h-100"><div class="card-body">
     <div class="kpi-label">Last sync</div>
-    <div class="small">Deals: {{ last_deals|dt }}<br>Positions: {{ last_positions|dt }}<br>Orders: {{ last_orders|dt }}</div>
+    <div class="small">{{ last_sync|dt }}</div>
   </div></div></div>
 </div>
 {% if staff.has_perm("trading.sync") %}
-<div class="mb-3">{{ post_button("/admin/import/trades", '<i class="bi bi-arrow-repeat"></i> Run full sync now', csrf, "btn-primary") }}
-  <span class="small text-muted ms-2">The background worker syncs automatically every {{ settings().sync_interval_seconds }} s and receives deals in real time.</span></div>
+<div class="mb-3 d-flex flex-wrap gap-2 align-items-center">{{ post_button("/admin/trades/" ~ what ~ "/sync", '<i class="bi bi-arrow-repeat"></i> Sync ' ~ noun ~ ' now', csrf, "btn-primary") }}
+  {{ post_button("/admin/trades/sync/all", "Full sync", csrf, "btn-outline-primary") }}
+  <span class="small text-muted">{% if what == "orders" %}Orders that ended arrive with the deals, so this reads both. {% endif %}The background worker syncs automatically every {{ settings().sync_interval_seconds }} s and receives deals in real time.</span></div>
 {% endif %}
 <div data-tabs>
-<section data-tab="Missing history" id="history">
+{% if what != "positions" %}<section data-tab="Missing history" id="history">
 <div class="card">
   <div class="card-header">Sync missing history (background task)</div>
   {% if staff.has_perm("trading.sync") %}
@@ -28,7 +29,7 @@
     <p class="small text-muted">Re-reads deals and orders from MT5 for a period and adds whatever the CRM is missing
       (nothing is duplicated), then refreshes open positions, open orders and balances. It runs in the background:
       you can leave this page and come back.</p>
-    <form method="post" action="/admin/import/trades/jobs" class="row g-2 align-items-end">
+    <form method="post" action="/admin/trades/sync/jobs" class="row g-2 align-items-end">
       {{ csrf_input(csrf) }}
       <div class="col-md-3"><label class="form-label small" for="job-logins">Accounts</label>
         <input class="form-control form-control-sm" id="job-logins" name="logins" placeholder="All, or logins: 500123, 500124"></div>
@@ -36,15 +37,16 @@
         <input class="form-control form-control-sm" id="job-from" type="date" name="date_from" required value="{{ (today.replace(day=1)).isoformat() }}"></div>
       <div class="col-md-2"><label class="form-label small" for="job-to">To</label>
         <input class="form-control form-control-sm" id="job-to" type="date" name="date_to" value="{{ today.isoformat() }}"></div>
-      <div class="col-md-auto"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="include_orders" id="job-orders" checked>
-        <label class="form-check-label small" for="job-orders">Orders too</label></div></div>
+      {% if what == "orders" %}<input type="hidden" name="include_orders" value="on">
+      {% else %}<div class="col-md-auto"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="include_orders" id="job-orders" checked>
+        <label class="form-check-label small" for="job-orders">Orders too</label></div></div>{% endif %}
       <div class="col-md-auto"><button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-cloud-download"></i> Start sync</button></div>
     </form>
   </div>
   {% endif %}
   {% include "admin/trading/sync_jobs.html" %}
 </div>
-</section>
+</section>{% endif %}
 <section data-tab="Servers" id="servers">
 <div class="card">
   <div class="card-header d-flex justify-content-between">Servers

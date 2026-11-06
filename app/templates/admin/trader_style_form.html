@@ -1,0 +1,72 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import add_row_button, csrf_input, field, post_button, remove_row_cell, select %}
+{% block page_title %}{{ rule.name if key else ("Add a tag" if rule.kind == "tag" else "Add a style") }}{% endblock %}
+{% block content %}
+{% macro cond_row(c={}) -%}
+  <tr>
+    <td><select class="form-select form-select-sm" name="cond_metric" aria-label="Metric">
+      {% for k, (label, unit, hint) in metrics.items() %}<option value="{{ k }}" title="{{ hint }}" {% if c.metric == k %}selected{% endif %}>{{ label }}{% if unit %} ({{ unit }}){% endif %}</option>{% endfor %}</select></td>
+    <td><select class="form-select form-select-sm" name="cond_op" aria-label="Operator">
+      {% for k, label in ops.items() %}<option value="{{ k }}" {% if c.op == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
+    <td><input class="form-control form-control-sm" name="cond_value" type="number" step="any" value="{{ c.value if c.value is not none else '' }}" aria-label="Value"></td>
+    <td><input class="form-control form-control-sm" name="cond_value2" type="number" step="any" value="{{ c.value2 if c.value2 is not none else '' }}" placeholder="only for between" aria-label="Second value"></td>
+    {{ remove_row_cell() }}
+  </tr>
+{%- endmacro %}
+{% set setup = "/admin/accounts/trader-styles/setup" %}
+{% set colour_names = {"primary": "Blue", "success": "Green", "info": "Light blue", "warning": "Yellow", "danger": "Red",
+                       "secondary": "Grey", "dark": "Black", "light": "White"} %}
+
+<form method="post" action="{{ setup }}/{{ key or 'new' }}" class="mw-lg" data-toggle-scope>
+  {{ csrf_input(csrf) }}
+  <div class="card mb-3"><div class="card-header">Details</div><div class="card-body"><div class="row">
+    {{ field("name", "Name", rule.name, required=True, col="col-md-6") }}
+    {{ select("kind", "Kind", kinds.items(), selected=rule.kind, col="col-md-3") }}
+    <div class="mb-3 col-md-3">
+      <label class="form-label" for="f-color">Badge colour</label>
+      <select class="form-select" id="f-color" name="color">
+        {% for c in colors %}<option value="{{ c }}" {% if rule.color == c %}selected{% endif %}>{{ colour_names.get(c, c) }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6" data-show-when="kind=style">
+      <div class="mb-3">
+        <label class="form-label" for="f-group_id">Belongs in</label>
+        <select class="form-select" id="f-group_id" name="group_id">
+          <option value="">(no suggestion)</option>
+          {% for g in groups %}<option value="{{ g.id }}" {% if rule.group_id|string == g.id|string %}selected{% endif %}>{{ g.name }} ({{ g.mt5_group }})</option>{% endfor %}
+        </select>
+        <div class="form-text">Accounts of this style in another group are suggested for a move.</div>
+      </div>
+    </div>
+    <div class="col-12 form-check ms-2">
+      <input class="form-check-input" type="checkbox" id="f-enabled" name="enabled" value="on" {% if rule.enabled is not defined or rule.enabled %}checked{% endif %}>
+      <label class="form-check-label" for="f-enabled">Enabled</label>
+    </div>
+  </div></div></div>
+
+  <div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2"><span>Conditions</span>
+      {{ add_row_button("cond-tpl", "cond-rows", "Add condition", "ms-auto") }}</div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Metric</th><th>Is</th><th>Value</th><th>And</th><th></th></tr></thead>
+      <tbody id="cond-rows">{% for c in rule.conditions %}{{ cond_row(c) }}{% else %}{{ cond_row() }}{% endfor %}</tbody>
+    </table></div>
+    <div class="card-body pt-2">
+      <template id="cond-tpl">{{ cond_row() }}</template>
+      <span class="small text-muted">An account must match every condition. Rows without a value are ignored. A style with no conditions
+        catches every account left; a tag needs at least one.</span>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" type="submit">Save</button>
+  <a class="btn btn-link" href="{{ setup }}">Cancel</a>
+</form>
+
+{% if key %}
+<div class="card mw-lg border-danger mt-4"><div class="card-body d-flex justify-content-between align-items-center gap-2">
+  <div class="small text-muted">Deleting removes {{ rule.name }} from this server. To keep it for later, untick Enabled instead.</div>
+  {{ post_button(setup ~ "/" ~ key ~ "/delete", '<i class="bi bi-trash"></i> Delete', csrf, "btn-outline-danger btn-sm",
+                 confirm="Delete " ~ rule.name ~ "?", danger=True, ok="Delete") }}
+</div></div>
+{% endif %}
+{% endblock %}

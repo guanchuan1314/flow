@@ -94,8 +94,8 @@ def test_auto_sync_brings_in_new_symbols_and_applies_markups(db, gw, server):
 
 
 def test_pricing_page(admin_web, db, gw, server):  # noqa: F811
-    page, post = "/admin/server-tools/pricing", "/admin/server-tools/pricing/1"
-    assert 'href="/admin/server-tools/pricing"' in admin_web.get("/admin/server-tools/health").text  # a Server tools tab
+    page, post = "/admin/import/pricing", "/admin/import/pricing/1"
+    assert 'href="/admin/import/pricing"' in admin_web.get("/admin/import/history").text  # an Imports tab
     assert "Not on MT5 yet" not in admin_web.get(page).text
     r = form_post(admin_web, page, post, {"spread_groups": "real\\standard", "spread_symbols": "*", "spread_points": "12",
                                           "comm_groups": "", "comm_symbols": "", "comm_per_lot": "",
@@ -106,3 +106,11 @@ def test_pricing_page(admin_web, db, gw, server):  # noqa: F811
     assert db.get(MT5Server, 1).pricing["auto_sync"] == {"enabled": True, "minutes": 15}
     r = form_post(admin_web, page, post + "/apply", {})
     assert "MT5 already has these markups" in r.text
+
+    # the same page under Symbols, which a form goes back to
+    other = "/admin/symbols/sync"
+    assert admin_web.get(other).text.count('action="/admin/import/pricing/1"') == 1
+    r = form_post(admin_web, other, post + "/apply", {}, headers={"referer": f"http://testserver{other}"})
+    assert r.url.path == other
+    run = admin_web.get("/admin/symbols/history").text
+    assert "Symbols and pricing<div" in run

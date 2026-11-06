@@ -175,6 +175,11 @@ $extras = if ($Mode -eq "prod") { "mt5" } else { "dev,mt5" }
 & $venvPython -m pip install --quiet --disable-pip-version-check -e ".[$extras]"
 if ($LASTEXITCODE -ne 0) { throw "Installing the Python packages failed (see above)." }
 Done "Installed Flow with [$extras]"
+foreach ($needs in Get-ChildItem (Join-Path $PSScriptRoot "custom\*\requirements.txt") -ErrorAction SilentlyContinue) {
+    & $venvPython -m pip install --quiet --disable-pip-version-check -r $needs.FullName
+    if ($LASTEXITCODE -ne 0) { throw "Installing the packages of custom module $($needs.Directory.Name) failed (see above)." }
+    Done "Installed the packages of custom module $($needs.Directory.Name)"
+}
 
 # ---------------------------------------------------------------- 3. Settings (.env)
 Step "Settings (.env)"

@@ -22,6 +22,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
+from app import custom
 from app.config import get_settings
 from app.db import SessionLocal, utcnow
 from app.models import MT5Server, PammFund, StrategyStatus
@@ -263,6 +264,7 @@ class Worker:
             ("demo clean-up", lambda db: demo_cleanup.run_due(db, fixed)),
             ("pricing", lambda db: pricing.run_due(db, fixed)),
             ("automation", lambda db: automation.run_due(db, fixed)),
+            *custom.steps(),
         ]
 
     def _scheduler_step(self) -> float:
@@ -316,7 +318,7 @@ class Worker:
                 log.error("scheduled MT5 import failed for '%s': %s", name, getattr(exc, "message", None) or exc)
 
     def _jobs_step(self) -> float:
-        """Run the next background sync task queued in the admin (MT5 > Import from MT5 > Trade sync)."""
+        """Run the next background sync task queued in the admin (MT5 > Imports > Trade sync)."""
         with SessionLocal() as db:
             try:
                 job = sync_jobs.run_next(db)
@@ -338,6 +340,7 @@ class Worker:
 
     # ---------------------------------------------------------- lifecycle
     def start(self) -> "Worker":
+        custom.load()
         events.register_default_handlers()
         try:
             for server in self._enabled_servers():

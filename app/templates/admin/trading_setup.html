@@ -38,7 +38,7 @@
 
   <div class="col-lg-6"><div class="card h-100">
     <div class="card-header d-flex justify-content-between"><span><i class="bi bi-2-circle"></i> Symbols <span class="small text-muted">what clients trade</span></span>
-      {% if staff.has_perm("symbols.manage") %}<a class="small" href="/admin/trading-setup/symbols?server={{ server.id }}">Manage</a>{% endif %}</div>
+      {% if staff.has_perm("symbols.manage") %}<a class="small" href="/admin/symbols/data?server={{ server.id }}">Manage</a>{% endif %}</div>
     <div class="card-body">
       <div class="fs-4">{{ o.symbols }} <span class="fs-6 text-muted">symbols{% if o.disabled_symbols %}, {{ o.disabled_symbols }} with trading disabled{% endif %}</span></div>
       <div class="small">{% for folder, n in o.folders %}<span class="badge text-bg-light border me-1">{{ folder }} {{ n }}</span>{% endfor %}</div>

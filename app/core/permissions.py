@@ -27,6 +27,8 @@ PERMISSIONS = {
     "finance.methods": "Configure payment methods and payment provider integrations",
     "trading.view": "View synced deals and positions",
     "trading.sync": "Trigger deal/position sync",
+    "mt5_trades.delete": "Delete orders and deals on MT5 and in the CRM (cannot be undone)",
+    "mt5_trades.compact": "Compact trading accounts: replace old history on MT5 with summaries (cannot be undone)",
     "copy.view": "View copy-trading strategies and PAMM funds",
     "copy.manage": "Manage strategies, subscriptions, PAMM funds and fees",
     "marketing.view": "View IBs, commissions, campaigns",

@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
   <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="{{ asset('app.css') }}">
   {% block head %}{% endblock %}
   <link rel="stylesheet" href="/brand.css">
 </head>
@@ -16,6 +16,6 @@
 {% block body %}{% endblock %}
 <script src="/static/vendor/bootstrap.bundle.min.js"></script>
 <script src="/static/vendor/htmx.min.js"></script>
-<script src="/static/app.js"></script>
+<script src="{{ asset('app.js') }}"></script>
 </body>
 </html>

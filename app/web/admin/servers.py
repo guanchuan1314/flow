@@ -1,18 +1,17 @@
 from fastapi import APIRouter, Depends, Form, Request
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.core.deps import client_ip
 from app.core.errors import ServiceError, get_or_404
 from app.db import get_db
-from app.models import MT5Server, ServerKind, Staff, SyncRun
+from app.models import MT5Server, ServerKind, Staff
 from app.mt5 import peek
-from app.services import market, sync_runs
+from app.services import sync_runs
 from app.services import servers as svc
 from app.web import syncs
 from app.web.common import (
-    Page, WebForbidden, attempt, back, flash, form_rows, opt_enum, opt_int, redirect, render, staff_perm, web_staff,
+    WebForbidden, attempt, back, flash, form_rows, opt_enum, opt_int, redirect, render, sent_from, staff_perm,
+    web_staff,
 )
 
 router = APIRouter()
@@ -38,7 +37,7 @@ def _only(db: Session) -> MT5Server:
 
 
 def _import_page(request: Request, db: Session, what: str):
-    """MT5 > Import from MT5: account groups (MT5 groups) or trading accounts (MT5 users)."""
+    """MT5 > Imports: account groups (MT5 groups) or trading accounts (MT5 users)."""
     return render(request, "admin/servers/import.html", s=svc.the_server(db, enabled_only=False), what=what)
 
 
@@ -54,6 +53,7 @@ def import_accounts_run(request: Request, me: Staff = Depends(staff_perm(PERM)),
 
 # ---------------------------------------------------------------- synchronization history
 HISTORY_PERMS = ("mt5_servers.manage", "account_groups.manage", "accounts.manage", "accounts.cleanup", "trading.sync",
+                 "mt5_trades.delete",
                  "symbols.manage", "liquidity.manage", "routing.manage")
 
 
@@ -67,18 +67,7 @@ def history_staff(staff: Staff = Depends(web_staff)) -> Staff:
 def sync_history(request: Request, kind: str = "", trigger: str = "", status: str = "", partial: int = 0,
                  page: int = 1, me: Staff = Depends(history_staff), db: Session = Depends(get_db)):
     """Every synchronization from MT5: what, which server, started by whom (or the schedule), how it went."""
-    q = select(SyncRun)
-    if kind in sync_runs.KINDS:
-        q = q.where(SyncRun.kind == kind)
-    if trigger in ("manual", "schedule"):
-        q = q.where(SyncRun.trigger == trigger)
-    if status in ("queued", "running", "done", "failed"):
-        q = q.where(SyncRun.status.in_(("queued", "running")) if status == "running" else SyncRun.status == status)
-    pg = Page(db, q.order_by(SyncRun.id.desc()), page)
-    ctx = dict(page=pg, kind=kind, trigger=trigger, status=status, kinds=sync_runs.KINDS, describe=syncs.describe,
-               staff_names=dict(db.execute(select(Staff.id, Staff.full_name)).all()),
-               server_names=dict(db.execute(select(MT5Server.id, MT5Server.name)).all()))
-    return render(request, "admin/servers/sync_runs.html" if partial else "admin/servers/sync_history.html", **ctx)
+    return syncs.history_page(request, db, kind=kind, trigger=trigger, status=status, partial=partial, page=page)
 
 
 @router.get("/import/history/panel")
@@ -211,7 +200,16 @@ def restart_component(request: Request, server_id: int, component_id: int = Form
 
 
 # ---------------------------------------------------------------- symbols & pricing
+PRICING = "/admin/import/pricing"
+
+
 @router.get("/server-tools/pricing")
+def old_pricing_page():
+    return redirect(PRICING)
+
+
+@router.get("/symbols/sync")
+@router.get("/import/pricing")
 def pricing_page(request: Request, me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     from app.services import pricing
 
@@ -222,20 +220,10 @@ def pricing_page(request: Request, me: Staff = Depends(staff_perm("symbols.manag
     except (ServiceError, Exception) as exc:  # noqa: BLE001 - the page still shows the settings
         error = f"Could not read the groups from MT5 ({getattr(exc, 'message', exc)}): what's pending isn't known."
     return render(request, "admin/servers/pricing.html", s=server, p=pricing.settings(server), pending=pending,
-                  mt5_warning=error, website=market.website_form(db), card_symbols=market.CARD_SYMBOLS)
+                  mt5_warning=error)
 
 
-@router.post("/server-tools/pricing/website")
-async def website_prices_save(request: Request, me: Staff = Depends(staff_perm("symbols.manage")),
-                              db: Session = Depends(get_db)):
-    form = await request.form()
-    rows = [dict(symbol=s, name=n, category=c)
-            for s, n, c in form_rows(form, "web_symbol", "web_name", "web_category")]
-    return attempt(request, lambda: market.save_website_symbols(db, me, rows, client_ip(request)),
-                   "Website prices saved: {result} symbol(s), live within 30 seconds.", "/admin/server-tools/pricing#website-prices")
-
-
-@router.post("/server-tools/pricing/{server_id:int}")
+@router.post("/import/pricing/{server_id:int}")
 async def pricing_save(request: Request, server_id: int, me: Staff = Depends(staff_perm("symbols.manage")),
                        db: Session = Depends(get_db)):
     from app.services import pricing
@@ -250,14 +238,14 @@ async def pricing_save(request: Request, server_id: int, me: Staff = Depends(sta
         summary = pricing.save(db, me, server, rules, form.get("auto_enabled") == "on",
                                opt_int(form.get("auto_minutes")))
         return "Saved. " + pricing.describe(summary)
-    return attempt(request, run, "{result}", "/admin/server-tools/pricing")
+    return attempt(request, run, "{result}", sent_from(request, PRICING))
 
 
-@router.post("/server-tools/pricing/{server_id:int}/apply")
+@router.post("/import/pricing/{server_id:int}/apply")
 def pricing_apply(request: Request, server_id: int, me: Staff = Depends(staff_perm("symbols.manage")),
                   db: Session = Depends(get_db)):
     from app.services import pricing, symbols
 
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
 
-    return syncs.start(request, db, me, "pricing", server.id, "/admin/server-tools/pricing")
+    return syncs.start(request, db, me, "pricing", server.id, sent_from(request, PRICING))

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import flashes as show_flashes %}
-{% block head %}<link rel="stylesheet" href="/static/site.css">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('site.css') }}">{% endblock %}
 {% block body_class %}s-area{% endblock %}
 {% block body %}
 <div class="a-auth">

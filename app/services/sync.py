@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import utcnow
-from app.models import AccountStatus, Deal, MT5Server, Order, Position, SyncState, TradingAccount
+from app.models import AccountStatus, CompactedRecord, Deal, MT5Server, Order, Position, SyncState, TradingAccount
 from app.mt5 import MT5Error, MT5Gateway, get_gateway
 from app.mt5.gateway import MT5Deal, MT5Order
 from app.services import activity, events
@@ -82,6 +82,16 @@ def _bump_last_deal_time(db: Session, latest: dict[int, datetime], server_id: in
     db.scalars(stmt.returning(SyncState), execution_options={"populate_existing": True}).all()  # refresh loaded rows
 
 
+def _compacted(db: Session, server_id: int, kind: str, tickets: list[int]) -> set[int]:
+    """Of these tickets, those compacting removed from MT5: a sync that read them just before must not add them back."""
+    found: set[int] = set()
+    for i in range(0, len(tickets), 1000):
+        found |= set(db.scalars(select(CompactedRecord.ticket).where(
+            CompactedRecord.server_id == server_id, CompactedRecord.kind == kind,
+            CompactedRecord.ticket.in_(tickets[i:i + 1000]))))
+    return found
+
+
 def ingest_deals(db: Session, mt5_deals: list[MT5Deal], publish: bool = True,
                  server_id: int | None = None) -> list[Deal]:
     """Insert deals of one server not yet stored and publish the new ones. Idempotent.
@@ -92,7 +102,8 @@ def ingest_deals(db: Session, mt5_deals: list[MT5Deal], publish: bool = True,
         return []
     server_id = server_id if server_id is not None else default_server_id(db)
     now = utcnow()
-    values = list({d.ticket: _deal_values(d, server_id, now) for d in mt5_deals}.values())
+    gone = _compacted(db, server_id, "deal", [d.ticket for d in mt5_deals])
+    values = list({d.ticket: _deal_values(d, server_id, now) for d in mt5_deals if d.ticket not in gone}.values())
     new: list[Deal] = []
     with _ingest_lock:
         for chunk in _chunks(values, 1000):
@@ -116,7 +127,8 @@ def ingest_orders(db: Session, mt5_orders: list[MT5Order], server_id: int, is_op
     if not mt5_orders:
         return 0
     now = utcnow()
-    by_ticket = {o.ticket: o for o in mt5_orders}
+    gone = _compacted(db, server_id, "order", [o.ticket for o in mt5_orders])
+    by_ticket = {o.ticket: o for o in mt5_orders if o.ticket not in gone}
     existing: dict[int, Order] = {}
     for chunk in _chunks(list(by_ticket), 500):
         existing.update({r.ticket: r for r in db.scalars(select(Order).where(Order.server_id == server_id,

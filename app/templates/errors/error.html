@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block head %}<link rel="stylesheet" href="/static/site.css">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('site.css') }}">{% endblock %}
 {% block title %}{{ title }} · {{ brand().app_name }}{% endblock %}
 {% block body_class %}s-error{% endblock %}
 {% block body %}

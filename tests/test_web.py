@@ -188,18 +188,21 @@ def test_every_admin_page_renders(admin_web, db, gw, account_groups):
         *[f"/admin/clients/{ids['client']}?tab={t}" for t in ("overview", "accounts", "kyc", "finance", "notes", "activity")],
         "/admin/accounts/trading-accounts", f"/admin/accounts/trading-accounts/{ids['login']}", "/admin/accounts/account-groups", "/admin/accounts/account-groups/new",
         "/admin/payment-methods", "/admin/payment-methods/new", "/admin/kyc-methods", "/admin/kyc-methods/new",
-        "/admin/orders", "/admin/orders?status=history", "/admin/security/ip-rules", "/admin/import/trades/jobs",
-        "/admin/trading-setup/symbols", "/admin/trading-setup/symbols/new", "/admin/trading-setup/liquidity", "/admin/trading-setup/liquidity?kind=feed",
+        "/admin/trades/orders/data", "/admin/trades/orders/data?status=history", "/admin/security/ip-rules", "/admin/trades/sync/jobs",
+        "/admin/symbols/data", "/admin/symbols/data/new", "/admin/symbols/sync", "/admin/symbols/history",
+        "/admin/symbols/history?kind=symbols&partial=1", "/admin/trading-setup/liquidity", "/admin/trading-setup/liquidity?kind=feed",
         "/admin/trading-setup/liquidity/new?kind=gateway", "/admin/trading-setup/liquidity/new?kind=feed&module=DXFeeder64.exe",
         "/admin/trading-setup/liquidity/new?kind=gateway&module=LMAXGateway64.exe", "/admin/trading-setup/routing", "/admin/trading-setup/routing/new",
         "/admin/trading-setup/overview", "/admin/server-tools/health", "/admin/accounts/trader-styles", "/admin/accounts/trader-styles?style=suggested&demo=1",
-        "/admin/configuration", "/admin/accounts/inactive-accounts", "/admin/server-tools/restart", "/admin/server-tools/pricing",
+        "/admin/configuration", "/admin/accounts/inactive-accounts", "/admin/server-tools/restart", "/admin/import/pricing", "/admin/website-prices",
         "/admin/import/account-groups", "/admin/import/trading-accounts", "/admin/automation", "/admin/automation/new",
         "/admin/accounts/trader-styles/setup", "/admin/server-tools/health?only=warnings", "/admin/server-tools/health?server=1",
         "/admin/accounts/trader-styles?server=1",
         f"/admin/accounts/account-groups/{ids['type']}", "/admin/payments", "/admin/payments?status=", f"/admin/payments/{payment_id}",
-        f"/admin/payments/new?client_id={ids['client']}", "/admin/positions", "/admin/positions?partial=1",
-        "/admin/deals", "/admin/deals?kind=trades&date_from=2020-01-01", "/admin/import/trades",
+        f"/admin/payments/new?client_id={ids['client']}", "/admin/trades/positions/data", "/admin/trades/positions/data?partial=1", "/admin/trades/positions/data?comment=*copy*",
+        "/admin/trades/positions/history", "/admin/trades/positions/history?partial=1",
+        "/admin/trades/orders/history?trigger=manual&status=done", "/admin/trades/deals/history",
+        "/admin/trades/deals/data", "/admin/trades/deals/data?kind=trades&date_from=2020-01-01", "/admin/trades/deals/sync", "/admin/trades/orders/sync", "/admin/trades/positions/sync",
         "/admin/copy", f"/admin/copy/{ids['strategy']}", "/admin/pamm", f"/admin/pamm/{ids['fund']}",
         "/admin/ibs", f"/admin/ibs/{ids['ib']}", "/admin/plans", "/admin/plans/new", "/admin/commissions",
         "/admin/commissions?status=", "/admin/campaigns", "/admin/sources", "/admin/staff/members", "/admin/staff/members/new",
@@ -435,10 +438,15 @@ def test_account_group_can_be_renamed(admin_web, db, account_groups):
 
 
 def test_pages_live_under_their_menu_and_old_addresses_redirect(admin_web):
-    for old, new in (("/admin/symbols", "/admin/trading-setup/symbols"), ("/admin/trading-setup", "/admin/trading-setup/overview"),
+    for old, new in (("/admin/symbols", "/admin/symbols/data"), ("/admin/trading-setup/symbols", "/admin/symbols/data"), ("/admin/trading-setup", "/admin/trading-setup/overview"),
                      ("/admin/staff/1", "/admin/staff/members/1"), ("/admin/audit?action=client", "/admin/security/audit"),
-                     ("/admin/accounts", "/admin/accounts/trading-accounts"), ("/admin/sync", "/admin/import/trades"),
-                     ("/admin/server-health", "/admin/server-tools/health"), ("/admin/mt5-servers/1/pricing", "/admin/server-tools/pricing")):
+                     ("/admin/accounts", "/admin/accounts/trading-accounts"), ("/admin/sync", "/admin/trades/deals/sync"),
+                     ("/admin/import/trades", "/admin/import/deals"),
+                     ("/admin/positions", "/admin/trades/positions/data"), ("/admin/deals?kind=trades", "/admin/trades/deals/data"),
+                     ("/admin/orders?status=history", "/admin/trades/orders/data"), ("/admin/trades", "/admin/trades/positions/data"),
+                     ("/admin/trades/deals", "/admin/trades/deals/data"),
+                     ("/admin/server-health", "/admin/server-tools/health"), ("/admin/mt5-servers/1/pricing", "/admin/import/pricing"),
+                     ("/admin/server-tools/pricing", "/admin/import/pricing")):
         r = admin_web.get(old)
         assert r.status_code == 200 and r.url.path == new, (old, r.url)
     assert admin_web.get("/admin/audit?action=client").url.query == b"action=client"

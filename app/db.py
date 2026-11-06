@@ -71,12 +71,15 @@ def migrate() -> None:
     from alembic import command
     from sqlalchemy import text
 
+    from app import custom
+
     cfg = _alembic_config()
     with engine.begin() as conn:
         conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK})
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
     engine.dispose()  # pooled connections may have cached plans for tables the migration changed
+    custom.migrate()
 
 
 def schema_is_current() -> bool:

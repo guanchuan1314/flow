@@ -23,6 +23,10 @@ logs/
 *.log
 *.pkl
 
+# Brokers' own modules (docs/custom/README.md): updates of Flow never touch them
+custom/*
+!custom/README.md
+
 # Editors
 .idea/
 .vscode/

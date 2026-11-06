@@ -1,6 +1,6 @@
 {% from "macros.html" import empty, pagination %}
 {# Refreshed every 3 s (htmx) while a sync on it is waiting or running. #}
-<div id="sync-runs" {% if page.items|selectattr("active")|list %}hx-get="/admin/import/history?partial=1&kind={{ kind }}&trigger={{ trigger }}&status={{ status }}&page={{ page.page }}"
+<div id="sync-runs" {% if page.items|selectattr("active")|list %}hx-get="{{ request.url.path }}?{{ request.url.include_query_params(partial=1, page=page.page).query }}"
      hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
     <thead><tr><th>Started</th><th>What</th><th>Started by</th><th>Status</th><th class="num">Took</th><th>Result</th><th></th></tr></thead>

@@ -288,7 +288,7 @@ def test_operations_pages_post(admin_web, db, gw):  # noqa: F811
     assert "Nothing needs attention." in admin_web.get("/admin/server-tools/health?only=warnings").text
 
     menu = admin_web.get("/admin/configuration").text  # MT5 > Server tools in the menu, not on Configuration
-    assert 'href="/admin/server-tools/health"' in menu and 'href="/admin/accounts/inactive-accounts"' in menu
+    assert 'href="/admin/server-tools/health"' in menu
     assert "card-header\">Server tools" not in menu
     assert admin_web.get("/admin/accounts/inactive-accounts").url.path == "/admin/accounts/inactive-accounts"
     assert admin_web.get("/admin/mt5-servers/1/inactive").url.path == "/admin/accounts/inactive-accounts"  # old address
@@ -307,24 +307,59 @@ def test_operations_pages_post(admin_web, db, gw):  # noqa: F811
 
 
 def test_mt5_menu_and_tabbed_pages(admin_web):  # noqa: F811
-    page = admin_web.get("/admin/trading-setup/symbols").text
+    page = admin_web.get("/admin/symbols/data").text
     nav = page[page.find('<nav class="nav'):page.find("</nav>")]
-    assert nav.count('class="nav-group"') == 1  # only Accounts opens a nested menu
+    assert nav.count('class="nav-group"') == 2  # Accounts and Trades open a nested menu
     accounts = nav[nav.find(">Accounts<"):nav.find(">Trading setup<")]
-    assert all(t in accounts for t in ("Trading accounts", "Account groups", "Trader styles", "Inactive accounts"))
-    # Trading setup, Import from MT5 and Server tools are one entry each, opening a page with tabs
+    assert "Trading accounts" in accounts and "Account groups" in accounts
+    assert "Trader styles" not in accounts and "Inactive accounts" not in accounts  # tabs of Trading accounts
+    # Symbols, Trading setup, Imports and Server tools are one entry each, opening a page with tabs
+    assert 'href="/admin/symbols/data"><i class="bi bi-currency-exchange"></i>Symbols' in nav
     assert 'href="/admin/trading-setup/overview"><i class="bi bi-diagram-3"></i>Trading setup' in nav
-    assert 'href="/admin/import/account-groups"><i class="bi bi-cloud-download"></i>Import from MT5' in nav
+    assert 'href="/admin/import/account-groups"><i class="bi bi-cloud-download"></i>Imports' in nav
     assert 'href="/admin/server-tools/health"><i class="bi bi-tools"></i>Server tools' in nav
-    assert nav.count("nav-link active") == 1 and 'nav-link active" href="/admin/trading-setup/overview"' in nav  # on Symbols
+    assert nav.count("nav-link active") == 1 and 'nav-link active" href="/admin/symbols/data"' in nav
     tabs = page[page.find("crm-hub-tabs"):page.find("</ul>", page.find("crm-hub-tabs"))]
-    assert [t in tabs for t in (">Overview<", ">Symbols<", ">Liquidity providers<", ">Routing<")] == [True] * 4
-    assert 'nav-link active" href="/admin/trading-setup/symbols"' in tabs
-    for url, expect in (("/admin/import/trades", (">Account groups<", ">Trading accounts<", ">Trades<")),
-                        ("/admin/server-tools/pricing", (">Server health<", ">Symbols &amp; pricing<", ">Restart components<"))):
+    assert [t in tabs for t in (">Data<", ">Sync<", ">History<")] == [True] * 3
+    assert 'nav-link active" href="/admin/symbols/data"' in tabs
+    trades = nav[nav.find(">Trades<"):nav.find(">Trading setup<")]
+    assert all(f'href="/admin/trades/{p}"' in trades for p in ("positions", "orders", "deals"))
+    for url, expect in (("/admin/import/history", (">Account groups<", ">Trading accounts<", ">Symbols &amp; pricing<", ">Positions<", ">Orders<", ">Deals<", ">History<")),
+                        ("/admin/trading-setup/overview", (">Overview<", ">Liquidity providers<", ">Routing<")),
+                        ("/admin/trades/deals/data", (">Data<", ">Sync<", ">History<", ">Controls<")),
+                        ("/admin/trades/orders/sync", (">Data<", ">Sync<", ">History<", ">Controls<")),
+                        ("/admin/trades/deals/controls", (">Data<", ">Sync<", ">History<", ">Controls<")),
+                        ("/admin/trades/positions/history", (">Data<", ">Sync<", ">History<")),
+                        ("/admin/symbols/sync", (">Data<", ">Sync<", ">History<")),
+                        ("/admin/server-tools/health", (">Server health<", ">Restart components<"))):
         text = admin_web.get(url).text
         tabs = text[text.find("crm-hub-tabs"):text.find("</ul>", text.find("crm-hub-tabs"))]
         assert all(t in tabs for t in expect), url
+    for url, tab in (("/admin/accounts/trading-accounts", "Data"), ("/admin/accounts/trader-styles", "Trader styles"),
+                     ("/admin/accounts/trader-styles/setup", "Trader styles"),
+                     ("/admin/accounts/inactive-accounts", "Inactive accounts")):
+        text = admin_web.get(url).text
+        tabs = text[text.find("crm-hub-tabs"):text.find("</ul>", text.find("crm-hub-tabs"))]
+        assert all(t in tabs for t in (">Data<", ">Trader styles<", ">Inactive accounts<")), url
+        assert f'active" href="{url.removesuffix("/setup")}">{tab}<' in tabs
+        menu = text[text.find('<nav class="nav'):text.find("</nav>")]  # Trading accounts stays marked on every tab
+        assert 'nav-group-toggle active' in menu and 'active" role="menuitem" href="/admin/accounts/trading-accounts"' in menu
+    tabs = admin_web.get("/admin/trades/positions/sync").text
+    assert ">Data<" in tabs and ">Controls<" not in tabs  # positions are not deleted from here
+    assert admin_web.get("/admin/trades/positions/controls").status_code == 404
+
+
+def test_trading_accounts_menu_opens_the_first_tab_you_may_see(api, admin, db):
+    from app.services import staff as staff_svc
+    from tests.test_web import web_login
+
+    role = staff_svc.create_role(db, admin, "Cleaner", ["accounts.cleanup"])
+    staff_svc.create_staff(db, admin, email="clean@b.com", full_name="Clean", password="Staff-Pass1", role_ids=[role.id])
+    web_login(api, "clean@b.com", "Staff-Pass1")
+    text = api.get("/admin").text
+    menu = text[text.find('<nav class="nav'):text.find("</nav>")]
+    assert 'href="/admin/accounts/inactive-accounts"><i class="bi bi-wallet2"></i>Trading accounts' in menu
+    assert 'href="/admin/accounts/trading-accounts"' not in menu
 
 
 # ---------------------------------------------------------------- restarts
@@ -357,7 +392,7 @@ def test_symbol_sessions_picker_markup(admin_web, db, gw):  # noqa: F811
 
     symbols.sync_symbols(db, db.get(MT5Server, 1), None, gw)
     s = db.scalar(select(Symbol).where(Symbol.name == "EURUSD"))
-    page = admin_web.get(f"/admin/trading-setup/symbols/{s.id}").text
+    page = admin_web.get(f"/admin/symbols/data/{s.id}").text
     assert 'data-sessions="quote" data-day="1"' in page and 'data-fill="quote"' in page
 
 

@@ -58,7 +58,7 @@ def _choices() -> dict:
                 format_sessions=svc.format_sessions)
 
 
-@router.get("/trading-setup/symbols")
+@router.get("/symbols/data")
 def symbols_page(request: Request, q: str = "", page: int = 1,
                  me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     srv = the_server(db)
@@ -70,13 +70,21 @@ def symbols_page(request: Request, q: str = "", page: int = 1,
                   server=srv, q=q, **_choices())
 
 
-@router.post("/trading-setup/symbols/sync")
+@router.get("/symbols/history")
+def symbols_history(request: Request, kind: str = "", trigger: str = "", status: str = "", partial: int = 0,
+                    page: int = 1, me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
+    """Everything that brings symbols in from MT5: their own sync, Symbols & pricing, and Trading setup's."""
+    return syncs.history_page(request, db, "Symbols sync history", ("symbols", "pricing", "trading_setup"), kind,
+                              trigger, status, partial, page)
+
+
+@router.post("/symbols/data/sync")
 def symbols_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm("symbols.manage")),
                  db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "symbols", syncs.server_id(db), f"/admin/trading-setup/symbols?server={server_id}")
+    return syncs.start(request, db, me, "symbols", syncs.server_id(db), f"/admin/symbols/data?server={server_id}")
 
 
-@router.get("/trading-setup/symbols/new")
+@router.get("/symbols/data/new")
 def symbol_new(request: Request, me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     srv = the_server(db)
     templates = db.scalars(select(Symbol).where(Symbol.server_id == (srv.id if srv else 0))
@@ -85,7 +93,7 @@ def symbol_new(request: Request, me: Staff = Depends(staff_perm("symbols.manage"
                   **_choices())
 
 
-@router.post("/trading-setup/symbols/new")
+@router.post("/symbols/data/new")
 def symbol_create(request: Request, server_id: str = Form(...), name: str = Form(...), template: str = Form(""),
                   form: SymbolForm = Depends(), me: Staff = Depends(staff_perm("symbols.manage")),
                   db: Session = Depends(get_db)):
@@ -94,10 +102,10 @@ def symbol_create(request: Request, server_id: str = Form(...), name: str = Form
             raise ServiceError("Choose the existing symbol to copy settings from")
         sym = svc.create_symbol(db, me, server_id=int(server_id), name=name, template=template, changes=form.changes())
         return sym.name
-    return attempt(request, run, "Symbol {result} created on MT5.", f"/admin/trading-setup/symbols?server={server_id}")
+    return attempt(request, run, "Symbol {result} created on MT5.", f"/admin/symbols/data?server={server_id}")
 
 
-@router.post("/trading-setup/symbols/bulk")
+@router.post("/symbols/data/bulk")
 def symbols_bulk(request: Request, server_id: str = Form(""), ids: list[str] = Form([]), form: SymbolForm = Depends(),
                  me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     def run():
@@ -108,10 +116,10 @@ def symbols_bulk(request: Request, server_id: str = Form(""), ids: list[str] = F
             raise ServiceError("Nothing saved. " + " ".join(f"{k}: {v}" for k, v in failed.items()))
         text = f"Saved on MT5: {len(done)} symbols ({', '.join(done[:8])}{'…' if len(done) > 8 else ''})."
         return text + (" Not saved: " + "; ".join(f"{k}: {v}" for k, v in failed.items()) if failed else "")
-    return attempt(request, run, "{result}", f"/admin/trading-setup/symbols?server={server_id}")
+    return attempt(request, run, "{result}", f"/admin/symbols/data?server={server_id}")
 
 
-@router.get("/trading-setup/symbols/{symbol_id}")
+@router.get("/symbols/data/{symbol_id}")
 def symbol_edit(request: Request, symbol_id: int, me: Staff = Depends(staff_perm("symbols.manage")),
                 db: Session = Depends(get_db)):
     sym = get_or_404(db, Symbol, symbol_id)
@@ -120,21 +128,21 @@ def symbol_edit(request: Request, symbol_id: int, me: Staff = Depends(staff_perm
                   usage=svc.usage(db, sym), **_choices())
 
 
-@router.post("/trading-setup/symbols/{symbol_id}")
+@router.post("/symbols/data/{symbol_id}")
 def symbol_update(request: Request, symbol_id: int, form: SymbolForm = Depends(),
                   me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
     sym = get_or_404(db, Symbol, symbol_id)
     return attempt(request, lambda: svc.update_symbol(db, me, sym, form.changes(blank_text_clears=True)),
-                   f"Symbol {sym.name} saved on MT5.", f"/admin/trading-setup/symbols/{symbol_id}")
+                   f"Symbol {sym.name} saved on MT5.", f"/admin/symbols/data/{symbol_id}")
 
 
-@router.post("/trading-setup/symbols/{symbol_id}/delete")
+@router.post("/symbols/data/{symbol_id}/delete")
 def symbol_delete(request: Request, symbol_id: int, me: Staff = Depends(staff_perm("symbols.manage")),
                   db: Session = Depends(get_db)):
     sym = get_or_404(db, Symbol, symbol_id)
     name, server_id = sym.name, sym.server_id
     return attempt(request, lambda: svc.delete_symbol(db, me, sym), f"Symbol {name} deleted on MT5 and in the CRM.",
-                   f"/admin/trading-setup/symbols?server={server_id}")
+                   f"/admin/symbols/data?server={server_id}")
 
 
 # ---------------------------------------------------------------- liquidity providers

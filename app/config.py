@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # Server health page: read each server's load every N minutes (0 = only on demand); keep samples N days
     health_interval_minutes: int = 5
     health_keep_days: int = 7
-    # Synchronizations started in the back-office run in the background, this many at once (Import from MT5 > History)
+    # Synchronizations started in the back-office run in the background, this many at once (Imports > History)
     sync_threads: int = 4
     # Import MT5 groups/users into account groups/trading accounts every N minutes (0 = manual only)
     mt5_import_interval_minutes: int = 15
@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # Apply pending Alembic migrations on startup. Recommended off in production:
     # run `python -m app.cli migrate` as a deployment step instead.
     auto_migrate: bool = True
+    # Broker-specific modules (docs/custom/README.md); false runs Flow without them
+    custom_enabled: bool = True
+    custom_dir: str = "custom"
 
     # Shown to clients on the deposit page (bank details, reference format, ...)
     deposit_instructions: str = "Transfer funds to our bank account and enter the transfer reference below."

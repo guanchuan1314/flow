@@ -107,48 +107,115 @@ def test_old_style_groups_become_the_rules_groups(db, server):
     assert next(r for r in trader_styles.rules(server) if r["key"] == "ea")["group_id"] == ag.id
 
 
-def test_parse_form_validation():
-    row = ("10", "scalp", "Scalp", "style", "warning", "", "on")
-    assert trader_styles.parse_form([row], [("scalp", "quick_pct", "between", "50", "90")])[0]["conditions"] == [
-        {"metric": "quick_pct", "op": "between", "value": 50.0, "value2": 90.0}]
-    with pytest.raises(ServiceError, match="lowercase"):
-        trader_styles.parse_form([("1", "Bad Key", "X", "style", "info", "", "on")], [])
-    with pytest.raises(ServiceError, match="used twice"):
-        trader_styles.parse_form([row, row], [])
-    with pytest.raises(ServiceError, match="not in the styles above"):
-        trader_styles.parse_form([row], [("other", "deals", "ge", "1", "")])
-    with pytest.raises(ServiceError, match="lower value first"):
-        trader_styles.parse_form([row], [("scalp", "deals", "between", "9", "1")])
+def draft(name="Quick", kind="style", conditions=(("quick_pct", "ge", "50", ""),), **extra):
+    rows = [dict(zip(("metric", "op", "value", "value2"), c)) for c in conditions]
+    return {"name": name, "kind": kind, "color": "danger", "group_id": "", "enabled": True, "conditions": rows, **extra}
+
+
+def test_a_rule_with_several_conditions(db, server):
+    rule = trader_styles.save_rule(db, None, server, None, draft("My: Scalper!", conditions=[
+        ("quick_pct", "between", "50", "90"), ("ea_pct", "le", "20", ""), ("positions", "ge", "10", ""),
+        ("deals", "ge", "", "")]))  # a row left blank
+    assert rule["key"] == "my_scalper" and len(rule["conditions"]) == 3
+    assert rule["conditions"][0] == {"metric": "quick_pct", "op": "between", "value": 50.0, "value2": 90.0}
+    assert trader_styles.holds(rule, {"quick_pct": 60, "ea_pct": 10, "positions": 10})
+    assert not trader_styles.holds(rule, {"quick_pct": 60, "ea_pct": 30, "positions": 10})  # all of them must hold
+
+    trader_styles.save_rule(db, None, server, "my_scalper", draft("Renamed"))  # the key stays, and the place in the list
+    found = trader_styles.rules(server)
+    assert [r["name"] for r in found if r["key"] == "my_scalper"] == ["Renamed"]
+
+
+def test_new_styles_go_before_the_style_that_catches_the_rest(db, server):
+    trader_styles.save_rule(db, None, server, None, draft())
+    keys = [r["key"] for r in trader_styles.rules(server) if r["kind"] == "style"]
+    assert keys[-2:] == ["quick", "mixed"]
+    assert trader_styles.never_reached(trader_styles.rules(server)) == {}
+
+    trader_styles.move_rule(db, None, server, "quick", 1)
+    assert trader_styles.never_reached(trader_styles.rules(server)) == {"quick": "Mixed"}
+    trader_styles.move_rule(db, None, server, "quick", 1)  # already last
+    trader_styles.move_rule(db, None, server, "quick", -1)
+    assert [r["key"] for r in trader_styles.rules(server) if r["kind"] == "style"][-2:] == ["quick", "mixed"]
+    trader_styles.move_rule(db, None, server, "hedger", 1)  # a tag: no order
+    assert trader_styles.rules(server)[-1]["kind"] == "tag"
+
+
+@pytest.mark.parametrize("bad, message", [
+    (draft(name=" "), "name"),
+    (draft(name="scalper"), "already"),
+    (draft(kind="nope"), "choose style or tag"),
+    (draft(kind="tag", conditions=()), "needs at least one condition"),
+    (draft(conditions=[("deals", "between", "9", "1")]), "lower value first"),
+    (draft(conditions=[("deals", "ge", "x", "")]), "not a number"),
+    (draft(conditions=[("nope", "ge", "1", "")]), "Unknown metric"),
+    (draft(conditions=[("deals", "ge", "1", "")] * 11), "at most 10"),
+])
+def test_rule_validation(db, server, bad, message):
+    with pytest.raises(ServiceError, match=message):
+        trader_styles.save_rule(db, None, server, None, bad)
+
+
+def test_keys_of_odd_names(db, server):
+    for name, key in (("Mixed 2", "mixed_2"), ("few", "few_2"), ("new", "new_2"), ("交易", "style"), ("新", "style_2")):
+        assert trader_styles.save_rule(db, None, server, None, draft(name))["key"] == key
+
+
+def test_deleting(db, server):
+    from app.models import AutomationRule
+
+    db.add(AutomationRule(name="Move EAs", trigger="trader_style", params={"style": "ea"}, action="tag"))
+    db.commit()
+    with pytest.raises(ServiceError, match="Move EAs"):
+        trader_styles.delete_rule(db, None, server, "ea")
+    trader_styles.delete_rule(db, None, server, "scalper")
+    assert "scalper" not in {r["key"] for r in trader_styles.rules(server)}
+    for r in trader_styles.rules(server):
+        if r["kind"] == "style" and r["key"] != "ea":
+            trader_styles.delete_rule(db, None, server, r["key"])
+    db.delete(db.scalar(select(AutomationRule)))
+    db.commit()
     with pytest.raises(ServiceError, match="at least one enabled style"):
-        trader_styles.parse_form([("1", "t", "T", "tag", "info", "", "on")], [])
-    ordered = trader_styles.parse_form([("20", "b", "B", "style", "info", "", "on"), ("5", "a", "A", "style", "info", "", "")], [])
-    assert [(r["key"], r["enabled"]) for r in ordered] == [("a", False), ("b", True)]
+        trader_styles.delete_rule(db, None, server, "ea")
 
 
-def test_setup_page_save_try_and_reset(admin_web, db, gw, server):  # noqa: F811
+def test_setup_pages(admin_web, db, gw, server):  # noqa: F811
     login, = accounts(db, gw, server, 1)
     d = Deals(db, login)
     for i in range(3):
         d.position(START + timedelta(hours=i), 90, reason=1)
-    page = admin_web.get("/admin/accounts/trader-styles/setup").text
+    url = "/admin/accounts/trader-styles/setup"
+    page = admin_web.get(url).text
     assert "Bigger after a loss" in page and "Martingale-like" in page
-    tried = admin_web.get(f"/admin/accounts/trader-styles/setup?login={login}").text
+    assert "Deals per active day ≥ 50" in page and "Closed within 2 minutes ≥ 50%" in page
+    assert f"{url}/scalper" in page and f"{url}/new?kind=tag" in page
+    tried = admin_web.get(f"{url}?login={login}").text
     assert f"Account {login}" in tried and "EA / algo" in tried
 
-    url = "/admin/accounts/trader-styles/setup"
-    r = form_post(admin_web, url, url, {
-        "rule_order": ["1", "2"], "rule_key": ["quick", "rest"], "rule_name": ["Quick", "Everyone else"],
-        "rule_kind": ["style", "style"], "rule_color": ["danger", "secondary"], "rule_group": ["", ""],
-        "rule_enabled": ["on", "on"],
-        "cond_rule": ["quick"], "cond_metric": ["quick_pct"], "cond_op": ["ge"], "cond_value": ["50"], "cond_value2": [""]})
-    assert "Saved 2 styles and 0 tags" in r.text
-    listing = admin_web.get("/admin/accounts/trader-styles").text
-    assert "Quick" in listing and "Set up styles" in listing
-    r = form_post(admin_web, url, url, {"rule_order": ["1"], "rule_key": ["Bad key"], "rule_name": ["x"],
-                                        "rule_kind": ["style"], "rule_color": ["info"], "rule_group": [""],
-                                        "rule_enabled": ["on"]})
-    assert "lowercase letters" in r.text
-    r = form_post(admin_web, url, url, {"reset": "1"})
+    form = admin_web.get(f"{url}/scalper").text
+    assert form.count('name="cond_metric"') >= 3 and 'value="Scalper"' in form
+    assert 'name="cond_metric"' in admin_web.get(f"{url}/mixed").text  # no conditions yet: an empty row to fill in
+    assert "Add a tag" in admin_web.get(f"{url}/new?kind=tag").text
+    assert "no longer exists" in admin_web.get(f"{url}/gone").text
+
+    r = form_post(admin_web, f"{url}/new", f"{url}/new", {
+        "name": "Quick", "kind": "style", "color": "danger", "group_id": "", "enabled": "on",
+        "cond_metric": ["quick_pct", "ea_pct"], "cond_op": ["ge", "le"], "cond_value": ["50", "20"], "cond_value2": ["", ""]})
+    assert "Saved Quick" in r.text and "Closed within 2 minutes ≥ 50%" in r.text
+    db.expire_all()
+    assert len(next(r for r in trader_styles.rules(db.get(MT5Server, 1)) if r["key"] == "quick")["conditions"]) == 2
+
+    r = form_post(admin_web, f"{url}/quick", f"{url}/quick", {
+        "name": "Quick two", "kind": "style", "color": "danger", "group_id": "", "enabled": "on",
+        "cond_metric": ["deals"], "cond_op": ["between"], "cond_value": ["9"], "cond_value2": ["1"]})
+    assert "lower value first" in r.text and 'value="Quick two"' in r.text and 'value="9"' in r.text  # what was typed
+
+    r = form_post(admin_web, url, f"{url}/quick/move", {"step": "1"})
+    assert "catches every account first" in r.text
+    r = form_post(admin_web, url, f"{url}/quick/delete", {})
+    assert "Deleted" in r.text and "Quick" not in admin_web.get("/admin/accounts/trader-styles").text
+    assert "Set up styles" in admin_web.get("/admin/accounts/trader-styles").text
+    r = form_post(admin_web, url, f"{url}/reset", {})
     assert "Back to the default styles" in r.text
     db.expire_all()
     assert [r["key"] for r in trader_styles.rules(db.get(MT5Server, 1))][:3] == ["signal", "hft", "ea"]
@@ -178,7 +245,8 @@ def test_badges_on_account_lists(db, gw, server):
 
 def test_trading_filters_wildcards_group_and_style(db, gw, server, admin_web):  # noqa: F811
     from app.models import TradingAccount
-    from app.web.admin.trading import _filters, wildcard
+    from app.core.masks import wildcard
+    from app.web.admin.trading import _filters
 
     assert (wildcard("*EUR*"), wildcard("EUR*"), wildcard("*EUR"), wildcard("EURUSD")) == ("%EUR%", "EUR%", "%EUR", None)
     assert wildcard("EUR_?") == "EUR\__"  # LIKE characters are literal
@@ -203,7 +271,7 @@ def test_trading_filters_wildcards_group_and_style(db, gw, server, admin_web):  
         assert "GBPEUR" in symbols(group=str(group))
     assert symbols(style="ea") == {"EURUSD", "USDJPY", "EURGBP", "XAUUSD"}  # only the EA account's deals
 
-    for path in ("/admin/deals?symbol=*EUR*&style=ea", "/admin/positions?symbol=EUR*&group=1",
-                 "/admin/orders?status=history&login=5*"):
+    for path in ("/admin/trades/deals/data?symbol=*EUR*&style=ea", "/admin/trades/positions/data?symbol=EUR*&group=1",
+                 "/admin/trades/orders/data?status=history&login=5*"):
         r = admin_web.get(path)
         assert r.status_code == 200 and "All trader styles" in r.text and "All account groups" in r.text

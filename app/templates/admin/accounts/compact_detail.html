@@ -1,0 +1,19 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty, pagination %}
+{% block page_title %}{{ summary.label }}: exact deals{% endblock %}
+{% block content %}
+<p class="small text-muted">The deals in this summary of account <a href="/admin/accounts/trading-accounts/{{ summary.login }}">{{ summary.login }}</a>,
+  as MT5 had them. {{ summary.date_from|dt }} to {{ summary.date_to|dt }}, total {{ summary.amount|money }}.
+  <a href="/admin/accounts/compact">Back to Compact</a></p>
+<div class="card">
+  <div class="table-responsive"><table class="table table-sm table-hover mb-0 small">
+    <thead><tr><th>Time</th><th>Ticket</th><th>Type</th><th>Symbol</th><th class="num">Lots</th><th class="num">Profit</th><th class="num">Commission</th><th class="num">Swap</th><th class="num">Fee</th><th class="num">Total</th><th>Position</th><th>Comment</th></tr></thead>
+    <tbody>{% for r in page.items %}{% set d = r.data %}
+      <tr><td>{{ r.time|dt }}</td><td class="mono">{{ r.ticket }}</td><td>{{ r.action|side }}</td><td>{{ r.symbol }}</td><td class="num">{{ d.volume }}</td>
+        <td class="num">{{ d.profit }}</td><td class="num">{{ d.commission }}</td><td class="num">{{ d.swap }}</td><td class="num">{{ d.fee }}</td>
+        <td class="num">{{ r.amount|money }}</td><td class="mono">{{ d.position_id or "" }}</td><td>{{ r.comment }}</td></tr>
+    {% else %}{{ empty(12, "No deals.") }}{% endfor %}</tbody>
+  </table></div>
+</div>
+{{ pagination(page, request) }}
+{% endblock %}

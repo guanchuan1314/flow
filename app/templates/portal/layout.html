@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import flashes as show_flashes, csrf_input %}
-{% block head %}<link rel="stylesheet" href="/static/site.css">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ asset('site.css') }}">{% endblock %}
 {% block title %}{% block page_title %}{% endblock %} · {{ brand().app_name }}{% endblock %}
 {% block body_class %}s-area{% endblock %}
 {% macro navlink(href, icon, text, exact=False, tab=None) -%}

@@ -35,9 +35,9 @@
   {{ tile("Client equity", kpi.equity|money, "safe") }}
   {{ tile("Deposits this month", kpi.deposits_month|money, "box-arrow-in-down") }}
   {{ tile("Withdrawals this month", kpi.withdrawals_month|money, "box-arrow-up") }}
-  {{ tile("Open positions", kpi.open_positions, "activity", "/admin/positions") }}
+  {{ tile("Open positions", kpi.open_positions, "activity", "/admin/trades/positions/data") }}
   {% if kpi.sync_errors %}
-    {{ tile("Sync errors", kpi.sync_errors, "exclamation-triangle", "/admin/import/trades", warn=True) }}
+    {{ tile("Sync errors", kpi.sync_errors, "exclamation-triangle", "/admin/trades/deals/sync", warn=True) }}
   {% else %}
     {{ tile("Floating P/L", pnl(kpi.floating), "graph-up") }}
   {% endif %}

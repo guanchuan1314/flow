@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app import custom
 from app import db as dbmod
 from app.api import accounts, auth, clients, copy, finance, marketing, portal, security, staff, trading
 from app.config import get_settings
@@ -180,6 +181,8 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
     # ------------------------------------------------------------ routes
+    custom.load()
+    custom.include_routes(app)
     for module in (auth, staff, clients, accounts, finance, trading, copy, marketing, security, portal):
         app.include_router(module.router, prefix="/api")
     app.include_router(web_admin.router)

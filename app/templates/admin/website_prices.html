@@ -1,0 +1,33 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import add_row_button, csrf_input, remove_row_cell %}
+{% block page_title %}Website prices{% endblock %}
+{% block content %}
+{% macro web_row(r={}) -%}
+  <tr><td class="drag-cell"><span class="drag-handle" data-drag-handle title="Drag to reorder" aria-hidden="true"><i class="bi bi-grip-vertical"></i></span></td>
+    <td><select class="form-select form-select-sm mono" name="web_symbol" data-unique-from="web-symbols" required aria-label="Symbol">
+        <option value="">Choose a symbol</option>{% if r.symbol %}<option value="{{ r.symbol }}" selected>{{ r.symbol }}</option>{% endif %}</select>
+      {% if r.symbol and not r.known %}<div class="form-text text-danger">Not on the MT5 server</div>{% endif %}</td>
+    <td><input class="form-control form-control-sm" name="web_name" value="{{ r.name }}" placeholder="{{ r.default_name or 'From MT5' }}" maxlength="64" aria-label="Display name"></td>
+    <td><input class="form-control form-control-sm" name="web_category" value="{{ r.category }}" placeholder="{{ r.default_category or 'From MT5' }}" maxlength="32" aria-label="Category"></td>
+    {{ remove_row_cell() }}</tr>
+{%- endmacro %}
+{% if not website.available %}
+<div class="alert alert-warning small mw-lg">The CRM has no symbols yet, so there is nothing to choose from.
+  Sync them under <a class="alert-link" href="/admin/import/pricing">Imports → Symbols &amp; pricing</a>.</div>
+{% endif %}
+<form method="post" action="/admin/website-prices" class="mw-lg">
+  {{ csrf_input(csrf) }}
+  <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Symbols</span>
+    {{ add_row_button("web-tpl", "web-rows", "Add symbol", "ms-auto") }}</div><div class="card-body pb-1">
+    <p class="small text-muted">The symbols streamed live to the website's ticker and markets page, top to bottom; the first {{ card_symbols }}
+      also show on the home page and the client area. Drag <i class="bi bi-grip-vertical"></i> to reorder. Each symbol can be listed once.
+      Leave the name or category empty to use MT5's description and folder; decimals always follow the MT5 symbol.
+      {% if website.from_env %}<br><strong>Now:</strong> the default list from <span class="mono">PUBLIC_SYMBOLS</span> in .env, until you save here.{% endif %}</p>
+    <template id="web-symbols">{% for name in website.available %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</template>
+    <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th></th><th>Symbol</th><th>Name on the website</th><th>Category</th><th></th></tr></thead>
+      <tbody id="web-rows" data-sortable>{% for r in website.entries %}{{ web_row(r) }}{% else %}{{ web_row() }}{% endfor %}</tbody></table></div>
+    <template id="web-tpl">{{ web_row() }}</template>
+  </div></div>
+  <button class="btn btn-primary" type="submit">Save website prices</button>
+</form>
+{% endblock %}

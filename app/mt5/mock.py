@@ -463,6 +463,43 @@ class MockGateway(MT5Gateway):
                     if o.login in wanted and o.time_setup and date_from <= o.time_setup <= date_to]
 
     @_persist
+    def delete_orders(self, tickets: list[int]) -> dict[int, str]:
+        wanted = set(tickets)
+        with self._lock:
+            self.orders = {t: o for t, o in self.orders.items() if t not in wanted}
+            self.order_history = [o for o in self.order_history if o.ticket not in wanted]
+        return {}
+
+    @_persist
+    def delete_deals(self, tickets: list[int]) -> dict[int, str]:
+        wanted = set(tickets)
+        with self._lock:
+            self.deals = [d for d in self.deals if d.ticket not in wanted]
+        return {}
+
+    @_persist
+    def rewrite_deal(self, ticket, *, action, amount, comment, when, symbol=""):
+        with self._lock:
+            deal = next((d for d in self.deals if d.ticket == ticket), None)
+            if deal is None:
+                raise MT5Error(f"Deal {ticket} not found", RET_NOT_FOUND)
+            deal.action, deal.entry, deal.symbol, deal.comment = action, 0, symbol, comment[:31]
+            deal.profit, deal.commission, deal.swap, deal.fee = _money(Decimal(amount)), *[Decimal("0")] * 3
+            deal.volume, deal.price, deal.position_id, deal.order = Decimal("0"), Decimal("0"), 0, 0
+            deal.time, deal.time_msc = when, int(when.timestamp()) * 1000
+
+    def server_time(self):
+        return _now()
+
+    def check_balance(self, login):
+        with self._lock:
+            self._require(login)
+            rows = [d for d in self.deals if d.login == login]
+            history = sum((d.profit + d.commission + d.swap + d.fee for d in rows if d.action != DEAL_CREDIT), Decimal("0"))
+            credit = sum((d.profit for d in rows if d.action == DEAL_CREDIT), Decimal("0"))
+            return history == self.balance[login] and credit == self.credit[login], self.balance[login], history
+
+    @_persist
     def place_order(self, login: int, symbol: str, order_type: int, volume: Decimal, price: Decimal,
                     comment: str = "") -> int:
         """Simulator only: place a pending (limit / stop) order."""

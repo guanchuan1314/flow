@@ -54,6 +54,9 @@ ACTIONS = {
     "copy.strategy.status": "Strategy status changed", "copy.subscribe": "Follower subscribed",
     "copy.unsubscribe": "Follower unsubscribed",
     "demo_cleanup.mt5_inactivity": "MT5 demo inactivity changed", "demo_cleanup.settings": "Demo clean-up settings changed",
+    "trade_cleanup.orders": "Orders deleted on MT5 and in the CRM",
+    "trade_cleanup.deals": "Deals deleted on MT5 and in the CRM",
+    "compact.account": "Trading account compacted",
     "demo_cleanup.archive": "Demo accounts archived", "demo_cleanup.delete": "Demo accounts deleted",
     "department.create": "Department created", "department.delete": "Department deleted",
     "department.update": "Department renamed",
@@ -106,9 +109,9 @@ ACTIONS = {
 ACTION_GROUPS = {
     "account": "Trading accounts", "account_group": "Account groups", "auth": "Sign-in and passwords",
     "automation": "Automation", "branding": "Branding", "campaign": "Campaigns", "client": "Clients",
-    "commission_plan": "Commission plans", "copy": "Copy trading", "demo_cleanup": "Demo clean-up",
+    "commission_plan": "Commission plans", "trade_cleanup": "Orders and deals", "compact": "Compact", "copy": "Copy trading", "demo_cleanup": "Demo clean-up",
     "department": "Departments", "ib": "IBs", "ip_rule": "IP rules", "kyc": "KYC", "kyc_method": "KYC methods",
-    "lead": "Leads", "liquidity": "Liquidity providers", "mt5_server": "MT5 servers", "mt5_sync": "Import from MT5",
+    "lead": "Leads", "liquidity": "Liquidity providers", "mt5_server": "MT5 servers", "mt5_sync": "Imports",
     "pamm": "PAMM", "payment": "Payments", "referral_link": "Referral links", "payment_method": "Payment methods", "pricing": "Pricing", "role": "Roles",
     "routing_rule": "Routing", "server_health": "Server health", "staff": "Staff", "staff_transfer": "Staff transfers",
     "symbol": "Symbols", "sync_job": "Trade import", "trader_styles": "Trader styles", "transfer": "Transfers",
@@ -138,7 +141,7 @@ FIELDS = {
     "connections": "Connections", "group": "Group", "leverage": "Leverage", "investor": "Investor password",
     "enabled": "Enabled", "currency": "Currency", "fields": "Fields", "changed": "Changed", "name": "Name",
     "tag": "Tag", "code": "Referral code", "referral_link": "Referral link", "staff": "Staff",
-    # synchronization results (Import from MT5 > History)
+    # synchronization results (Imports > History)
     "seen": "MT5 accounts", "created": "New", "updated": "Updated", "missing": "No longer on MT5",
     "removed": "Removed (no longer on MT5)", "clients_created": "New clients", "clients_linked": "Linked to clients",
     "conflicts": "Conflicts", "failed_groups": "Groups that failed", "account_groups": "Account groups",
@@ -187,7 +190,7 @@ PERMISSION_GROUPS = {
     "account_groups": "Account groups", "mt5_servers": "MT5 servers", "mt5_health": "Server health",
     "symbols": "Symbols", "liquidity": "Liquidity providers", "routing": "Routing", "finance": "Finance",
     "trading": "Trading", "copy": "Copy trading and PAMM", "marketing": "Marketing", "automation": "Automation",
-    "settings": "Settings", "security": "Security",
+    "settings": "Settings", "security": "Security", "mt5_trades": "Orders and deals",
 }
 
 

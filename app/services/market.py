@@ -1,6 +1,6 @@
 """Public market data for the website and client area.
 
-Which symbols are shown, in which order and under which name is set under MT5 > Symbols & pricing > Website
+Which symbols are shown, in which order and under which name is set under Administration > Website
 prices (stored in app_settings); until then PUBLIC_SYMBOLS from .env. Quotes are cached briefly so anonymous
 website traffic can never turn into a flood of requests against the MT5 server.
 """
@@ -93,7 +93,7 @@ def symbols() -> list[str]:
 
 
 def website_form(db: Session) -> dict:
-    """For MT5 > Symbols & pricing: the saved rows (or the .env list) and the server's symbols to pick from."""
+    """For Administration > Website prices: the saved rows (or the .env list) and the server's symbols to pick from."""
     rows = _symbol_rows(db)
     saved = app_settings.stored(db, WEBSITE_KEY).get("symbols")
     entries = saved if saved else [{"symbol": s} for s in _env_symbols()]

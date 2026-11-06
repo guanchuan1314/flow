@@ -7,16 +7,16 @@
   <p class="small text-muted mb-0">The symbols of each MT5 server. Creating, editing and deleting here changes the symbol on MT5 first;
     <strong>Sync from MT5</strong> brings in changes made in MT5 Administrator.</p>
   {% if server %}<div class="d-flex gap-2">
-    {{ post_button("/admin/trading-setup/symbols/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm",
+    {{ post_button("/admin/symbols/data/sync", '<i class="bi bi-arrow-repeat"></i> Sync from MT5', csrf, "btn-outline-primary btn-sm",
                    fields={"server_id": server.id}) }}
-    <a class="btn btn-success btn-sm" href="/admin/trading-setup/symbols/new?server={{ server.id }}"><i class="bi bi-plus-lg"></i> New symbol</a>
+    <a class="btn btn-success btn-sm" href="/admin/symbols/data/new?server={{ server.id }}"><i class="bi bi-plus-lg"></i> New symbol</a>
   </div>{% endif %}
 </div>
 
 {% if server and page.items %}
 <details class="card mb-3">
   <summary class="card-header">Change several symbols at once</summary>
-  <form id="bulk" method="post" action="/admin/trading-setup/symbols/bulk" class="card-body">
+  <form id="bulk" method="post" action="/admin/symbols/data/bulk" class="card-body">
     {{ csrf_input(csrf) }}<input type="hidden" name="server_id" value="{{ server.id }}">
     <p class="small text-muted">Tick the symbols in the table below, set only the values to change (blank = unchanged), then apply.
       Each symbol is saved on MT5 first; one MT5 refuses is reported and the others still go through.</p>
@@ -64,7 +64,7 @@
     {% for s in page.items %}
       <tr class="{% if s.trade_mode == 0 %}text-muted{% endif %}">
         <td><input class="form-check-input" type="checkbox" name="ids" value="{{ s.id }}" form="bulk" aria-label="Select {{ s.name }}"></td>
-        <td class="mono"><a href="/admin/trading-setup/symbols/{{ s.id }}">{{ s.name }}</a></td>
+        <td class="mono"><a href="/admin/symbols/data/{{ s.id }}">{{ s.name }}</a></td>
         <td class="small">{{ s.path.rpartition("\\")[0] }}</td>
         <td class="small">{{ s.description }}</td>
         <td class="small">{{ s.currency_base }}{% if s.currency_profit %}/{{ s.currency_profit }}{% endif %}</td>

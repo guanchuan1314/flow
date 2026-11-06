@@ -1,76 +1,73 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import add_row_button, csrf_input, post_button, remove_row_cell %}
+{% from "macros.html" import post_button %}
 {% block page_title %}Trader styles: set up{% endblock %}
 {% block content %}
-{% macro rule_row(r={}, i=0) -%}
-  <tr>
-    <td><input class="form-control form-control-sm" name="rule_order" type="number" step="1" value="{{ i }}" aria-label="Order"></td>
-    <td><input class="form-control form-control-sm mono" name="rule_key" value="{{ r.key }}" placeholder="scalper" aria-label="Key"></td>
-    <td><input class="form-control form-control-sm" name="rule_name" value="{{ r.name }}" placeholder="Scalper" aria-label="Name"></td>
-    <td><select class="form-select form-select-sm" name="rule_kind" aria-label="Kind">
-      {% for k, label in kinds.items() %}<option value="{{ k }}" {% if r.kind == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
-    <td><select class="form-select form-select-sm" name="rule_color" aria-label="Badge colour">
-      {% set colour_names = {"primary": "Blue", "success": "Green", "info": "Light blue", "warning": "Yellow", "danger": "Red",
-                             "secondary": "Grey", "dark": "Black", "light": "White"} %}
-      {% for c in colors %}<option value="{{ c }}" {% if r.color == c %}selected{% endif %}>{{ colour_names.get(c, c|label) }}</option>{% endfor %}</select></td>
-    <td><select class="form-select form-select-sm" name="rule_group" aria-label="Belongs in">
-      <option value="">(no suggestion)</option>
-      {% for g in groups %}<option value="{{ g.id }}" {% if r.group_id == g.id %}selected{% endif %}>{{ g.name }} ({{ g.mt5_group }})</option>{% endfor %}</select></td>
-    <td><select class="form-select form-select-sm" name="rule_enabled" aria-label="Enabled">
-      <option value="on" {% if r.get("enabled", True) %}selected{% endif %}>on</option>
-      <option value="" {% if not r.get("enabled", True) %}selected{% endif %}>off</option></select></td>
-    {{ remove_row_cell() }}
-  </tr>
+{% set setup = "/admin/accounts/trader-styles/setup" %}
+{% macro conditions(r) -%}
+  {% for c in r.conditions %}{% set unit = metrics[c.metric][1] %}
+    <div>{{ metrics[c.metric][0] }} {{ ops[c.op] }} {{ c.value|num }}{% if c.op == "between" %} and {{ c.value2|num }}{% endif %}{% if unit == "%" %}%{% elif unit and unit != "money" %} {{ unit }}{% endif %}</div>
+  {% else %}<span class="text-muted">Every account left</span>{% endfor %}
 {%- endmacro %}
-{% macro cond_row(key="", c={}) -%}
-  <tr>
-    <td><input class="form-control form-control-sm mono" name="cond_rule" value="{{ key }}" list="rule-keys" placeholder="key" aria-label="Style or tag"></td>
-    <td><select class="form-select form-select-sm" name="cond_metric" aria-label="Metric">
-      {% for k, (label, unit, hint) in metrics.items() %}<option value="{{ k }}" title="{{ hint }}" {% if c.metric == k %}selected{% endif %}>{{ label }}{% if unit %} ({{ unit }}){% endif %}</option>{% endfor %}</select></td>
-    <td><select class="form-select form-select-sm" name="cond_op" aria-label="Operator">
-      {% for k, label in ops.items() %}<option value="{{ k }}" {% if c.op == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></td>
-    <td><input class="form-control form-control-sm" name="cond_value" type="number" step="any" value="{{ c.value if c.value is not none else '' }}" aria-label="Value"></td>
-    <td><input class="form-control form-control-sm" name="cond_value2" type="number" step="any" value="{{ c.value2 if c.value2 is not none else '' }}" placeholder="and (between)" aria-label="Second value"></td>
-    {{ remove_row_cell() }}
-  </tr>
+{% macro name_cell(r) -%}
+  <a class="badge text-decoration-none text-bg-{{ r.color }}{% if r.color == 'light' %} border{% endif %}" href="{{ setup }}/{{ r.key }}">{{ r.name }}</a>
 {%- endmacro %}
+{% macro state(r) -%}
+  {% if r.get("enabled", True) %}On{% else %}<span class="text-muted">Off</span>{% endif %}
+{%- endmacro %}
+{% set styles = rules|selectattr("kind", "equalto", "style")|list %}
+{% set tags = rules|selectattr("kind", "equalto", "tag")|list %}
 
-<p class="small text-muted">Which styles to detect, from the deals stored in the CRM (no MT5 request).
-  <strong>Styles</strong> are checked in order (lowest number first): the first whose conditions all hold is the account's style;
-  a style without conditions catches every account left. A style can name the account group it belongs in, so accounts of that style
-  elsewhere are suggested for a move. <strong>Tags</strong> are extra badges: every tag whose conditions hold is shown.
-  Accounts with fewer placed deals than the list's minimum show as "Too few trades"; accounts matching no style as "Unclassified".
+<p class="small text-muted">Which styles to detect, from the deals stored in the CRM (no MT5 request). Open a style to set its conditions: an account
+  must match all of them. Accounts with fewer placed deals than the list's minimum show as "Too few trades"; accounts matching no style as "Unclassified".
   <a href="/admin/accounts/trader-styles">Back to Trader styles</a></p>
 
 <div data-tabs>
   <section data-tab="Styles &amp; tags" data-tab-count="{{ rules|length }}" id="styles">
-    <form method="post" action="/admin/accounts/trader-styles/setup">
-      {{ csrf_input(csrf) }}
-      <datalist id="rule-keys">{% for r in rules %}<option value="{{ r.key }}">{{ r.name }}</option>{% endfor %}</datalist>
-      <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Styles and tags</span>
-        {{ add_row_button("rule-tpl", "rule-rows", "Add style or tag", "ms-auto") }}</div>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-          <thead><tr><th class="w-auto">Order</th><th>Key</th><th>Name</th><th>Kind</th><th>Badge</th><th>Belongs in (styles)</th><th>Enabled</th><th></th></tr></thead>
-          <tbody id="rule-rows">{% for r in rules %}{{ rule_row(r, loop.index * 10) }}{% endfor %}</tbody>
-        </table></div>
-        <div class="card-body pt-2">
-          <template id="rule-tpl">{{ rule_row({}, (rules|length + 1) * 10) }}</template>
-          <span class="small text-muted">To reorder, change the numbers. The key links a style to its conditions below and can't contain spaces.</span>
-        </div>
-      </div>
+    <div class="card mb-3">
+      <div class="card-header d-flex align-items-center gap-2"><span>Styles <span class="small text-muted fw-normal">(checked from top to bottom: an account gets the first that matches)</span></span>
+        <a class="btn btn-sm btn-outline-secondary ms-auto text-nowrap" href="{{ setup }}/new"><i class="bi bi-plus"></i> Add style</a></div>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Order</th><th>Style</th><th>Conditions</th><th>Belongs in</th><th>Enabled</th><th></th></tr></thead>
+        <tbody>
+        {% for r in styles %}
+          <tr>
+            <td class="text-nowrap">
+              {% if not loop.first %}{{ post_button(setup ~ "/" ~ r.key ~ "/move", '<i class="bi bi-arrow-up"></i><span class="visually-hidden">Move up</span>', csrf, "btn-link btn-sm p-0", fields={"step": "-1"}) }}{% endif %}
+              {% if not loop.last %}{{ post_button(setup ~ "/" ~ r.key ~ "/move", '<i class="bi bi-arrow-down"></i><span class="visually-hidden">Move down</span>', csrf, "btn-link btn-sm p-0", fields={"step": "1"}) }}{% endif %}
+            </td>
+            <td>{{ name_cell(r) }}</td>
+            <td class="small">{{ conditions(r) }}
+              {% if never_reached.get(r.key) %}<div class="text-danger">Never reached: {{ never_reached[r.key] }} has no conditions, so it catches every account first. Move this style above it.</div>{% endif %}</td>
+            <td class="small">{{ group_names.get(r.group_id, "") }}</td>
+            <td class="small">{{ state(r) }}</td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ setup }}/{{ r.key }}">Edit</a></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </div>
 
-      <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Conditions <span class="small text-muted fw-normal">(all of a style's conditions must hold)</span></span>
-        {{ add_row_button("cond-tpl", "cond-rows", "Add condition", "ms-auto") }}</div>
-        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-          <thead><tr><th>Style or tag (key)</th><th>Metric</th><th>Is</th><th>Value</th><th>And (between)</th><th></th></tr></thead>
-          <tbody id="cond-rows">{% for r in rules %}{% for c in r.conditions %}{{ cond_row(r.key, c) }}{% endfor %}{% endfor %}</tbody>
-        </table></div>
-        <template id="cond-tpl">{{ cond_row() }}</template>
-      </div>
-      <button class="btn btn-primary" type="submit">Save</button>
-    </form>
-    <div class="mt-3 pt-3 border-top">{{ post_button("/admin/accounts/trader-styles/setup", "Reset to the default styles", csrf, "btn-outline-danger btn-sm",
-                                     fields={"reset": "1"}, confirm="Replace every style and tag with the defaults?", danger=True, ok="Reset") }}</div>
+    <div class="card mb-3">
+      <div class="card-header d-flex align-items-center gap-2"><span>Tags <span class="small text-muted fw-normal">(extra badges: an account gets every tag that matches)</span></span>
+        <a class="btn btn-sm btn-outline-secondary ms-auto text-nowrap" href="{{ setup }}/new?kind=tag"><i class="bi bi-plus"></i> Add tag</a></div>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Tag</th><th>Conditions</th><th>Enabled</th><th></th></tr></thead>
+        <tbody>
+        {% for r in tags %}
+          <tr>
+            <td>{{ name_cell(r) }}</td>
+            <td class="small">{{ conditions(r) }}</td>
+            <td class="small">{{ state(r) }}</td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ setup }}/{{ r.key }}">Edit</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-4">No tags yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="mt-3 pt-3 border-top">{{ post_button(setup ~ "/reset", "Reset to the default styles", csrf, "btn-outline-danger btn-sm",
+                                     confirm="Replace every style and tag with the defaults?", danger=True, ok="Reset") }}</div>
   </section>
 
   <section data-tab="Metrics" id="metrics">

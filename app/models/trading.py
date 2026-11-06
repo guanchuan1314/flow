@@ -1,7 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, text
+from sqlalchemy import (
+    JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base, utcnow
@@ -12,6 +14,7 @@ Price = Numeric(20, 8)
 
 # MT5 deal actions / entries (IMTDeal::EnDealAction / EnDealEntry)
 DEAL_BUY, DEAL_SELL, DEAL_BALANCE, DEAL_CREDIT = 0, 1, 2, 3
+DEAL_CORRECTION = 5
 ENTRY_IN, ENTRY_OUT, ENTRY_INOUT, ENTRY_OUT_BY = 0, 1, 2, 3
 TRADE_ACTIONS = (DEAL_BUY, DEAL_SELL)
 CLOSING_ENTRIES = (ENTRY_OUT, ENTRY_INOUT, ENTRY_OUT_BY)
@@ -139,6 +142,48 @@ class SyncJob(Base):
     @property
     def percent(self) -> int:
         return 100 if self.status == "done" else int(100 * self.done / self.total) if self.total else 0
+
+
+class CompactSummary(Base):
+    """One deal on MT5 that stands for a group of compacted deals (services.compact). Compacting the account again
+    with the same grouping adds to it."""
+
+    __tablename__ = "compact_summaries"
+    __table_args__ = (UniqueConstraint("server_id", "login", "key", name="uq_compact_summary"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    server_id: Mapped[int] = mapped_column(ForeignKey("mt5_servers.id"))
+    login: Mapped[int] = mapped_column(BigInteger, index=True)
+    key: Mapped[str] = mapped_column(String(128))  # type, label and symbol: what a later compact matches on
+    action: Mapped[int] = mapped_column(Integer)
+    label: Mapped[str] = mapped_column(String(64))
+    symbol: Mapped[str] = mapped_column(String(32), default="")
+    ticket: Mapped[int] = mapped_column(BigInteger)  # the MT5 deal
+    date_from: Mapped[datetime] = mapped_column(DateTime)
+    date_to: Mapped[datetime] = mapped_column(DateTime)
+    amount: Mapped[Decimal] = mapped_column(Money)
+    deals: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class CompactedRecord(Base):
+    """An exact copy of a deal, order or closed position that compacting removed. They stay in Flow."""
+
+    __tablename__ = "compacted_records"
+
+    server_id: Mapped[int] = mapped_column(ForeignKey("mt5_servers.id"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(8), primary_key=True)  # deal | order | position
+    ticket: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    summary_id: Mapped[int | None] = mapped_column(ForeignKey("compact_summaries.id"), index=True)
+    login: Mapped[int] = mapped_column(BigInteger, index=True)
+    time: Mapped[datetime | None] = mapped_column(DateTime)
+    symbol: Mapped[str] = mapped_column(String(32), default="")
+    action: Mapped[int] = mapped_column(Integer)  # the deal's action, order's type or position's direction
+    amount: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    comment: Mapped[str] = mapped_column(String(64), default="")
+    data: Mapped[dict] = mapped_column(JSON)  # every field, as MT5 had it
+    compacted_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class SyncRun(Base):

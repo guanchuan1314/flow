@@ -1,4 +1,6 @@
-"""MT5 > Symbols & pricing > Website prices: which symbols the website streams, in which order and name."""
+"""Administration > Website prices: which symbols the website streams, in which order and name."""
+
+import re
 
 import pytest
 
@@ -42,6 +44,13 @@ def test_saved_list_sets_order_names_and_mt5_digits(synced):
     assert form["from_env"] is False and "EURUSD" in form["available"]
 
 
+def test_own_scripts_and_styles_change_address_with_the_file(admin_web):  # noqa: F811
+    page = admin_web.get("/admin/website-prices").text
+    script = re.search(r'src="(/static/app\.js\?v=\d+)"', page).group(1)
+    assert re.search(r'href="/static/app\.css\?v=\d+"', page) and admin_web.get(script).status_code == 200
+    assert re.search(r'href="/static/site\.css\?v=\d+"', admin_web.get("/").text)
+
+
 def test_validation(synced):
     with pytest.raises(ServiceError, match="not a symbol on the MT5 server"):
         market.save_website_symbols(synced, None, [{"symbol": "NOPE"}])
@@ -51,10 +60,18 @@ def test_validation(synced):
         market.save_website_symbols(synced, None, [{"symbol": ""}])
 
 
-def test_pricing_page_saves_the_list(admin_web, synced):  # noqa: F811
-    page = admin_web.get("/admin/server-tools/pricing").text
-    assert "Website prices" in page and 'data-add-row="web-tpl"' in page and "data-sortable" in page
-    r = form_post(admin_web, "/admin/server-tools/pricing", "/admin/server-tools/pricing/website",
-                  {"web_symbol": ["GBPUSD", "EURUSD"], "web_name": ["", ""], "web_category": ["", ""]})
-    assert "Website prices saved: 2 symbol(s)" in r.text
+def test_website_prices_page_saves_the_list(admin_web, synced):  # noqa: F811
+    url = "/admin/website-prices"
+    page = admin_web.get(url).text
+    assert 'data-add-row="web-tpl"' in page and "data-sortable" in page
+    assert '<select class="form-select form-select-sm mono" name="web_symbol" data-unique-from="web-symbols"' in page
+    assert '<template id="web-symbols"><option value="' in page and "mt5-symbols" not in page
+    nav = page[page.find('<nav class="nav'):page.find("</nav>")]
+    assert nav.find(">Administration<") < nav.find('href="/admin/website-prices"')
+    assert 'data-add-row="web-tpl"' not in admin_web.get("/admin/import/pricing").text  # no longer there
+
+    twice = {"web_symbol": ["EURUSD", "EURUSD"], "web_name": ["", ""], "web_category": ["", ""]}
+    assert "EURUSD is listed twice" in form_post(admin_web, url, url, twice).text
+    r = form_post(admin_web, url, url, {"web_symbol": ["GBPUSD", "EURUSD"], "web_name": ["", ""], "web_category": ["", ""]})
+    assert "Website prices saved: 2 symbol(s)" in r.text and r.url.path == url
     assert [q["symbol"] for q in admin_web.get("/quotes.json").json()["quotes"]] == ["GBPUSD", "EURUSD"]

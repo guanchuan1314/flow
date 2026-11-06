@@ -49,9 +49,9 @@ def test_orders_are_synced_open_and_history(db, gw, trader):
 def test_orders_page(admin_web, db, gw, trader):
     gw.place_order(trader, "XAUUSD", 3, Decimal("1"), Decimal("2500"))
     sync.full_sync(db, gw)
-    r = admin_web.get("/admin/orders")
+    r = admin_web.get("/admin/trades/orders/data")
     assert r.status_code == 200 and "Sell limit" in r.text
-    assert "No orders in the history yet" in admin_web.get("/admin/orders?status=history").text
+    assert "No orders in the history yet" in admin_web.get("/admin/trades/orders/data?status=history").text
 
 
 # ---------------------------------------------------------------- background history sync
@@ -92,14 +92,14 @@ def test_sync_task_cancel_and_validation(db, gw, trader):
 
 
 def test_sync_task_screen_shows_progress(admin_web, db, gw, trader):
-    r = form_post(admin_web, "/admin/import/trades", "/admin/import/trades/jobs",
+    r = form_post(admin_web, "/admin/trades/deals/sync", "/admin/trades/sync/jobs",
                   {"date_from": (utcnow() - timedelta(days=5)).date().isoformat(), "logins": str(trader),
                    "include_orders": "on"})
     assert "queued; progress is shown below" in r.text
-    part = admin_web.get("/admin/import/trades/jobs")
+    part = admin_web.get("/admin/trades/sync/jobs")
     assert 'hx-trigger="every 2s"' in part.text  # polls while the task is waiting / running
     sync_jobs.run_next(db)
-    part = admin_web.get("/admin/import/trades/jobs")
+    part = admin_web.get("/admin/trades/sync/jobs")
     assert "Done" in part.text and "hx-trigger" not in part.text
 
 

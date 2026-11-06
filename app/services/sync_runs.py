@@ -30,10 +30,13 @@ log = logging.getLogger("sync")
 
 KINDS = {
     "account_groups": "Account groups", "trading_accounts": "Trading accounts", "trades": "Trades",
+    "positions": "Open positions", "orders": "Orders", "deals": "Deals",
     "trading_setup": "Trading setup", "symbols": "Symbols", "liquidity": "Liquidity providers",
     "routing": "Routing", "pricing": "Symbols and pricing", "demo_cleanup": "Inactive demo accounts",
+    "trade_cleanup": "Delete orders and deals", "compact": "Compact trading accounts",
 }
-PER_SERVER = {"trading_setup", "symbols", "liquidity", "routing", "pricing", "demo_cleanup"}  # need a server
+PER_SERVER = {"trading_setup", "symbols", "liquidity", "routing", "pricing", "demo_cleanup",
+              "trade_cleanup", "compact"}  # need a server
 
 _pool: ThreadPoolExecutor | None = None
 _pool_lock = threading.Lock()
@@ -117,6 +120,25 @@ def _trades(db: Session, server: MT5Server, actor) -> dict:
     return sync.full_sync(db, server_id=server.id)
 
 
+def _positions(db: Session, server: MT5Server, actor) -> dict:
+    from app.services import sync
+    return {"open_positions": sync.sync_positions(db, server_id=server.id)}
+
+
+def _deals(db: Session, server: MT5Server, actor) -> dict:
+    from app.services import sync
+    return {"new_deals": sync.sync_deals(db, server_id=server.id)}
+
+
+def _orders(db: Session, server: MT5Server, actor) -> dict:
+    """Open orders, then the deal sync, which is what brings in the orders that ended."""
+    from app.services import sync
+    report(0, 2)
+    opened = sync.sync_orders(db, server_id=server.id)
+    report(1, 2)
+    return {"open_orders": opened, **_deals(db, server, actor)}
+
+
 def _pricing(db: Session, server: MT5Server, actor) -> dict:
     from app.services import pricing, symbols
     report(0, 2)
@@ -131,13 +153,25 @@ def _demo_cleanup(db: Session, server: MT5Server, actor, logins: list[int] | Non
     return demo_cleanup.run(db, actor, server, logins=logins, action=action)
 
 
+def _trade_cleanup(db: Session, server: MT5Server, actor, what: str, tickets: list[int] | None = None,
+                   filters: dict | None = None) -> dict:
+    from app.services import trade_cleanup
+    return trade_cleanup.run(db, actor, server, what, tickets, filters)
+
+
+def _compact(db: Session, server: MT5Server, actor, logins: list[int], date_from: str = "", date_to: str = "",
+             by: list[str] | None = None) -> dict:
+    from app.services import compact
+    return compact.run(db, actor, server, logins, date_from, date_to, by)
+
+
 def _runner(kind: str) -> Callable:
     from app.services import liquidity, mt5_setup, mt5_sync, routing_rules, symbols
     return {
         "account_groups": mt5_sync.sync_account_groups, "trading_accounts": mt5_sync.sync_trading_accounts,
-        "trades": _trades, "trading_setup": mt5_setup.sync_all, "symbols": symbols.sync_symbols,
+        "trades": _trades, "positions": _positions, "orders": _orders, "deals": _deals, "trading_setup": mt5_setup.sync_all, "symbols": symbols.sync_symbols,
         "liquidity": liquidity.sync_liquidity, "routing": routing_rules.sync_routes, "pricing": _pricing,
-        "demo_cleanup": _demo_cleanup,
+        "demo_cleanup": _demo_cleanup, "trade_cleanup": _trade_cleanup, "compact": _compact,
     }[kind]
 
 

@@ -392,6 +392,30 @@ class MT5Gateway(ABC):
 
     # -- trading (dealer)
     @abstractmethod
+    def delete_orders(self, tickets: list[int]) -> dict[int, str]:
+        """Delete orders from the server, open or in the history. A ticket MT5 no longer has counts as deleted.
+        Returns the tickets MT5 refused, with the reason."""
+
+    @abstractmethod
+    def delete_deals(self, tickets: list[int]) -> dict[int, str]:
+        """Delete deals from the server (the account's balance is not recalculated). A ticket MT5 no longer has
+        counts as deleted. Returns the tickets MT5 refused, with the reason."""
+
+    @abstractmethod
+    def rewrite_deal(self, ticket: int, *, action: int, amount: Decimal, comment: str, when: datetime,
+                     symbol: str = "") -> None:
+        """Turn a deal into a plain money deal of this type and amount. The account's balance is not changed."""
+
+    @abstractmethod
+    def server_time(self) -> datetime:
+        """The time on the server's clock, the one deals are dated by."""
+
+    @abstractmethod
+    def check_balance(self, login: int) -> tuple[bool, Decimal, Decimal]:
+        """Compare the account's balance and credit with its history, changing nothing:
+        (they match, balance, sum of the history)."""
+
+    @abstractmethod
     def open_position(self, login: int, symbol: str, side: int, volume: Decimal, comment: str = "") -> TradeResult: ...
 
     @abstractmethod

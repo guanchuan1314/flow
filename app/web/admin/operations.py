@@ -15,6 +15,7 @@ from app.web import syncs
 from app.web.common import attempt, flash, form_rows, opt_int, redirect, render, staff_perm
 
 router = APIRouter()
+SETUP = "/admin/accounts/trader-styles/setup"
 
 
 # ---------------------------------------------------------------- server health
@@ -93,29 +94,74 @@ def styles_setup(request: Request, login: str = "", days: int = 30, me: Staff = 
             style, tags = trader_styles.classify(m, rules, 1)
             tried = {"login": n, "metrics": m, "style": style, "tags": tags,
                      "checks": trader_styles.explain(m, [r for r in rules if r.get("enabled", True)])}
+    groups = _live_groups(db, srv.id)
     return render(request, "admin/trader_styles_setup.html", server=srv, rules=rules,
-                  metrics=trader_styles.METRICS, ops=trader_styles.OPS, kinds=trader_styles.KINDS,
-                  colors=trader_styles.COLORS, groups=_live_groups(db, srv.id), tried=tried, tried_error=tried_error,
-                  login=login, days=days)
+                  never_reached=trader_styles.never_reached(rules), metrics=trader_styles.METRICS,
+                  ops=trader_styles.OPS, group_names={g.id: g.name for g in groups}, tried=tried,
+                  tried_error=tried_error, login=login, days=days)
 
 
-@router.post("/accounts/trader-styles/setup")
-async def styles_setup_save(request: Request, me: Staff = Depends(staff_perm("accounts.manage")),
-                            db: Session = Depends(get_db)):
-    form = await request.form()
-
+@router.post("/accounts/trader-styles/setup/reset")
+def styles_setup_reset(request: Request, me: Staff = Depends(staff_perm("accounts.manage")),
+                       db: Session = Depends(get_db)):
     def run():
-        srv = require_server(db)
-        if form.get("reset") == "1":
-            trader_styles.save_rules(db, me, srv, None)
-            return "Back to the default styles and tags."
-        rule_rows = form_rows(form, "rule_order", "rule_key", "rule_name", "rule_kind", "rule_color", "rule_group",
-                              "rule_enabled", strip=False)
-        new = trader_styles.parse_form(rule_rows, form_rows(form, "cond_rule", "cond_metric", "cond_op", "cond_value",
-                                                            "cond_value2", strip=False))
-        trader_styles.save_rules(db, me, srv, new)
-        return f"Saved {sum(r['kind'] == 'style' for r in new)} styles and {sum(r['kind'] == 'tag' for r in new)} tags."
-    return attempt(request, run, "{result}", "/admin/accounts/trader-styles/setup")
+        trader_styles.save_rules(db, me, require_server(db), None)
+    return attempt(request, run, "Back to the default styles and tags.", SETUP)
+
+
+def _rule_page(request: Request, db: Session, srv: MT5Server, key: str, rule: dict):
+    return render(request, "admin/trader_style_form.html", server=srv, key=key, rule=rule, groups=_live_groups(db, srv.id),
+                  metrics=trader_styles.METRICS, ops=trader_styles.OPS, kinds=trader_styles.KINDS,
+                  colors=trader_styles.COLORS)
+
+
+@router.get("/accounts/trader-styles/setup/{key}")
+@router.get("/accounts/trader-styles/setup/new")
+def styles_rule(request: Request, key: str = "", kind: str = "style", me: Staff = Depends(staff_perm("accounts.manage")),
+                db: Session = Depends(get_db)):
+    """One style or tag with its conditions."""
+    srv = require_server(db)
+    new = {"name": "", "kind": kind, "color": "primary", "group_id": None, "enabled": True, "conditions": []}
+    rule = next((r for r in trader_styles.rules(srv) if r["key"] == key), None) if key else new
+    if rule is None:
+        flash(request, "That style no longer exists.", "warning")
+        return redirect(SETUP)
+    return _rule_page(request, db, srv, key, rule)
+
+
+@router.post("/accounts/trader-styles/setup/{key}")
+@router.post("/accounts/trader-styles/setup/new")
+async def styles_rule_save(request: Request, key: str = "", me: Staff = Depends(staff_perm("accounts.manage")),
+                           db: Session = Depends(get_db)):
+    form = await request.form()
+    srv = require_server(db)
+    draft = {"name": str(form.get("name", "")), "kind": form.get("kind", ""), "color": form.get("color", ""),
+             "group_id": form.get("group_id", ""), "enabled": form.get("enabled") == "on",
+             "conditions": [dict(zip(("metric", "op", "value", "value2"), row)) for row in
+                            form_rows(form, "cond_metric", "cond_op", "cond_value", "cond_value2")]}
+    try:
+        rule = trader_styles.save_rule(db, me, srv, key or None, draft)
+    except ServiceError as exc:  # the page again, with what was typed
+        flash(request, exc.message, "danger")
+        return _rule_page(request, db, srv, key, draft)
+    flash(request, f"Saved {rule['name']}.")
+    return redirect(SETUP)
+
+
+@router.post("/accounts/trader-styles/setup/{key}/delete")
+def styles_rule_delete(request: Request, key: str, me: Staff = Depends(staff_perm("accounts.manage")),
+                       db: Session = Depends(get_db)):
+    def run():
+        trader_styles.delete_rule(db, me, require_server(db), key)
+    return attempt(request, run, "Deleted.", SETUP)
+
+
+@router.post("/accounts/trader-styles/setup/{key}/move")
+def styles_rule_move(request: Request, key: str, step: int = Form(...), me: Staff = Depends(staff_perm("accounts.manage")),
+                     db: Session = Depends(get_db)):
+    def run():
+        trader_styles.move_rule(db, me, require_server(db), key, 1 if step > 0 else -1)
+    return attempt(request, run, None, SETUP)
 
 
 @router.post("/accounts/trader-styles/groups")

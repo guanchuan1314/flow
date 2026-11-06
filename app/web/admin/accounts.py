@@ -1,20 +1,85 @@
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ServiceError, get_or_404
 from app.db import get_db
-from app.models import AccountStatus, AccountGroup, Client, Deal, MT5Server, Position, Staff, TradingAccount
+from app.models import (
+    AccountStatus, AccountGroup, Client, CompactedRecord, CompactSummary, Deal, MT5Server, Position, Staff, TradingAccount,
+)
 from app.mt5 import MT5Error, for_account_group, routed
 from app.services import accounts as svc
-from app.services import mt5_sync, trader_styles
-from app.services.clients import ensure_visible, visible_account, visible_client_ids
+from app.services import compact, mt5_calls, mt5_sync, trader_styles
+from app.services.clients import ensure_visible, visible_account, visible_client_ids, visible_logins
+from app.services.servers import the_server
 from app.web import syncs
 from app.web.common import (
     Page, attempt, flash, opt_dec, opt_enum, opt_int, redirect, render, req_dec, staff_perm,
 )
 
 router = APIRouter()
+
+
+COMPACT = "/admin/accounts/compact"
+
+
+@router.get("/accounts/compact")
+def compact_page(request: Request, logins: str = "", group: str = "", date_from: str = "", date_to: str = "",
+                 by: list[str] = Query([]), preview: str = "", page: int = 1,
+                 me: Staff = Depends(staff_perm("mt5_trades.compact")), db: Session = Depends(get_db)):
+    """Choose accounts and how to group: the preview only reads MT5."""
+    server = the_server(db)
+    by = [k for k in by if k in compact.GROUPINGS] if preview else list(compact.GROUPINGS)
+    plans, error = [], False
+    if preview and server:
+        try:
+            gw = mt5_calls.gateway(server)
+            plans = [compact.make_plan(db, gw, server, login, date_from, date_to, by)
+                     for login in compact.choose(db, me, server, logins, opt_int(group))]
+        except (ServiceError, MT5Error) as exc:
+            error = True
+            flash(request, getattr(exc, "message", None) or str(exc), "danger")
+    query = (select(CompactSummary).where(CompactSummary.login.in_(visible_logins(me)))
+             .order_by(CompactSummary.updated_at.desc(), CompactSummary.id.desc()))
+    groups = db.scalars(select(AccountGroup).where(AccountGroup.server_id == (server.id if server else 0))
+                        .order_by(AccountGroup.name))
+    return render(request, "admin/accounts/compact.html", page=Page(db, query, page), plans=plans, preview=preview,
+                  error=error, logins=logins, group=group, date_from=date_from, date_to=date_to, by=by,
+                  groups=list(groups), groupings=compact.GROUPINGS, comment_for=compact.comment_for)
+
+
+@router.post("/accounts/compact/run")
+def compact_run(request: Request, logins: str = Form(""), date_from: str = Form(""), date_to: str = Form(""),
+                by: list[str] = Form([]), me: Staff = Depends(staff_perm("mt5_trades.compact")),
+                db: Session = Depends(get_db)):
+    server = the_server(db)
+    if server is None:
+        flash(request, "No enabled MT5 server", "danger")
+        return redirect(COMPACT)
+    try:
+        chosen = compact.choose(db, me, server, logins)
+    except ServiceError as exc:
+        flash(request, exc.message, "danger")
+        return redirect(COMPACT)
+    return syncs.start(request, db, me, "compact", server.id, COMPACT,
+                       {"logins": chosen, "date_from": date_from, "date_to": date_to,
+                        "by": [k for k in by if k in compact.GROUPINGS]})
+
+
+@router.get("/accounts/compact/history")
+def compact_history(request: Request, trigger: str = "", status: str = "", partial: int = 0, page: int = 1,
+                    me: Staff = Depends(staff_perm("mt5_trades.compact")), db: Session = Depends(get_db)):
+    return syncs.history_page(request, db, "Compact history", ("compact",), "compact", trigger, status, partial, page)
+
+
+@router.get("/accounts/compact/{summary_id}")
+def compact_detail(request: Request, summary_id: int, page: int = 1, me: Staff = Depends(staff_perm("mt5_trades.compact")),
+                   db: Session = Depends(get_db)):
+    """The exact deals behind a summary."""
+    summary = get_or_404(db, CompactSummary, summary_id)
+    visible_account(db, me, summary.login)
+    query = select(CompactedRecord).where(CompactedRecord.summary_id == summary.id).order_by(CompactedRecord.time)
+    return render(request, "admin/accounts/compact_detail.html", summary=summary, page=Page(db, query, page))
 
 
 @router.get("/accounts/trading-accounts")

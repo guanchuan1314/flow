@@ -412,6 +412,38 @@
     var remove = e.target.closest("[data-remove-row]");
     if (remove) remove.closest("tr").remove();
   });
+  // <select data-unique-from="id">: its choices come from <template id> (one list, however many rows), and what
+  // another select of that list has chosen is not offered. A saved value missing from the list stays selectable.
+  (function () {
+    function fill(select) {
+      var wanted = select.value, names = {}, list = document.getElementById(select.getAttribute("data-unique-from")).content;
+      list.querySelectorAll("option").forEach(function (o) { names[o.value] = true; });
+      [].slice.call(select.options).forEach(function (o) { if (names[o.value]) o.remove(); });
+      select.appendChild(list.cloneNode(true));
+      select.value = wanted;
+      select.setAttribute("data-filled", "1");
+    }
+    function refresh() {
+      var selects = document.querySelectorAll("select[data-unique-from]"), taken = {};
+      selects.forEach(function (select) {
+        if (!select.hasAttribute("data-filled")) fill(select);
+        if (select.value) taken[select.value] = (taken[select.value] || 0) + 1;
+      });
+      selects.forEach(function (select) {
+        [].forEach.call(select.options, function (o) {
+          var other = o.value && o.value !== select.value && taken[o.value];
+          o.disabled = o.hidden = !!other;
+        });
+      });
+    }
+    document.addEventListener("DOMContentLoaded", refresh);
+    document.addEventListener("change", function (e) {
+      if (e.target.matches && e.target.matches("select[data-unique-from]")) refresh();
+    });
+    document.addEventListener("click", function (e) {
+      if (e.target.closest("[data-add-row], [data-remove-row]")) refresh();
+    });
+  })();
   // Live prices: elements with data-q="SYMBOL" data-f="bid|ask|spread" follow the /ws/quotes stream; the price
   // turns green / red (and data-qc carets point up / down) as it moves. Without WebSockets (blocked by a proxy),
   // /quotes.json is polled instead. A widget that had no prices yet ([data-quotes-view]) is redrawn once they come.

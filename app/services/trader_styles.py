@@ -1,8 +1,9 @@
 """MT5 > Trader styles: how each account trades, measured from the deals stored in the CRM (no MT5 request), and
 moving accounts to the group meant for their style.
 
-The styles to detect are set up on MT5 > Trader styles > Set up: a list of rules, each a name and conditions on
-the account's metrics (EA share, holding time, deals per day, martingale-like sizing, hedging…).
+The styles to detect are set up under Set up styles: a list of rules, each opening on its own page with its name and
+any number of conditions on the account's metrics (EA share, holding time, deals per day, martingale-like sizing,
+hedging…). All of a rule's conditions must hold.
 - **Styles** are checked in order and the first whose conditions all hold is the account's style (a style without
   conditions catches everyone left). A style can name the account group it belongs in: accounts of that style in
   another group are suggested for a move.
@@ -27,7 +28,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import audit
 from app.core.errors import ServiceError
 from app.db import utcnow
-from app.models import AccountGroup, AccountStatus, Client, Deal, MT5Server, Staff, TradingAccount
+from app.models import AccountGroup, AccountStatus, AutomationRule, Client, Deal, MT5Server, Staff, TradingAccount
 from app.mt5 import MT5Gateway
 from app.services import accounts
 
@@ -46,7 +47,7 @@ COLORS = ("primary", "success", "info", "warning", "danger", "secondary", "dark"
 OPS = {"ge": "≥", "le": "≤", "between": "between"}
 KINDS = {"style": "Style (first match)", "tag": "Tag (every match)"}
 MAX_RULES, MAX_CONDITIONS = 40, 10
-KEY = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+RESERVED = {*FIXED, "suggested", "new", "reset"}  # mean something else in filters and addresses
 
 # metric -> (label, unit, what it measures). All over the chosen period, from the deals stored in the CRM.
 METRICS = {
@@ -151,58 +152,130 @@ def _num(value, what: str) -> float:
         raise ServiceError(f"{what}: '{value}' is not a number")
 
 
-def parse_form(rule_rows: list[tuple], condition_rows: list[tuple]) -> list[dict]:
-    """Form rows -> rules. rule_rows: (order, key, name, kind, color, group_id, enabled ("on" / "")); condition_rows:
-    (rule key, metric, op, value, value2). Blank rows are ignored."""
-    out, keys = [], set()
-    for order, key, name, kind, color, group_id, enabled in rule_rows:
-        key = key.strip().lower()
-        if not (key or name.strip()):
+def _new_key(name: str, current: list[dict]) -> str:
+    """A key for a new rule, from its name. Keys never change, so saved filters and automation keep working."""
+    base = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:28]
+    base = base if base[:1].isalpha() else f"style_{base}".rstrip("_")
+    taken = RESERVED | {r["key"] for r in current}
+    n, key = 1, base
+    while key in taken:
+        n, key = n + 1, f"{base}_{n + 1}"
+    return key
+
+
+def _conditions(name: str, rows: list[dict]) -> list[dict]:
+    """A form's condition rows -> conditions. Rows without a value are ignored."""
+    out = []
+    for row in rows:
+        metric, op, value, value2 = row["metric"], row["op"], row["value"], row["value2"]
+        if not str(value).strip():
             continue
-        if not KEY.match(key):
-            raise ServiceError(f"Style key '{key}': lowercase letters, digits and _ only, starting with a letter")
-        if key in keys or key in FIXED:
-            raise ServiceError(f"Style key '{key}' is used twice" if key in keys else f"'{key}' is reserved")
-        if not name.strip():
-            raise ServiceError(f"Style '{key}' needs a name")
-        if kind not in KINDS:
-            raise ServiceError(f"Style '{key}': choose style or tag")
-        keys.add(key)
-        out.append({"order": _num(order or len(out) + 1, f"Order of {key}"), "key": key, "name": name.strip()[:40],
-                    "kind": kind, "color": color if color in COLORS else "secondary",
-                    "group_id": int(group_id) if str(group_id).strip().isdigit() and kind == "style" else None,
-                    "enabled": enabled == "on", "conditions": []})
-    if len(out) > MAX_RULES:
-        raise ServiceError(f"At most {MAX_RULES} styles and tags")
-    by_key = {r["key"]: r for r in out}
-    for key, metric, op, value, value2 in condition_rows:
-        key = key.strip().lower()
-        if not (key or str(value).strip()):
-            continue
-        if key not in by_key:
-            raise ServiceError(f"A condition is for '{key}', which is not in the styles above")
         if metric not in METRICS:
             raise ServiceError(f"Unknown metric '{metric}'")
         if op not in OPS:
             raise ServiceError("Conditions: choose ≥, ≤ or between")
-        label = f"{by_key[key]['name']}: {METRICS[metric][0]}"
+        label = f"{name}: {METRICS[metric][0]}"
         low = _num(value, label)
         high = _num(value2, label) if op == "between" else None
         if high is not None and high < low:
             raise ServiceError(f"{label}: 'between' needs the lower value first")
-        if len(by_key[key]["conditions"]) >= MAX_CONDITIONS:
-            raise ServiceError(f"{by_key[key]['name']}: at most {MAX_CONDITIONS} conditions")
-        by_key[key]["conditions"].append(_c(metric, op, low, high))
-    out.sort(key=lambda r: r.pop("order"))
-    if not any(r["kind"] == "style" and r["enabled"] for r in out):
-        raise ServiceError("Keep at least one enabled style")
+        out.append(_c(metric, op, low, high))
+    if len(out) > MAX_CONDITIONS:
+        raise ServiceError(f"{name}: at most {MAX_CONDITIONS} conditions")
     return out
+
+
+def _insert(current: list[dict], rule: dict) -> None:
+    """Add a rule to the list: a style with conditions goes before the style that catches everyone left, which would
+    otherwise take every account before it is reached."""
+    spot = len(current)
+    if rule["kind"] == "style" and rule["conditions"]:
+        spot = next((i for i, r in enumerate(current) if _catches_all(r)), spot)
+    current.insert(spot, rule)
+
+
+def _catches_all(rule: dict) -> bool:
+    return rule["kind"] == "style" and rule.get("enabled", True) and not rule["conditions"]
+
+
+def never_reached(rule_list: list[dict]) -> dict[str, str]:
+    """Style key -> name of the style without conditions before it, which takes every account first."""
+    catcher, out = None, {}
+    for r in rule_list:
+        if r["kind"] != "style" or not r.get("enabled", True):
+            continue
+        if catcher:
+            out[r["key"]] = catcher
+        elif _catches_all(r):
+            catcher = r["name"]
+    return out
+
+
+def save_rule(db: Session, actor, server: MT5Server, key: str | None, draft: dict) -> dict:
+    """Add (key None) or change one style or tag. `draft` is what the form sent: name, kind, color, group_id, enabled
+    and conditions (rows of metric, op, value, value2)."""
+    current = rules(server)
+    old = next((r for r in current if r["key"] == key), None)
+    if key and old is None:
+        raise ServiceError("That style no longer exists")
+    name, kind = draft["name"].strip()[:40], draft["kind"]
+    if not name:
+        raise ServiceError("Give it a name")
+    if kind not in KINDS:
+        raise ServiceError(f"{name}: choose style or tag")
+    if any(r is not old and r["name"].lower() == name.lower() for r in current):
+        raise ServiceError(f"There is already a style or tag called {name}")
+    if old is None and len(current) >= MAX_RULES:
+        raise ServiceError(f"At most {MAX_RULES} styles and tags")
+    conditions = _conditions(name, draft["conditions"])
+    if kind == "tag" and not conditions:
+        raise ServiceError(f"{name}: a tag needs at least one condition, or every account would get it")
+    group_id = str(draft["group_id"]).strip()
+    rule = {"key": key or _new_key(name, current), "name": name, "kind": kind,
+            "color": draft["color"] if draft["color"] in COLORS else "secondary",
+            "group_id": int(group_id) if group_id.isdigit() and kind == "style" else None,
+            "enabled": bool(draft["enabled"]), "conditions": conditions}
+    if old is not None and old["kind"] == kind:
+        current[current.index(old)] = rule
+    else:
+        if old is not None:
+            current.remove(old)
+        _insert(current, rule)
+    save_rules(db, actor, server, current)
+    return rule
+
+
+def delete_rule(db: Session, actor, server: MT5Server, key: str) -> None:
+    current = rules(server)
+    rule = next((r for r in current if r["key"] == key), None)
+    if rule is None:
+        raise ServiceError("That style no longer exists")
+    for automation in db.scalars(select(AutomationRule).where(AutomationRule.trigger == "trader_style")):
+        if (automation.params or {}).get("style") == key:
+            raise ServiceError(f"The automation rule {automation.name} uses {rule['name']}: change that first, "
+                               "or switch the style off")
+    current.remove(rule)
+    save_rules(db, actor, server, current)
+
+
+def move_rule(db: Session, actor, server: MT5Server, key: str, step: int) -> None:
+    """Move a style one place up (-1) or down (1) among the styles. Tags have no order: all of them are checked."""
+    current = rules(server)
+    places = [i for i, r in enumerate(current) if r["kind"] == "style"]
+    at = next((n for n, i in enumerate(places) if current[i]["key"] == key), None)
+    if at is None or not 0 <= at + step < len(places):
+        return
+    a, b = places[at], places[at + step]
+    current[a], current[b] = current[b], current[a]
+    save_rules(db, actor, server, current)
 
 
 def save_rules(db: Session, actor, server: MT5Server, new_rules: list[dict] | None) -> list[dict]:
     """Keep the rules (None = back to the defaults). Suggested groups must be live groups of the server."""
     if new_rules is None:
         new_rules = _defaults({})
+    if not any(r["kind"] == "style" and r.get("enabled", True) for r in new_rules):
+        raise ServiceError("Keep at least one enabled style")
     for r in new_rules:
         if r.get("group_id"):
             ag = db.get(AccountGroup, r["group_id"])

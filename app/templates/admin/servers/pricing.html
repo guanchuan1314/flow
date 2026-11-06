@@ -17,14 +17,6 @@
     <td><input class="form-control form-control-sm" name="comm_per_lot" value="{{ r.per_lot }}" type="number" step="0.01" min="0" aria-label="Per lot"></td>
     {{ remove_row_cell() }}</tr>
 {%- endmacro %}
-{% macro web_row(r={}) -%}
-  <tr><td class="drag-cell"><span class="drag-handle" data-drag-handle title="Drag to reorder" aria-hidden="true"><i class="bi bi-grip-vertical"></i></span></td>
-    <td><input class="form-control form-control-sm mono" name="web_symbol" value="{{ r.symbol }}" list="mt5-symbols" required aria-label="Symbol">
-      {% if r.symbol and not r.known %}<div class="form-text text-danger">Not on the MT5 server</div>{% endif %}</td>
-    <td><input class="form-control form-control-sm" name="web_name" value="{{ r.name }}" placeholder="{{ r.default_name or 'From MT5' }}" maxlength="64" aria-label="Display name"></td>
-    <td><input class="form-control form-control-sm" name="web_category" value="{{ r.category }}" placeholder="{{ r.default_category or 'From MT5' }}" maxlength="32" aria-label="Category"></td>
-    {{ remove_row_cell() }}</tr>
-{%- endmacro %}
 {% macro swap_row(r={}) -%}
   <tr><td><input class="form-control form-control-sm mono" name="swap_symbols" value="{{ r.symbols }}" placeholder="*" aria-label="Symbols"></td>
     <td><input class="form-control form-control-sm" name="swap_long" value="{{ r.long }}" type="number" step="any" aria-label="Long"></td>
@@ -32,8 +24,6 @@
     {{ remove_row_cell() }}</tr>
 {%- endmacro %}
 
-<div data-tabs>
-<section data-tab="MT5 markups" id="markups">
 <p class="small text-muted mw-lg">Your markups on top of the liquidity providers' prices, written to MT5. Masks are MT5's: separate several with
   commas, <span class="mono">*</span> stands for any text, <span class="mono">!</span> leaves out (e.g. <span class="mono">real\*, !real\vip</span>).
   Symbol masks are MT5 symbol paths, e.g. <span class="mono">*</span>, <span class="mono">Forex\*</span> or <span class="mono">Metals\XAUUSD</span>.
@@ -45,7 +35,7 @@
     ({{ pending.groups|join(", ")|truncate(120) }}){% endif %} and {{ pending.swaps|length }} symbol swap(s).
     {% else %}MT5 has every markup below.{% endif %}
     {% if p.last_apply %}<span class="text-muted">Last applied {{ p.last_apply.at|dt }}.</span>{% endif %}</div>
-  {{ post_button("/admin/server-tools/pricing/" ~ s.id ~ "/apply", '<i class="bi bi-arrow-repeat"></i> Sync symbols and apply now', csrf,
+  {{ post_button("/admin/import/pricing/" ~ s.id ~ "/apply", '<i class="bi bi-arrow-repeat"></i> Sync symbols and apply now', csrf,
                  "btn-outline-primary btn-sm") }}
 </div>
 {% endif %}
@@ -54,7 +44,7 @@
   {% for g, items in pending.other_commissions.items() %}<br><span class="mono">{{ g }}</span>: {{ items|join(", ") }}{% endfor %}</div>
 {% endif %}
 
-<form method="post" action="/admin/server-tools/pricing/{{ s.id }}" class="mw-lg">
+<form method="post" action="/admin/import/pricing/{{ s.id }}" class="mw-lg">
   {{ csrf_input(csrf) }}
   <div class="card mb-3"><div class="card-header">Auto sync symbols</div><div class="card-body">
     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -100,24 +90,4 @@
   <p class="small text-muted mt-2">Removing a row puts MT5 back as it was: the symbol's own spread, no CRM commission, the LP's swap.
     Needs the manager login's right to configure groups and symbols.</p>
 </form>
-</section>
-
-<section data-tab="Website prices" id="website">
-<form method="post" action="/admin/server-tools/pricing/website" class="mw-lg" id="website-prices">
-  {{ csrf_input(csrf) }}
-  <div class="card mb-3"><div class="card-header d-flex align-items-center gap-2"><span>Website prices</span>
-    {{ add_row_button("web-tpl", "web-rows", "Add symbol", "ms-auto") }}</div><div class="card-body pb-1">
-    <p class="small text-muted">The symbols streamed live to the website's ticker and markets page, top to bottom; the first {{ card_symbols }}
-      also show on the home page and the client area. Drag <i class="bi bi-grip-vertical"></i> to reorder. Leave the name or category empty to use
-      MT5's description and folder; decimals always follow the MT5 symbol.
-      {% if website.from_env %}<br><strong>Now:</strong> the default list from <span class="mono">PUBLIC_SYMBOLS</span> in .env, until you save here.{% endif %}</p>
-    <datalist id="mt5-symbols">{% for name in website.available %}<option value="{{ name }}">{% endfor %}</datalist>
-    <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th></th><th>Symbol</th><th>Name on the website</th><th>Category</th><th></th></tr></thead>
-      <tbody id="web-rows" data-sortable>{% for r in website.entries %}{{ web_row(r) }}{% else %}{{ web_row() }}{% endfor %}</tbody></table></div>
-    <template id="web-tpl">{{ web_row() }}</template>
-  </div></div>
-  <button class="btn btn-primary" type="submit">Save website prices</button>
-</form>
-</section>
-</div>
 {% endblock %}

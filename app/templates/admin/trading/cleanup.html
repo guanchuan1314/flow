@@ -1,0 +1,64 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, empty, pagination, post_button, sync_panel %}
+{% block page_title %}Delete {{ what }}{% endblock %}
+{% block content %}
+{{ sync_panel(["trade_cleanup"]) }}
+<p class="small text-muted">Find {{ what }}, and delete them on MT5 and in the CRM. <strong>This cannot be undone.</strong>
+  {% if what == "orders" %}An order that was not cancelled, rejected or expired stays while its position is still open.
+  {% else %}A deal stays while its position is still open. Balance and credit deals always stay.{% endif %}
+  Open positions are checked on MT5 again just before each delete. Balances are not changed.</p>
+<div class="card">
+  <div class="card-header">
+    <form class="row g-2" method="get">
+      <div class="col-6 col-md-2"><select class="form-select form-select-sm" name="status" aria-label="Status">
+        <option value="">Any status</option>
+        {% for key, label in statuses.items() %}<option value="{{ key }}" {% if filters.status == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select></div>
+      <div class="col-6 col-md-2"><input class="form-control form-control-sm" name="login" value="{{ filters.login }}" placeholder="Login, e.g. 5000*" aria-label="Login"></div>
+      <div class="col-6 col-md-2"><input class="form-control form-control-sm" name="symbol" value="{{ filters.symbol }}" placeholder="Symbol, e.g. EUR*" aria-label="Symbol"></div>
+      <div class="col-6 col-md-2"><input class="form-control form-control-sm" name="comment" value="{{ filters.comment }}" placeholder="Comment, e.g. *close*" aria-label="Comment"></div>
+      <div class="col-6 col-md-2"><input class="form-control form-control-sm" type="date" name="date_from" value="{{ filters.date_from }}" aria-label="From"></div>
+      <div class="col-6 col-md-2"><input class="form-control form-control-sm" type="date" name="date_to" value="{{ filters.date_to }}" aria-label="To"></div>
+      <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button></div>
+    </form>
+  </div>
+  <div class="card-body py-2 border-bottom d-flex flex-wrap gap-2 align-items-center small">
+    <span><strong>{{ page.total }}</strong> found · <strong>{{ deletable }}</strong> can be deleted · {{ kept }} kept</span>
+    {% if server and deletable %}
+    <form id="tick" method="post" action="/admin/trades/{{ what }}/controls/run" data-confirm="Delete the ticked {{ what }} on MT5 and in the CRM? This cannot be undone." data-confirm-variant="danger" data-confirm-ok="Delete">
+      {{ csrf_input(csrf) }}</form>
+    <span class="ms-auto d-flex gap-2 align-items-center">
+      <button class="btn btn-sm btn-danger" type="submit" form="tick">Delete ticked</button>
+      {% if filtered %}{{ post_button("/admin/trades/" ~ what ~ "/controls/run", "Delete all " ~ deletable ~ " that match", csrf, "btn-outline-danger btn-sm",
+         confirm="Delete all " ~ deletable ~ " " ~ what ~ " matching these filters, on MT5 and in the CRM? This cannot be undone.", danger=True, ok="Delete",
+         fields=run_fields) }}{% endif %}
+    </span>{% endif %}
+  </div>
+  <div class="table-responsive"><table class="table table-sm table-hover mb-0 small">
+    {% if what == "orders" %}
+    <thead><tr><th><input class="form-check-input" type="checkbox" data-check-all="ticket" aria-label="Tick all"></th>
+      <th>Placed</th><th>Ticket</th><th>Login</th><th>Type</th><th>Symbol</th><th class="num">Lots</th><th>State</th><th>Position</th><th>Comment</th><th></th></tr></thead>
+    <tbody>{% for o in page.items %}{% set why = reasons.get(o.ticket) %}
+      <tr><td>{% if not why %}<input class="form-check-input" type="checkbox" name="ticket" value="{{ o.ticket }}" form="tick" aria-label="Tick {{ o.ticket }}">{% endif %}</td>
+        <td>{{ o.time_setup|dt }}</td><td class="mono">{{ o.ticket }}</td>
+        <td><a href="/admin/accounts/trading-accounts/{{ o.login }}">{{ o.login }}</a></td>
+        <td>{{ types.get(o.type, o.type) }}</td><td>{{ o.symbol }}</td><td class="num">{{ o.volume_initial|money }}</td>
+        <td>{{ states.get(o.state, o.state) }}</td><td class="mono">{{ o.position_id or "" }}</td><td>{{ o.comment }}</td>
+        <td class="text-muted">{% if why %}Kept: {{ why }}{% endif %}</td></tr>
+    {% else %}{{ empty(11, "No orders found.") }}{% endfor %}</tbody>
+    {% else %}
+    <thead><tr><th><input class="form-check-input" type="checkbox" data-check-all="ticket" aria-label="Tick all"></th>
+      <th>Time</th><th>Ticket</th><th>Login</th><th>Type</th><th>Symbol</th><th class="num">Lots</th><th class="num">Profit</th><th>Position</th><th>Comment</th><th></th></tr></thead>
+    <tbody>{% for d in page.items %}{% set why = reasons.get(d.ticket) %}
+      <tr><td>{% if not why %}<input class="form-check-input" type="checkbox" name="ticket" value="{{ d.ticket }}" form="tick" aria-label="Tick {{ d.ticket }}">{% endif %}</td>
+        <td>{{ d.time|dt }}</td><td class="mono">{{ d.ticket }}</td>
+        <td><a href="/admin/accounts/trading-accounts/{{ d.login }}">{{ d.login }}</a></td>
+        <td>{{ d.action|side }}</td><td>{{ d.symbol }}</td><td class="num">{{ d.volume|money if d.action < 2 else "" }}</td>
+        <td class="num">{{ d.profit|money }}</td><td class="mono">{{ d.position_id or "" }}</td><td>{{ d.comment }}</td>
+        <td class="text-muted">{% if why %}Kept: {{ why }}{% endif %}</td></tr>
+    {% else %}{{ empty(11, "No deals found.") }}{% endfor %}</tbody>
+    {% endif %}
+  </table></div>
+  {{ pagination(page, request) }}
+</div>
+{% endblock %}

@@ -77,18 +77,18 @@ def test_symbol_with_open_trades_cannot_be_deleted(db, gw, server, trader):
 
 
 def test_symbol_screens(admin_web, db, gw, server):
-    r = form_post(admin_web, "/admin/trading-setup/symbols", "/admin/trading-setup/symbols/sync", {"server_id": "1"})
+    r = form_post(admin_web, "/admin/symbols/data", "/admin/symbols/data/sync", {"server_id": "1"})
     assert "9 symbols on MT5, 9 new" in r.text and "EURUSD" in r.text
-    r = form_post(admin_web, "/admin/trading-setup/symbols/new?server=1", "/admin/trading-setup/symbols/new",
+    r = form_post(admin_web, "/admin/symbols/data/new?server=1", "/admin/symbols/data/new",
                   {"server_id": "1", "name": "GOLD", "template": "XAUUSD", "description": "Gold spot", "digits": ""})
     assert "Symbol GOLD created on MT5" in r.text and gw.symbols["GOLD"].digits == 2
     sym = db.scalar(select(Symbol).where(Symbol.name == "GOLD"))
-    page = admin_web.get(f"/admin/trading-setup/symbols/{sym.id}")
+    page = admin_web.get(f"/admin/symbols/data/{sym.id}")
     assert page.status_code == 200 and "Gold spot" in page.text
-    r = form_post(admin_web, f"/admin/trading-setup/symbols/{sym.id}", f"/admin/trading-setup/symbols/{sym.id}",
+    r = form_post(admin_web, f"/admin/symbols/data/{sym.id}", f"/admin/symbols/data/{sym.id}",
                   {"description": "Gold vs dollar", "spread": "25", "trade_mode": "1"})
     assert "saved on MT5" in r.text and gw.symbols["GOLD"].spread == 25 and gw.symbols["GOLD"].trade_mode == 1
-    r = form_post(admin_web, f"/admin/trading-setup/symbols/{sym.id}", f"/admin/trading-setup/symbols/{sym.id}/delete", {})
+    r = form_post(admin_web, f"/admin/symbols/data/{sym.id}", f"/admin/symbols/data/{sym.id}/delete", {})
     assert "GOLD deleted on MT5" in r.text and "GOLD" not in gw.symbols
 
 

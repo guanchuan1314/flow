@@ -374,6 +374,43 @@ class ManagerGateway(MT5Gateway):
                           "HistoryRequestByLogins")
         return [self._convert_order(o) for o in rows or []]
 
+    def _delete_each(self, delete, tickets, what: str) -> dict[int, str]:
+        failed = {}
+        for ticket in tickets:
+            if delete(int(ticket)) is False:
+                retcode, desc = self.M.LastError()[1:3]
+                if int(retcode) in CONNECTION_LOST:
+                    self._fail(what)
+                if int(retcode) != RET_NOT_FOUND:
+                    failed[int(ticket)] = str(desc)
+        return failed
+
+    def delete_orders(self, tickets) -> dict[int, str]:
+        return self._delete_each(self.api.OrderDelete, tickets, "OrderDelete")
+
+    def delete_deals(self, tickets) -> dict[int, str]:
+        return self._delete_each(self.api.DealDelete, tickets, "DealDelete")
+
+    def rewrite_deal(self, ticket, *, action, amount, comment, when, symbol=""):
+        deal = self.api.DealRequest(int(ticket))
+        if not deal:
+            self._fail(f"DealRequest {ticket}")
+        deal.Action, deal.Entry, deal.Symbol, deal.Comment = int(action), 0, symbol, comment[:31]
+        deal.Profit, deal.Commission, deal.Storage, deal.Fee = float(amount), 0.0, 0.0, 0.0
+        deal.Volume, deal.VolumeExt, deal.VolumeClosed, deal.VolumeClosedExt = 0, 0, 0, 0
+        deal.PositionID, deal.Order = 0, 0
+        deal.Time, deal.TimeMsc = _ts(when), _ts(when) * 1000
+        self._check(self.api.DealUpdate(deal), f"DealUpdate {ticket}")
+
+    def server_time(self):
+        return _dt(self.api.TimeServer())
+
+    def check_balance(self, login):
+        result = self.api.UserBalanceCheck(login, False)  # False: compare only, never fix
+        if not result:
+            self._fail(f"UserBalanceCheck {login}")
+        return bool(result[0]), _dec(result[1]), _dec(result[2])
+
     # ---------------------------------------------------------- trading
     def _select(self, symbol: str) -> bool:
         """Subscribe this connection to the symbol's ticks; True if it was just selected."""
@@ -412,6 +449,12 @@ class ManagerGateway(MT5Gateway):
         if not sink.done.wait(self.timeout_ms / 1000):  # outside the lock: other calls go on meanwhile
             return TradeResult(retcode=-1, comment="dealer timeout")
         res = sink.result
+        if not hasattr(res, "ResultRetcode"):  # the MTConfirm of OnDealerResult got here before the answer
+            return TradeResult(
+                retcode=int(res.Retcode), deal_ticket=int(res.DealID), order=int(res.OrderID),
+                position_id=position_id or int(res.OrderID), volume=_dec(res.Volume) / VOLUME_DIVISOR,
+                price=_dec(res.Price), comment=str(res.Comment or ""),
+            )
         return TradeResult(
             retcode=int(res.ResultRetcode), deal_ticket=int(res.ResultDeal), order=int(res.ResultOrder),
             position_id=position_id or int(res.ResultOrder),  # MT5 position id == opening order ticket

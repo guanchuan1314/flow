@@ -1,0 +1,17 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty %}
+{% block page_title %}Big deals{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/custom/big_deals/big_deals.css">{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="table-responsive"><table class="table">
+    <thead><tr><th>Time</th><th>Login</th><th>Symbol</th><th class="num">Lots</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="big-deal"><td>{{ r.time|dt }}</td><td><a href="/admin/accounts/trading-accounts/{{ r.login }}">{{ r.login }}</a></td>
+        <td>{{ r.symbol }}</td><td class="num">{{ r.lots|num }}</td></tr>
+    {% else %}{{ empty(4, "No big deals yet.") }}{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

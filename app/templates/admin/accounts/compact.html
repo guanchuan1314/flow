@@ -1,0 +1,74 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import csrf_input, empty, pagination, sync_panel %}
+{% block page_title %}Compact trading accounts{% endblock %}
+{% block content %}
+{{ sync_panel(["compact"]) }}
+<p class="small text-muted">Replace old history on MT5 with one summary per group, without changing the balance. Open positions, pending orders and
+  positions partly outside the dates stay as they are. Exact copies of everything removed stay in Flow. <strong>MT5 cannot undo this</strong>, so check the preview first.
+  Compacting again adds to the same summaries. <a href="/admin/accounts/compact/history">History</a></p>
+
+<div class="card mb-3"><div class="card-body">
+  <form method="get" class="row g-3">
+    <input type="hidden" name="preview" value="1">
+    <div class="col-md-5"><label class="form-label" for="f-logins">Logins</label>
+      <input class="form-control" id="f-logins" name="logins" value="{{ logins }}" placeholder="e.g. 1001, 1002"></div>
+    <div class="col-md-3"><label class="form-label" for="f-group">Or a whole account group</label>
+      <select class="form-select" id="f-group" name="group"><option value="">(none)</option>
+        {% for g in groups %}<option value="{{ g.id }}" {% if group == g.id|string %}selected{% endif %}>{{ g.name }}</option>{% endfor %}</select></div>
+    <div class="col-6 col-md-2"><label class="form-label" for="f-from">From</label>
+      <input class="form-control" id="f-from" type="date" name="date_from" value="{{ date_from }}"></div>
+    <div class="col-6 col-md-2"><label class="form-label" for="f-to">To</label>
+      <input class="form-control" id="f-to" type="date" name="date_to" value="{{ date_to }}"></div>
+    <div class="col-12 d-flex flex-wrap align-items-center gap-3">
+      <span>Group by type, and also by:</span>
+      {% for key, label in groupings.items() %}<div class="form-check mb-0"><input class="form-check-input" type="checkbox" id="by-{{ key }}" name="by" value="{{ key }}" {% if key in by %}checked{% endif %}>
+        <label class="form-check-label" for="by-{{ key }}">{{ label }}</label></div>{% endfor %}
+      <button class="btn btn-primary ms-auto" type="submit">Preview</button>
+    </div>
+  </form>
+</div></div>
+
+{% if plans %}
+{% set ready = plans|selectattr("problem", "equalto", "")|list %}
+<div class="card mb-3">
+  <div class="card-header d-flex flex-wrap align-items-center gap-2"><span>Preview</span>
+    {% if ready|map(attribute="deals")|sum or ready|map(attribute="orders")|map("length")|sum %}
+    <form class="ms-auto" method="post" action="/admin/accounts/compact/run" data-confirm="Compact {{ ready|length }} account(s) on MT5? MT5 cannot undo this; exact copies stay in Flow." data-confirm-variant="danger" data-confirm-ok="Compact">
+      {{ csrf_input(csrf) }}
+      <input type="hidden" name="logins" value="{{ ready|map(attribute='login')|join(',') }}">
+      <input type="hidden" name="date_from" value="{{ date_from }}"><input type="hidden" name="date_to" value="{{ date_to }}">
+      {% for key in by %}<input type="hidden" name="by" value="{{ key }}">{% endfor %}
+      <button class="btn btn-sm btn-danger" type="submit">Compact on MT5</button>
+    </form>{% endif %}
+  </div>
+  <div class="table-responsive"><table class="table table-sm align-middle mb-0 small">
+    <thead><tr><th>Account</th><th>Summary</th><th>Comment on MT5</th><th>From</th><th>To</th><th class="num">Deals</th><th class="num">Total</th><th></th></tr></thead>
+    <tbody>
+    {% for p in plans %}
+      <tr class="table-light"><td colspan="8"><a href="/admin/accounts/trading-accounts/{{ p.login }}"><strong>{{ p.login }}</strong></a>
+        {% if p.problem %}<span class="text-danger">Left alone: {{ p.problem }}.</span>
+        {% else %}<span class="text-muted">Deals going: {{ p.deals }}. Orders going: {{ p.orders|length }}. Kept: open positions {{ p.open_positions }}, pending orders {{ p.pending_orders }}, other deals {{ p.kept_deals }}.</span>{% endif %}</td></tr>
+      {% for line in p.lines %}
+      <tr><td></td><td>{{ line.label }}</td><td class="mono">{{ comment_for(line.label, line.start, line.stop) }}</td><td>{{ line.start|dt }}</td><td>{{ line.stop|dt }}</td>
+        <td class="num">{{ line.rows|length }}</td><td class="num">{{ line.total|money }}</td>
+        <td class="text-muted">{% if line.summary %}adds {{ line.added|money }} to the summary{% endif %}</td></tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% elif preview and not error %}<div class="alert alert-info small">Nothing to compact.</div>{% endif %}
+
+<div class="card">
+  <div class="card-header">Compacted so far</div>
+  <div class="table-responsive"><table class="table table-sm table-hover mb-0 small">
+    <thead><tr><th>Account</th><th>Summary</th><th>From</th><th>To</th><th class="num">Deals</th><th class="num">Total</th><th>MT5 deal</th><th></th></tr></thead>
+    <tbody>{% for s in page.items %}
+      <tr><td><a href="/admin/accounts/trading-accounts/{{ s.login }}">{{ s.login }}</a></td><td>{{ s.label }}</td><td>{{ s.date_from|dt }}</td><td>{{ s.date_to|dt }}</td>
+        <td class="num">{{ s.deals }}</td><td class="num">{{ s.amount|money }}</td><td class="mono">{{ s.ticket }}</td>
+        <td class="text-end"><a href="/admin/accounts/compact/{{ s.id }}">Exact deals</a></td></tr>
+    {% else %}{{ empty(8, "Nothing compacted yet.") }}{% endfor %}</tbody>
+  </table></div>
+</div>
+{{ pagination(page, request) }}
+{% endblock %}

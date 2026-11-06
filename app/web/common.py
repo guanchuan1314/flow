@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
+from app import custom
 from app.config import get_settings
 from app.services import branding
 from app.core.deps import client_ip
@@ -24,13 +25,20 @@ from app.models import Client, ClientStatus, Staff
 from app.mt5 import MT5Error
 from app.web import labels
 
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+APP_DIR = Path(__file__).resolve().parent.parent
+templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
 STAFF_KEY, CLIENT_KEY = "staff", "client"
 
 
 # ---------------------------------------------------------------- template helpers
 _label = labels.label
+
+
+def _asset(name: str) -> str:
+    """The address of our own static file, changing with the file: after an update a browser loads the new
+    version instead of keeping its cached copy."""
+    return f"/static/{name}?v={int((APP_DIR / 'static' / name).stat().st_mtime)}"
 
 
 def _money(v, places: int = 2) -> str:
@@ -110,21 +118,46 @@ def _live_quotes() -> list[dict]:
 # Back-office pages grouped as one menu entry with tabs: key -> (menu text, icon, [(href, tab, permissions)]),
 # where a tab shows to staff with any of its permissions.
 ADMIN_HUBS = {
+    "accounts": ("Trading accounts", "wallet2", [
+        ("/admin/accounts/trading-accounts", "Data", ("accounts.view",)),
+        ("/admin/accounts/trader-styles", "Trader styles", ("accounts.view",)),
+        ("/admin/accounts/inactive-accounts", "Inactive accounts", ("accounts.cleanup",)),
+        ("/admin/accounts/compact", "Compact", ("mt5_trades.compact",))]),
+    "positions": ("Positions", "activity", [
+        ("/admin/trades/positions/data", "Data", ("trading.view",)),
+        ("/admin/trades/positions/sync", "Sync", ("trading.view",)),
+        ("/admin/trades/positions/history", "History", ("trading.view",))]),
+    "orders": ("Orders", "card-checklist", [
+        ("/admin/trades/orders/data", "Data", ("trading.view",)),
+        ("/admin/trades/orders/sync", "Sync", ("trading.view",)),
+        ("/admin/trades/orders/history", "History", ("trading.view",)),
+        ("/admin/trades/orders/controls", "Controls", ("mt5_trades.delete",))]),
+    "deals": ("Deals", "list-columns", [
+        ("/admin/trades/deals/data", "Data", ("trading.view",)),
+        ("/admin/trades/deals/sync", "Sync", ("trading.view",)),
+        ("/admin/trades/deals/history", "History", ("trading.view",)),
+        ("/admin/trades/deals/controls", "Controls", ("mt5_trades.delete",))]),
+    "symbols": ("Symbols", "currency-exchange", [
+        ("/admin/symbols/data", "Data", ("symbols.manage",)),
+        ("/admin/symbols/sync", "Sync", ("symbols.manage",)),
+        ("/admin/symbols/history", "History", ("symbols.manage",))]),
     "setup": ("Trading setup", "diagram-3", [
         ("/admin/trading-setup/overview", "Overview", ("symbols.manage", "liquidity.manage", "routing.manage")),
-        ("/admin/trading-setup/symbols", "Symbols", ("symbols.manage",)),
         ("/admin/trading-setup/liquidity", "Liquidity providers", ("liquidity.manage",)),
         ("/admin/trading-setup/routing", "Routing", ("routing.manage",))]),
-    "import": ("Import from MT5", "cloud-download", [
+    "import": ("Imports", "cloud-download", [
         ("/admin/import/account-groups", "Account groups", ("mt5_servers.manage",)),
         ("/admin/import/trading-accounts", "Trading accounts", ("mt5_servers.manage",)),
-        ("/admin/import/trades", "Trades", ("trading.view",)),
-        ("/admin/import/history", "History", ("mt5_servers.manage", "account_groups.manage", "accounts.manage",
+        ("/admin/import/pricing", "Symbols & pricing", ("symbols.manage",)),
+        ("/admin/import/positions", "Positions", ("trading.view",)),
+        ("/admin/import/orders", "Orders", ("trading.view",)),
+        ("/admin/import/deals", "Deals", ("trading.view",)),
+        ("/admin/import/history", "History", ("mt5_servers.manage", "mt5_trades.delete", "account_groups.manage",
+                                               "accounts.manage",
                                               "accounts.cleanup", "trading.sync", "symbols.manage", "liquidity.manage",
                                               "routing.manage"))]),
     "tools": ("Server tools", "tools", [
         ("/admin/server-tools/health", "Server health", ("mt5_health.view",)),
-        ("/admin/server-tools/pricing", "Symbols & pricing", ("symbols.manage",)),
         ("/admin/server-tools/restart", "Restart components", ("mt5_servers.restart",))]),
     "staff": ("Staff", "person-badge", [
         ("/admin/staff/members", "Staff", ("staff.view",)),
@@ -150,8 +183,9 @@ def _hub_of(path: str) -> str | None:
     return None
 
 
-templates.env.globals.update(settings=get_settings, brand=branding.current, live_quotes=_live_quotes, opts=_opts,
-                             health_alerts=_health_alerts, admin_hubs=ADMIN_HUBS, hub_items=_hub_items, hub_of=_hub_of)
+templates.env.globals.update(asset=_asset, settings=get_settings, brand=branding.current, live_quotes=_live_quotes, opts=_opts,
+                             health_alerts=_health_alerts, admin_hubs=ADMIN_HUBS, hub_items=_hub_items, hub_of=_hub_of,
+                             custom_menu=custom.menu, custom_problems=custom.problems)
 
 
 # ---------------------------------------------------------------- session primitives
@@ -321,6 +355,11 @@ def safe_next(url: str | None, default: str) -> str:
     if parsed.scheme or parsed.netloc or not url.startswith("/") or url.startswith("//"):
         return default
     return url
+
+
+def sent_from(request: Request, default: str) -> str:
+    """The page a form was sent from, for pages that open at two addresses."""
+    return safe_next(urlparse(request.headers.get("referer", "")).path, default)
 
 
 def back(request: Request, default: str) -> RedirectResponse:
