@@ -107,6 +107,10 @@ def _record_changes(db: Session, server: MT5Server, before: list[dict], now: lis
                   {"component": c["name"], "type": COMPONENT_TYPES.get(c["type"], c["type"]), "address": c["address"]})
 
 
+def enabled(db: Session) -> list[MT5Server]:
+    return list(db.scalars(select(MT5Server).where(MT5Server.enabled.is_(True)).order_by(MT5Server.id)))
+
+
 def collect_due(db: Session, gw: MT5Gateway | None = None) -> int:
     """Worker: sample every enabled server whose last sample is older than HEALTH_INTERVAL_MINUTES."""
     minutes = get_settings().health_interval_minutes

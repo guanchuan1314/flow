@@ -9,11 +9,12 @@
   <a class="btn btn-success btn-sm" href="/admin/automation/new"><i class="bi bi-plus-lg"></i> New rule</a>
 </div>
 <div class="card mb-4"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
-  <thead><tr><th>Rule</th><th>When</th><th>Then</th><th>Cooldown</th><th>Last run</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Rule</th><th>Server</th><th>When</th><th>Then</th><th>Cooldown</th><th>Last run</th><th>Status</th><th></th></tr></thead>
   <tbody>
   {% for r in rules %}
     <tr class="{% if not r.enabled %}text-muted{% endif %}">
       <td><a class="fw-semibold" href="/admin/automation/{{ r.id }}">{{ r.name }}</a></td>
+      <td class="small">{{ r.server.name if r.server else "All servers" }}</td>
       <td class="small">{{ triggers[r.trigger][0] if r.trigger in triggers else r.trigger }}
         {% set spec = triggers[r.trigger][2] if r.trigger in triggers else {} %}
         <span class="text-muted">{% for k, v in (r.params or {}).items() %}{{ spec[k][0] if k in spec else k|label }}: {{ styles.get(v, v|label) if k in spec and spec[k][1] == "style" else v }}{{ ", " if not loop.last }}{% endfor %}</span></td>
@@ -25,18 +26,18 @@
         {{ post_button("/admin/automation/" ~ r.id ~ "/toggle", "Disable" if r.enabled else "Enable", csrf,
                        "btn-outline-primary btn-sm") }}</td>
     </tr>
-  {% else %}{{ empty(7, "No rules yet. For example: email the account manager when a client hasn't deposited 7 days after registering.") }}{% endfor %}
+  {% else %}{{ empty(8, "No rules yet. For example: email the account manager when a client hasn't deposited 7 days after registering.") }}{% endfor %}
   </tbody>
 </table></div></div>
 
 <h2 class="h6">Recent actions</h2>
 <div class="card"><div class="table-responsive"><table class="table table-sm mb-0 small">
-  <thead><tr><th>When</th><th>Rule</th><th>Target</th><th>Outcome</th><th>Message</th></tr></thead>
+  <thead><tr><th>When</th><th>Rule</th><th>Server</th><th>Target</th><th>Outcome</th><th>Message</th></tr></thead>
   <tbody>{% for x in runs %}
-    <tr><td>{{ x.at|dt }}</td><td>{{ names.get(x.rule_id, x.rule_id) }}</td>
-      <td>{% if x.login %}<a href="/admin/accounts/trading-accounts/{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
+    <tr><td>{{ x.at|dt }}</td><td>{{ names.get(x.rule_id, x.rule_id) }}</td><td>{{ x.server.name if x.server else "" }}</td>
+      <td>{% if x.login %}<a href="/admin/accounts/trading-accounts/{{ x.server_id }}:{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
       <td>{% if x.outcome == "done" %}<span class="badge text-bg-success">done</span>{% else %}<span class="badge text-bg-danger">failed</span>{% endif %}</td>
       <td>{{ x.message }}</td></tr>
-  {% else %}{{ empty(5, "Nothing done yet.") }}{% endfor %}</tbody>
+  {% else %}{{ empty(6, "Nothing done yet.") }}{% endfor %}</tbody>
 </table></div></div>
 {% endblock %}

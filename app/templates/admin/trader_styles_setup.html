@@ -1,15 +1,16 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import post_button %}
+{% from "macros.html" import post_button, server_filter %}
 {% block page_title %}Trader styles: set up{% endblock %}
 {% block content %}
-{% set setup = "/admin/accounts/trader-styles/setup" %}
+{% set setup = "/admin/accounts/trader-styles/setup" %}{% set on = "?server=" ~ server.id %}
+{{ server_filter(server.id) }}
 {% macro conditions(r) -%}
   {% for c in r.conditions %}{% set unit = metrics[c.metric][1] %}
     <div>{{ metrics[c.metric][0] }} {{ ops[c.op] }} {{ c.value|num }}{% if c.op == "between" %} and {{ c.value2|num }}{% endif %}{% if unit == "%" %}%{% elif unit and unit != "money" %} {{ unit }}{% endif %}</div>
   {% else %}<span class="text-muted">Every account left</span>{% endfor %}
 {%- endmacro %}
 {% macro name_cell(r) -%}
-  <a class="badge text-decoration-none text-bg-{{ r.color }}{% if r.color == 'light' %} border{% endif %}" href="{{ setup }}/{{ r.key }}">{{ r.name }}</a>
+  <a class="badge text-decoration-none text-bg-{{ r.color }}{% if r.color == 'light' %} border{% endif %}" href="{{ setup }}/{{ r.key }}{{ on }}">{{ r.name }}</a>
 {%- endmacro %}
 {% macro state(r) -%}
   {% if r.get("enabled", True) %}On{% else %}<span class="text-muted">Off</span>{% endif %}
@@ -19,28 +20,28 @@
 
 <p class="small text-muted">Which styles to detect, from the deals stored in the CRM (no MT5 request). Open a style to set its conditions: an account
   must match all of them. Accounts with fewer placed deals than the list's minimum show as "Too few trades"; accounts matching no style as "Unclassified".
-  <a href="/admin/accounts/trader-styles">Back to Trader styles</a></p>
+  <a href="/admin/accounts/trader-styles?server={{ server.id }}">Back to Trader styles</a></p>
 
 <div data-tabs>
   <section data-tab="Styles &amp; tags" data-tab-count="{{ rules|length }}" id="styles">
     <div class="card mb-3">
       <div class="card-header d-flex align-items-center gap-2"><span>Styles <span class="small text-muted fw-normal">(checked from top to bottom: an account gets the first that matches)</span></span>
-        <a class="btn btn-sm btn-outline-secondary ms-auto text-nowrap" href="{{ setup }}/new"><i class="bi bi-plus"></i> Add style</a></div>
+        <a class="btn btn-sm btn-outline-secondary ms-auto text-nowrap" href="{{ setup }}/new{{ on }}"><i class="bi bi-plus"></i> Add style</a></div>
       <div class="table-responsive"><table class="table table-sm align-middle mb-0">
         <thead><tr><th>Order</th><th>Style</th><th>Conditions</th><th>Belongs in</th><th>Enabled</th><th></th></tr></thead>
         <tbody>
         {% for r in styles %}
           <tr>
             <td class="text-nowrap">
-              {% if not loop.first %}{{ post_button(setup ~ "/" ~ r.key ~ "/move", '<i class="bi bi-arrow-up"></i><span class="visually-hidden">Move up</span>', csrf, "btn-link btn-sm p-0", fields={"step": "-1"}) }}{% endif %}
-              {% if not loop.last %}{{ post_button(setup ~ "/" ~ r.key ~ "/move", '<i class="bi bi-arrow-down"></i><span class="visually-hidden">Move down</span>', csrf, "btn-link btn-sm p-0", fields={"step": "1"}) }}{% endif %}
+              {% if not loop.first %}{{ post_button(setup ~ "/" ~ r.key ~ "/move" ~ on, '<i class="bi bi-arrow-up"></i><span class="visually-hidden">Move up</span>', csrf, "btn-link btn-sm p-0", fields={"step": "-1"}) }}{% endif %}
+              {% if not loop.last %}{{ post_button(setup ~ "/" ~ r.key ~ "/move" ~ on, '<i class="bi bi-arrow-down"></i><span class="visually-hidden">Move down</span>', csrf, "btn-link btn-sm p-0", fields={"step": "1"}) }}{% endif %}
             </td>
             <td>{{ name_cell(r) }}</td>
             <td class="small">{{ conditions(r) }}
               {% if never_reached.get(r.key) %}<div class="text-danger">Never reached: {{ never_reached[r.key] }} has no conditions, so it catches every account first. Move this style above it.</div>{% endif %}</td>
             <td class="small">{{ group_names.get(r.group_id, "") }}</td>
             <td class="small">{{ state(r) }}</td>
-            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ setup }}/{{ r.key }}">Edit</a></td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ setup }}/{{ r.key }}{{ on }}">Edit</a></td>
           </tr>
         {% endfor %}
         </tbody>
@@ -49,7 +50,7 @@
 
     <div class="card mb-3">
       <div class="card-header d-flex align-items-center gap-2"><span>Tags <span class="small text-muted fw-normal">(extra badges: an account gets every tag that matches)</span></span>
-        <a class="btn btn-sm btn-outline-secondary ms-auto text-nowrap" href="{{ setup }}/new?kind=tag"><i class="bi bi-plus"></i> Add tag</a></div>
+        <a class="btn btn-sm btn-outline-secondary ms-auto text-nowrap" href="{{ setup }}/new{{ on }}&amp;kind=tag"><i class="bi bi-plus"></i> Add tag</a></div>
       <div class="table-responsive"><table class="table table-sm align-middle mb-0">
         <thead><tr><th>Tag</th><th>Conditions</th><th>Enabled</th><th></th></tr></thead>
         <tbody>
@@ -58,7 +59,7 @@
             <td>{{ name_cell(r) }}</td>
             <td class="small">{{ conditions(r) }}</td>
             <td class="small">{{ state(r) }}</td>
-            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ setup }}/{{ r.key }}">Edit</a></td>
+            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ setup }}/{{ r.key }}{{ on }}">Edit</a></td>
           </tr>
         {% else %}
           <tr><td colspan="4" class="text-center text-muted py-4">No tags yet.</td></tr>
@@ -66,7 +67,7 @@
         </tbody>
       </table></div>
     </div>
-    <div class="mt-3 pt-3 border-top">{{ post_button(setup ~ "/reset", "Reset to the default styles", csrf, "btn-outline-danger btn-sm",
+    <div class="mt-3 pt-3 border-top">{{ post_button(setup ~ "/reset" ~ on, "Reset to the default styles", csrf, "btn-outline-danger btn-sm",
                                      confirm="Replace every style and tag with the defaults?", danger=True, ok="Reset") }}</div>
   </section>
 

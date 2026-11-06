@@ -40,7 +40,7 @@ def nav(fund: PammFund, equity: Decimal) -> Decimal:
 
 
 def current_nav(gw: MT5Gateway, fund: PammFund) -> tuple[Decimal, Decimal]:
-    equity = gw.get_account(fund.master_login).equity
+    equity = gw.on(fund.server_id).get_account(fund.master_login).equity
     return Decimal(equity), nav(fund, equity)
 
 
@@ -70,18 +70,20 @@ def _manager_investment(db: Session, fund: PammFund) -> PammInvestment:
     return _investment(db, fund, fund.manager_client_id, create=True, is_manager=True)
 
 
-def create_fund(db: Session, gw: MT5Gateway, actor, manager: Client, master_login: int, name: str, **opts) -> PammFund:
+def create_fund(db: Session, gw: MT5Gateway, actor, manager: Client, master_login, name: str, **opts) -> PammFund:
     acc = accounts.get_client_account(db, manager, master_login)
     if acc.is_demo or acc.status != AccountStatus.active:
         raise ServiceError("Master must be an active live account")
-    if db.scalar(select(CopyStrategy.id).where(CopyStrategy.master_login == master_login)):
+    master_login, gw = acc.login, gw.on(acc.server_id)
+    if db.scalar(select(CopyStrategy.id).where(CopyStrategy.server_id == acc.server_id,
+                                               CopyStrategy.master_login == master_login)):
         raise Conflict("Account is already a copy-trading master")
     if db.scalar(select(PammFund.id).where(PammFund.name == name)):
         raise Conflict("Fund name already exists")
     info = gw.get_account(master_login)
     if info.equity > 0 or gw.get_positions([master_login]):
         raise ServiceError("Master account must be empty (zero equity, no positions) when the fund is created")
-    fund = PammFund(name=name, manager_client_id=manager.id, master_login=master_login,
+    fund = PammFund(name=name, manager_client_id=manager.id, server_id=acc.server_id, master_login=master_login,
                     total_units=Decimal("0"), last_nav=Decimal("1"), last_fee_at=utcnow(), **opts)
     acc.purpose = AccountPurpose.pamm_master
     db.add(fund)
@@ -106,7 +108,7 @@ def invest(db: Session, gw: MT5Gateway, actor, fund: PammFund, client: Client, a
     wallet.post(db, client.id, -amount, WalletTxKind.pamm_invest, ref_type="pamm_fund", ref_id=fund.id,
                 comment=f"Invest in PAMM {fund.name}")
     try:
-        gw.balance_operation(fund.master_login, amount, f"PAMM {fund.id} in c{client.id}")
+        gw.on(fund.server_id).balance_operation(fund.master_login, amount, f"PAMM {fund.id} in c{client.id}")
     except MT5Error as exc:
         db.rollback()
         raise ServiceError(f"MT5 deposit failed: {exc}", 502) from exc
@@ -155,6 +157,7 @@ def withdraw(db: Session, gw: MT5Gateway, actor, fund: PammFund, client: Client,
         units = Decimal(inv.units)  # full exit, no dust
     fee_units = _performance_fee_units(fund, inv, units, price)
     payout = wallet.money((units - fee_units) * price)
+    gw = gw.on(fund.server_id)
     margin_free = gw.get_account(fund.master_login).margin_free
     if payout > margin_free:
         db.rollback()

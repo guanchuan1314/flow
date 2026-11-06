@@ -15,14 +15,15 @@
     </form>
   </div>
   <div class="table-responsive"><table class="table table-hover">
-    <thead><tr><th>Placed</th><th>Ticket</th><th>Login</th><th>Client</th><th>Type</th><th>Symbol</th><th class="num">Lots</th>
+    <thead><tr><th>Placed</th><th>Ticket</th><th>Server</th><th>Login</th><th>Client</th><th>Type</th><th>Symbol</th><th class="num">Lots</th>
       <th class="num">Price</th><th class="num">S/L</th><th class="num">T/P</th><th>State</th>{% if status == "history" %}<th>Done</th>{% endif %}<th>Position</th><th>Comment</th></tr></thead>
     <tbody>
     {% for o in page.items %}
-      {% set owner = owners.get(o.login) %}
+      {% set owner = owners.get((o.server_id, o.login)) %}
       <tr>
         <td class="small">{{ o.time_setup|dt }}</td><td class="mono">{{ o.ticket }}</td>
-        <td><a href="/admin/accounts/trading-accounts/{{ o.login }}">{{ o.login }}</a></td>
+        <td class="small">{{ servers.get(o.server_id) }}</td>
+        <td><a href="/admin/accounts/trading-accounts/{{ o.server_id }}:{{ o.login }}">{{ o.login }}</a></td>
         <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
         <td>{{ types.get(o.type, o.type) }}</td>
         <td>{{ o.symbol }}</td>

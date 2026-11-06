@@ -3,7 +3,7 @@
 <div id="sync-runs" {% if page.items|selectattr("active")|list %}hx-get="{{ request.url.path }}?{{ request.url.include_query_params(partial=1, page=page.page).query }}"
      hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
   <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
-    <thead><tr><th>Started</th><th>What</th><th>Started by</th><th>Status</th><th class="num">Took</th><th>Result</th><th></th></tr></thead>
+    <thead><tr><th>Started</th><th>What</th><th>Server</th><th>Started by</th><th>Status</th><th class="num">Took</th><th>Result</th><th></th></tr></thead>
     <tbody>
     {% set colors = {"queued": "secondary", "running": "primary", "done": "success", "failed": "danger"} %}
     {% for r in page.items %}
@@ -11,7 +11,8 @@
       {% set who = staff_names.get(r.created_by_id, "Staff #" ~ r.created_by_id) if r.created_by_id else ("Schedule" if r.trigger == "schedule" else "System") %}
       <tr>
         <td class="small text-nowrap">{{ r.created_at|dt }}</td>
-        <td class="small text-nowrap">{{ kinds[r.kind] }}<div class="text-muted">{{ server_names.get(r.server_id, "All servers") if r.server_id else "All servers" }}</div></td>
+        <td class="small text-nowrap">{{ kinds[r.kind] }}</td>
+        <td class="small text-nowrap">{{ server_names.get(r.server_id, "All servers") if r.server_id else "All servers" }}</td>
         <td class="small">{% if r.trigger == "schedule" %}<span class="badge text-bg-light border"><i class="bi bi-clock"></i> Schedule</span>{% else %}{{ who }}{% endif %}</td>
         <td><span class="badge text-bg-{{ colors[r.status] }}">{% if r.status == "running" %}<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>{% endif %}{{ r.status|label }}</span></td>
         <td class="num small text-nowrap">{% if r.seconds is not none %}{{ "%.1f"|format(r.seconds) }} s{% else %}—{% endif %}</td>
@@ -30,7 +31,7 @@
             {% for name, value in rows %}<dt class="col-sm-4">{{ name }}</dt><dd class="col-sm-8 text-break">{{ value }}</dd>{% endfor %}
           </dl></template>{% endif %}</td>
       </tr>
-    {% else %}{{ empty(7, "No synchronizations yet.") }}{% endfor %}
+    {% else %}{{ empty(8, "No synchronizations yet.") }}{% endfor %}
     </tbody>
   </table></div>
   {{ pagination(page, request) }}

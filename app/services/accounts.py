@@ -22,18 +22,47 @@ from app.services.mt5_calls import call, gateway
 log = logging.getLogger(__name__)
 
 
-def get_account(db: Session, login: int) -> TradingAccount:
-    acc = db.scalar(select(TradingAccount).where(TradingAccount.login == login))
-    if acc is None:
-        raise NotFound(f"Trading account {login} not found")
-    return acc
+def parse_ref(ref) -> tuple[int | None, int]:
+    """(server id, login) of an account as pages and people name it: server:login, or a login alone."""
+    server, _, login = str(ref).strip().rpartition(":")
+    if not login.isdigit() or (server and not server.isdigit()):
+        raise NotFound(f"Trading account {ref} not found")
+    return int(server) if server else None, int(login)
 
 
-def get_client_account(db: Session, client: Client, login: int) -> TradingAccount:
-    acc = get_account(db, login)
-    if acc.client_id != client.id:
+def ref_of(login: int | None, server_id: int | None) -> int | str | None:
+    """What get_account takes, from a login and an optional server (the API's fields)."""
+    return f"{server_id}:{login}" if login is not None and server_id is not None else login
+
+
+def matching(db: Session, ref) -> list[TradingAccount]:
+    """The accounts `ref` can mean: more than one for a login alone that two servers have."""
+    server_id, login = parse_ref(ref)
+    q = select(TradingAccount).where(TradingAccount.login == login)
+    if server_id is not None:
+        q = q.where(TradingAccount.server_id == server_id)
+    return list(db.scalars(q.order_by(TradingAccount.server_id)))
+
+
+def only(found: list[TradingAccount], ref) -> TradingAccount:
+    if not found:
+        raise NotFound(f"Trading account {ref} not found")
+    if len(found) > 1:
+        raise Conflict(f"Login {found[0].login} is on more than one MT5 server. Say which, as server:login: "
+                       f"{' or '.join(a.ref for a in found)}.")
+    return found[0]
+
+
+def get_account(db: Session, ref) -> TradingAccount:
+    return only(matching(db, ref), ref)
+
+
+def get_client_account(db: Session, client: Client, ref) -> TradingAccount:
+    found = matching(db, ref)
+    mine = [a for a in found if a.client_id == client.id]
+    if found and not mine:
         raise Forbidden("Account does not belong to this client")
-    return acc
+    return only(mine, ref)
 
 
 # ---------------------------------------------------------------- account groups
@@ -139,20 +168,23 @@ def delete_preview(db: Session, ag: AccountGroup) -> dict:
                          .order_by(AccountGroup.name)).all()
     return {"accounts": len(accs), "balance": sum((a.balance for a in accs), Decimal("0")),
             "equity": sum((a.equity for a in accs), Decimal("0")),
-            "positions": db.scalar(select(func.count()).select_from(Position).where(Position.login.in_(logins)))
+            "positions": db.scalar(select(func.count()).select_from(Position).where(Position.server_id == ag.server_id,
+                                                                                    Position.login.in_(logins)))
             if logins else 0, "targets": targets}
 
 
-def _copy_links(db: Session, logins: list[int]) -> list[str]:
+def _copy_links(db: Session, server_id: int, logins: list[int]) -> list[str]:
     """Copy-trading / PAMM roles that stop an account from being deleted."""
     from app.models import CopyStrategy, CopySubscription, PammFund, StrategyStatus, SubscriptionStatus
 
     found = [f"strategy master {s.master_login}" for s in db.scalars(select(CopyStrategy).where(
-        CopyStrategy.master_login.in_(logins), CopyStrategy.status != StrategyStatus.closed))]
+        CopyStrategy.server_id == server_id, CopyStrategy.master_login.in_(logins),
+        CopyStrategy.status != StrategyStatus.closed))]
     found += [f"follower {s.follower_login}" for s in db.scalars(select(CopySubscription).where(
-        CopySubscription.follower_login.in_(logins), CopySubscription.status == SubscriptionStatus.active))]
+        CopySubscription.server_id == server_id, CopySubscription.follower_login.in_(logins),
+        CopySubscription.status == SubscriptionStatus.active))]
     found += [f"PAMM master {f.master_login}" for f in db.scalars(select(PammFund).where(
-        PammFund.master_login.in_(logins), PammFund.status != StrategyStatus.closed))]
+        PammFund.server_id == server_id, PammFund.master_login.in_(logins), PammFund.status != StrategyStatus.closed))]
     return found
 
 
@@ -197,12 +229,12 @@ def delete_account_group(db: Session, actor, ag: AccountGroup, accounts_action: 
                 raise ServiceError(f"Moved {done['moved']} of {len(accs)} accounts; MT5 refused {acc.login}: {exc}. "
                                    "Nothing else was changed; try again.", 502) from exc
             acc.account_group_id, acc.group = target.id, target.mt5_group
-            audit(db, actor, "account.move_type", "trading_account", acc.login, {"from": ag.name, "to": target.name})
+            audit(db, actor, "account.move_type", "trading_account", acc.ref, {"from": ag.name, "to": target.name})
             db.commit()  # each move is final on MT5, so record it at once
             done["moved"] += 1
     elif accs and accounts_action == "delete":
         logins = [a.login for a in accs]
-        links = _copy_links(db, logins)
+        links = _copy_links(db, ag.server_id, logins)
         if links:
             raise ServiceError(f"Stop these copy-trading / PAMM roles first: {', '.join(links[:5])}")
         if call(lambda: gw.get_positions(logins), "position request"):
@@ -213,7 +245,7 @@ def delete_account_group(db: Session, actor, ag: AccountGroup, accounts_action: 
             except MT5Error as exc:
                 raise ServiceError(f"Deleted {done['deleted']} of {len(accs)} accounts; MT5 refused {acc.login}: "
                                    f"{exc}. Try again.", 502) from exc
-            audit(db, actor, "account.delete_on_mt5", "trading_account", acc.login,
+            audit(db, actor, "account.delete_on_mt5", "trading_account", acc.ref,
                   {"account_group": ag.name, "balance": acc.balance, "equity": acc.equity})
             acc.status, acc.on_server, acc.account_group_id = AccountStatus.archived, False, None
             db.commit()
@@ -259,26 +291,20 @@ def open_account(db: Session, gw: MT5Gateway, actor, client: Client, account_gro
     if count >= ag.max_accounts_per_client:
         raise ServiceError(f"Maximum of {ag.max_accounts_per_client} {ag.name} accounts reached")
 
+    gw = gw.on(ag.server_id)
     master_pwd, investor_pwd = generate_mt5_password(), generate_mt5_password()
     login = call(lambda: gw.create_user(
         group=ag.mt5_group, leverage=leverage, name=client.full_name, email=client.email,
         phone=client.phone or "", country=client.country or "",
         master_password=master_pwd, investor_password=investor_pwd), "create account")
 
-    clash = db.scalar(select(TradingAccount).where(TradingAccount.login == login))
-    if clash is not None:
-        # The MT5 user now exists on the server but the CRM cannot track two accounts with one login.
-        log.critical("MT5 login %s created on server %s already belongs to server %s in the CRM",
-                     login, ag.server_id, clash.server_id)
-        raise ServiceError(f"MT5 returned login {login}, which already exists on another server. Give each MT5 "
-                           "server a separate login range (MT5 Administrator > Groups), then try again.", 409)
     acc = TradingAccount(login=login, server_id=ag.server_id, client_id=client.id, account_group_id=ag.id,
                          group=ag.mt5_group, leverage=leverage, currency=ag.currency, is_demo=ag.is_demo,
                          purpose=purpose)
     db.add(acc)
     if ag.is_demo and ag.demo_initial_balance > 0:
         call(lambda: gw.balance_operation(login, ag.demo_initial_balance, "Demo initial balance"), "demo deposit")
-    audit(db, actor, "account.open", "trading_account", login,
+    audit(db, actor, "account.open", "trading_account", acc.ref,
           {"client_id": client.id, "type": ag.name, "leverage": leverage, "purpose": purpose})
     db.commit()
     refresh_account(db, gw, acc)
@@ -291,7 +317,7 @@ def open_account(db: Session, gw: MT5Gateway, actor, client: Client, account_gro
 
 
 def refresh_account(db: Session, gw: MT5Gateway, acc: TradingAccount) -> TradingAccount:
-    info = call(lambda: gw.get_account(acc.login), "account request")
+    info = call(lambda: gw.on(acc.server_id).get_account(acc.login), "account request")
     apply_account_info(acc, info)
     db.commit()
     return acc
@@ -315,9 +341,9 @@ def change_leverage(db: Session, gw: MT5Gateway, actor, acc: TradingAccount, lev
     options = acc.account_group.leverage_options
     if leverage not in options:
         raise ServiceError(f"Leverage must be one of {_leverages(options)}")
-    call(lambda: gw.update_user(acc.login, leverage=leverage), "leverage change")
+    call(lambda: gw.on(acc.server_id).update_user(acc.login, leverage=leverage), "leverage change")
     before, acc.leverage = acc.leverage, leverage
-    audit(db, actor, "account.leverage", "trading_account", acc.login, {"before": before, "after": leverage})
+    audit(db, actor, "account.leverage", "trading_account", acc.ref, {"before": before, "after": leverage})
     db.commit()
     return acc
 
@@ -334,10 +360,10 @@ def change_group(db: Session, gw: MT5Gateway, actor, acc: TradingAccount, ag: Ac
         raise ServiceError(f"{ag.name} uses {ag.currency}; the account is in {acc.currency}")
     if not ag.on_server:
         raise ServiceError(f"Group {ag.mt5_group} no longer exists on MT5")
-    call(lambda: gw.update_user(acc.login, group=ag.mt5_group), "group change")
+    call(lambda: gw.on(acc.server_id).update_user(acc.login, group=ag.mt5_group), "group change")
     before = acc.group
     acc.group, acc.account_group_id = ag.mt5_group, ag.id
-    audit(db, actor, "account.group", "trading_account", acc.login, {"before": before, "after": ag.mt5_group})
+    audit(db, actor, "account.group", "trading_account", acc.ref, {"before": before, "after": ag.mt5_group})
     db.commit()
     return acc
 
@@ -345,29 +371,30 @@ def change_group(db: Session, gw: MT5Gateway, actor, acc: TradingAccount, ag: Ac
 def reset_password(db: Session, gw: MT5Gateway, actor, acc: TradingAccount, investor: bool = False,
                    new_password: str | None = None) -> str:
     password = new_password or generate_mt5_password()
-    call(lambda: gw.change_password(acc.login, password, investor=investor), "password change")
-    audit(db, actor, "account.password_reset", "trading_account", acc.login,
+    call(lambda: gw.on(acc.server_id).change_password(acc.login, password, investor=investor), "password change")
+    audit(db, actor, "account.password_reset", "trading_account", acc.ref,
           {"type": "investor" if investor else "master"})
     db.commit()
     return password
 
 
 def set_trading_enabled(db: Session, gw: MT5Gateway, actor, acc: TradingAccount, enabled: bool) -> TradingAccount:
-    call(lambda: gw.update_user(acc.login, trading_enabled=enabled), "rights update")
+    call(lambda: gw.on(acc.server_id).update_user(acc.login, trading_enabled=enabled), "rights update")
     acc.trading_enabled = enabled
-    audit(db, actor, "account.trading_enabled", "trading_account", acc.login, {"enabled": enabled})
+    audit(db, actor, "account.trading_enabled", "trading_account", acc.ref, {"enabled": enabled})
     db.commit()
     return acc
 
 
 def set_status(db: Session, gw: MT5Gateway, actor, acc: TradingAccount, status: AccountStatus) -> TradingAccount:
+    gw = gw.on(acc.server_id)
     if status == AccountStatus.archived:
         info = call(lambda: gw.get_account(acc.login), "account request")
         if info.equity > 0 or gw.get_positions([acc.login]):
             raise ServiceError("Account must have zero equity and no open positions to archive")
     call(lambda: gw.update_user(acc.login, enabled=status == AccountStatus.active), "rights update")
     before, acc.status = acc.status, status
-    audit(db, actor, "account.status", "trading_account", acc.login, {"before": before, "after": status})
+    audit(db, actor, "account.status", "trading_account", acc.ref, {"before": before, "after": status})
     db.commit()
     return acc
 
@@ -382,7 +409,7 @@ def _staff_id(actor) -> int | None:
 def _staff_transfer(db: Session, actor, client: Client, acc: TradingAccount, direction: str, amount, ticket) -> None:
     """A staff member moving a client's money between wallet and MT5 is audited under its own name."""
     if isinstance(actor, Staff):
-        audit(db, actor, f"staff_transfer.{direction}", "trading_account", acc.login,
+        audit(db, actor, f"staff_transfer.{direction}", "trading_account", acc.ref,
               {"client_id": client.id, "amount": amount, "deal": ticket})
 
 
@@ -417,13 +444,13 @@ def transfer_to_mt5(db: Session, gw: MT5Gateway, actor, client: Client, acc: Tra
     tx = wallet.post(db, client.id, -amount, WalletTxKind.to_mt5, ref_type="mt5", ref_id=acc.login,
                      comment=f"Transfer to MT5 {acc.login}", staff_id=_staff_id(actor))
     try:
-        ticket = gw.balance_operation(acc.login, amount, f"CRM wallet tx#{tx.id}")
+        ticket = gw.on(acc.server_id).balance_operation(acc.login, amount, f"CRM wallet tx#{tx.id}")
     except MT5Error as exc:
         db.rollback()
         raise ServiceError(f"MT5 deposit failed: {exc}", 502) from exc
     tx.ref_id = f"{acc.login}:{ticket}"
-    _adjust_copy_hwm(db, acc.login, amount)
-    audit(db, actor, "transfer.to_mt5", "trading_account", acc.login, {"amount": amount, "deal": ticket})
+    _adjust_copy_hwm(db, acc, amount)
+    audit(db, actor, "transfer.to_mt5", "trading_account", acc.ref, {"amount": amount, "deal": ticket})
     _staff_transfer(db, actor, client, acc, "to_mt5", amount, ticket)
     _commit_after_mt5(db, f"to_mt5 login={acc.login} deal={ticket}")
     _notify_staff_transfer(db, actor, client, acc, "to_mt5", amount, ticket)
@@ -435,21 +462,21 @@ def transfer_from_mt5(db: Session, gw: MT5Gateway, actor, client: Client, acc: T
     if amount <= 0:
         raise ServiceError("Amount must be positive")
     _check_transferable(acc)
-    ticket = call(lambda: gw.balance_operation(acc.login, -amount, "CRM transfer to wallet"), "withdrawal")
+    ticket = call(lambda: gw.on(acc.server_id).balance_operation(acc.login, -amount, "CRM transfer to wallet"), "withdrawal")
     tx = wallet.post(db, client.id, amount, WalletTxKind.from_mt5, ref_type="mt5", ref_id=f"{acc.login}:{ticket}",
                      comment=f"Transfer from MT5 {acc.login}", staff_id=_staff_id(actor))
-    _adjust_copy_hwm(db, acc.login, -amount)
-    audit(db, actor, "transfer.from_mt5", "trading_account", acc.login, {"amount": amount, "deal": ticket})
+    _adjust_copy_hwm(db, acc, -amount)
+    audit(db, actor, "transfer.from_mt5", "trading_account", acc.ref, {"amount": amount, "deal": ticket})
     _staff_transfer(db, actor, client, acc, "from_mt5", amount, ticket)
     _commit_after_mt5(db, f"from_mt5 login={acc.login} deal={ticket}")
     _notify_staff_transfer(db, actor, client, acc, "from_mt5", amount, ticket)
     return {"wallet_tx_id": tx.id, "mt5_deal": ticket}
 
 
-def _adjust_copy_hwm(db: Session, login: int, amount: Decimal) -> None:
+def _adjust_copy_hwm(db: Session, acc: TradingAccount, amount: Decimal) -> None:
     from app.services.copy_trading import adjust_high_water_mark
 
-    adjust_high_water_mark(db, login, amount)
+    adjust_high_water_mark(db, acc, amount)
 
 
 def _commit_after_mt5(db: Session, context: str) -> None:

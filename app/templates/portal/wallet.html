@@ -36,7 +36,7 @@
           <div class="a-step-label">2. Amount &amp; destination</div>
           <div class="row">
             {{ field("amount", "Amount (" ~ wallet.currency ~ ")", type="number", step="0.01", required=True, col="col-md-6") }}
-            {% set targets = [] %}{% for a in accounts %}{% set _ = targets.append((a.login, "MT5 #" ~ a.login ~ " (" ~ (a.account_group.name if a.account_group else "live") ~ ")")) %}{% endfor %}
+            {% set targets = [] %}{% for a in accounts %}{% set _ = targets.append((a.ref, "MT5 #" ~ a.login ~ " on " ~ a.server.display_name ~ " (" ~ (a.account_group.name if a.account_group else "live") ~ ")")) %}{% endfor %}
             {{ select("trading_login", "Credit to", targets, blank="Wallet", col="col-md-6") }}
             {{ field("promo_code", "Promo code", col="col-md-6", help="Bonus applies to deposits into a trading account") }}
           </div>
@@ -99,7 +99,7 @@
           <p class="text-muted small">Move money instantly between your wallet and your live trading accounts.</p>
           <div class="row">
             {{ select("direction", "Direction", [("to_mt5", "Wallet → trading account"), ("from_mt5", "Trading account → wallet")], col="col-md-6") }}
-            {% set accs = [] %}{% for a in accounts %}{% set _ = accs.append((a.login, "MT5 #" ~ a.login ~ " · equity " ~ a.equity|money)) %}{% endfor %}
+            {% set accs = [] %}{% for a in accounts %}{% set _ = accs.append((a.ref, "MT5 #" ~ a.login ~ " on " ~ a.server.display_name ~ " · equity " ~ a.equity|money)) %}{% endfor %}
             {{ select("login", "Trading account", accs, col="col-md-6") }}
             {{ field("amount", "Amount (" ~ wallet.currency ~ ")", type="number", step="0.01", required=True, col="col-md-6") }}
           </div>

@@ -22,7 +22,7 @@ from copy import deepcopy
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -354,21 +354,22 @@ def _pct(part: float, whole: float) -> float:
     return round(part * 100 / whole, 1) if whole else 0.0
 
 
-def metrics(db: Session, server: MT5Server | None, days: int = 30, logins: list[int] | None = None
-            ) -> dict[int, dict]:
-    """login -> its metrics (see METRICS) over the last `days`, for every account with a buy or sell deal then."""
+def metrics(db: Session, server: MT5Server | None, days: int = 30, accounts: list[tuple] | None = None
+            ) -> dict[tuple, dict]:
+    """(server id, login) -> its metrics (see METRICS) over the last `days`, for every account with a buy or sell deal
+    then, or those of `accounts`, which are such pairs too."""
     since = utcnow() - timedelta(days=days)
-    q = select(Deal.login, Deal.time, Deal.action, Deal.entry, Deal.reason, Deal.symbol, Deal.volume,
+    q = select(Deal.server_id, Deal.login, Deal.time, Deal.action, Deal.entry, Deal.reason, Deal.symbol, Deal.volume,
                Deal.profit + Deal.commission + Deal.swap, Deal.position_id).where(
         Deal.time >= since, Deal.action.in_(TRADES))
     if server is not None:
         q = q.where(Deal.server_id == server.id)
-    if logins is not None:
-        q = q.where(Deal.login.in_(logins))
-    by_login: dict[int, list] = defaultdict(list)
-    for row in db.execute(q.order_by(Deal.login, Deal.time)):
-        by_login[row[0]].append(row)
-    return {login: _account_metrics(rows) for login, rows in by_login.items()}
+    if accounts is not None:
+        q = q.where(tuple_(Deal.server_id, Deal.login).in_(accounts))
+    by_account: dict[tuple, list] = defaultdict(list)
+    for row in db.execute(q.order_by(Deal.server_id, Deal.login, Deal.time)):
+        by_account[(row[0], row[1])].append(row[1:])
+    return {key: _account_metrics(rows) for key, rows in by_account.items()}
 
 
 def _account_metrics(rows: list) -> dict:
@@ -454,22 +455,24 @@ def _sizing_and_hedging(positions: dict[int, dict]) -> dict:
 MAX_PROFILES = 2000  # accounts on the Trader styles list: the busiest, so the page never loads every deal
 
 
-def _busiest_metrics(db: Session, server: MT5Server | None, days: int, demo: bool) -> dict[int, dict]:
+def _busiest_metrics(db: Session, server: MT5Server | None, days: int, demo: bool) -> dict[tuple, dict]:
     """Metrics of the (at most MAX_PROFILES) accounts with the most placed deals in the period.
 
     The ranking is one aggregate query; only the deals of the accounts shown are then loaded, in chunks."""
     since = utcnow() - timedelta(days=days)
     placed = func.count().filter(Deal.reason.in_(PLACED))
-    q = (select(Deal.login).join(TradingAccount, TradingAccount.login == Deal.login)
+    q = (select(Deal.server_id, Deal.login)
+         .join(TradingAccount, and_(TradingAccount.server_id == Deal.server_id, TradingAccount.login == Deal.login))
          .where(Deal.time >= since, Deal.action.in_(TRADES), TradingAccount.is_demo.is_(demo),
                 TradingAccount.status != AccountStatus.archived)
-         .group_by(Deal.login).having(placed > 0).order_by(placed.desc(), Deal.login).limit(MAX_PROFILES))
+         .group_by(Deal.server_id, Deal.login).having(placed > 0)
+         .order_by(placed.desc(), Deal.server_id, Deal.login).limit(MAX_PROFILES))
     if server is not None:
-        q = q.where(Deal.server_id == server.id, TradingAccount.server_id == server.id)
-    logins = list(db.scalars(q))
-    found: dict[int, dict] = {}
-    for i in range(0, len(logins), 500):
-        found.update(metrics(db, server, days, logins[i:i + 500]))
+        q = q.where(Deal.server_id == server.id)
+    busiest = [tuple(row) for row in db.execute(q)]
+    found: dict[tuple, dict] = {}
+    for i in range(0, len(busiest), 500):
+        found.update(metrics(db, server, days, busiest[i:i + 500]))
     return found
 
 
@@ -488,14 +491,14 @@ def profiles(db: Session, server: MT5Server | None, days: int = 30, min_deals: i
     targets = {s.id: style_groups(db, s) for s in servers}
     rows = []
     query = (select(TradingAccount, Client).join(Client, Client.id == TradingAccount.client_id)
-             .where(TradingAccount.login.in_(list(found)), TradingAccount.server_id.in_([s.id for s in servers]),
+             .where(tuple_(TradingAccount.server_id, TradingAccount.login).in_(list(found)),
                     TradingAccount.is_demo.is_(demo), TradingAccount.status != AccountStatus.archived))
     if staff is not None:
         from app.services.clients import visible_client_ids
 
         query = query.where(Client.id.in_(visible_client_ids(staff)))
     for acc, client in db.execute(query):
-        m = found[acc.login]
+        m = found[(acc.server_id, acc.login)]
         if not m["placed"]:
             continue
         style, tags = classify(m, rule_sets[acc.server_id], min_deals)
@@ -515,22 +518,20 @@ def profiles(db: Session, server: MT5Server | None, days: int = 30, min_deals: i
 
 DEFAULT_DAYS, DEFAULT_MIN_DEALS = 30, 10  # as on the Trader styles page
 _STYLE_CACHE_SECONDS = 60
-_style_cache: dict[tuple, tuple[float, set[int]]] = {}
+_style_cache: dict[tuple, tuple[float, set[tuple]]] = {}
 
 
 def badges(db: Session, accounts: list[TradingAccount], days: int = DEFAULT_DAYS,
            min_deals: int = DEFAULT_MIN_DEALS) -> dict[int, dict]:
-    """login -> {"style": (name, colour) or None, "tags": [(name, colour)]} for the accounts that have a style or
+    """account id -> {"style": (name, colour) or None, "tags": [(name, colour)]} for the accounts that have a style or
     a tag (accounts with too few trades, or none, are left out). For lists: one query for the given accounts."""
-    logins = [a.login for a in accounts]
-    if not logins:
+    if not accounts:
         return {}
-    found = metrics(db, None, days, logins)
-    servers = {s.id: s for s in db.scalars(select(MT5Server).where(
-        MT5Server.id.in_({a.server_id for a in accounts if a.login in found})))}
+    found = metrics(db, None, days, [(a.server_id, a.login) for a in accounts])
+    servers = {s.id: s for s in db.scalars(select(MT5Server).where(MT5Server.id.in_({key[0] for key in found})))}
     out = {}
     for acc in accounts:
-        m = found.get(acc.login)
+        m = found.get((acc.server_id, acc.login))
         if not m or not m["placed"]:
             continue
         server = servers.get(acc.server_id)
@@ -540,24 +541,24 @@ def badges(db: Session, accounts: list[TradingAccount], days: int = DEFAULT_DAYS
         badge = None if style in FIXED else (name.get(style, style), color.get(style, "secondary"))
         tag_badges = [(name.get(t, t), color.get(t, "secondary")) for t in tags]
         if badge or tag_badges:
-            out[acc.login] = {"style": badge, "tags": tag_badges}
+            out[acc.id] = {"style": badge, "tags": tag_badges}
     return out
 
 
-def logins_with_style(db: Session, key: str, days: int = DEFAULT_DAYS, min_deals: int = DEFAULT_MIN_DEALS) -> set[int]:
-    """Logins (live and demo, every server) whose style is `key`, or that carry tag `key`: the trading filters.
+def accounts_with_style(db: Session, key: str, days: int = DEFAULT_DAYS, min_deals: int = DEFAULT_MIN_DEALS) -> set[tuple]:
+    """Accounts as (server id, login), live and demo, every server, whose style is `key`, or that carry tag `key`: the trading filters.
     Same accounts as the Trader styles list (the busiest MAX_PROFILES per kind); cached for a minute."""
     hit = _style_cache.get((key, days, min_deals))
     if hit and time.monotonic() - hit[0] < _STYLE_CACHE_SECONDS:
         return hit[1]
-    out: set[int] = set()
+    out: set[tuple] = set()
     for server in db.scalars(select(MT5Server)):
         rule_list = rules(server)
         for demo in (False, True):
-            for login, m in _busiest_metrics(db, server, days, demo).items():
+            for account, m in _busiest_metrics(db, server, days, demo).items():
                 style, tags = classify(m, rule_list, min_deals)
                 if style == key or key in tags:
-                    out.add(login)
+                    out.add(account)
     _style_cache[(key, days, min_deals)] = (time.monotonic(), out)
     return out
 
@@ -572,7 +573,7 @@ def filter_options(db: Session) -> list[tuple[str, str]]:
     return list(seen.items())
 
 
-def move(db: Session, gw: MT5Gateway, actor, logins: list[int], target_id: int) -> tuple[list[int], list[str]]:
+def move(db: Session, gw: MT5Gateway, actor, logins: list, target_id: int) -> tuple[list, list[str]]:
     """Move accounts to an account group (MT5 first, one by one). Returns (moved, failures).
     A staff actor can only move the accounts of clients they may see."""
     from app.services.clients import visible_account

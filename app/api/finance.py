@@ -9,6 +9,7 @@ from app.models import PaymentKind, PaymentRequest, PaymentStatus, Staff
 from app.mt5 import MT5Gateway
 from app.schemas import PaymentOut, ReviewIn, StaffPaymentIn
 from app.services import payments as svc
+from app.services.accounts import ref_of
 from app.services.clients import ensure_visible, visible_client_ids
 
 router = APIRouter(prefix="/payments", tags=["finance"])
@@ -31,7 +32,8 @@ def list_payments(status: PaymentStatus | None = None, kind: PaymentKind | None 
 @router.post("", response_model=PaymentOut, status_code=201)
 def create_payment(body: StaffPaymentIn, db: Session = Depends(get_db), me: Staff = Depends(require("finance.create"))):
     client = ensure_visible(db, me, body.client_id)
-    data = body.model_dump(exclude={"client_id", "kind", "amount"})
+    data = body.model_dump(exclude={"client_id", "kind", "amount", "server_id"})
+    data["trading_login"] = ref_of(body.trading_login, body.server_id)
     return svc.create_request(db, me, client, body.kind, body.amount, **data)
 
 

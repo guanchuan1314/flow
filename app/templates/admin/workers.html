@@ -1,0 +1,9 @@
+{% extends "admin/layout.html" %}
+{% block page_title %}Workers{% endblock %}
+{% block content %}
+<p class="small text-muted">The background work that keeps Flow in step with MT5: real-time events, regular checks and scheduled jobs. If a server's link drops or the
+  worker stops, it catches up on what it missed as soon as it is back.</p>
+<div id="workers" hx-get="/admin/workers?partial=1" hx-trigger="every 5s" hx-swap="innerHTML">
+  {% include "admin/workers_body.html" %}
+</div>
+{% endblock %}

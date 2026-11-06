@@ -86,21 +86,22 @@
 <div class="card mb-4">
   <div class="table-responsive">
     <table class="table table-hover">
-      <thead><tr><th>Login</th><th>Type</th><th>Group</th><th>Leverage</th><th>Status</th><th>Trader style</th><th class="num">Balance</th><th class="num">Credit</th><th class="num">Equity</th><th>Synced</th></tr></thead>
+      <thead><tr><th>Login</th><th>Server</th><th>Type</th><th>Group</th><th>Leverage</th><th>Status</th><th>Trader style</th><th class="num">Balance</th><th class="num">Credit</th><th class="num">Equity</th><th>Synced</th></tr></thead>
       <tbody>
       {% for a in accounts %}
         <tr>
-          <td><a href="/admin/accounts/trading-accounts/{{ a.login }}">{{ a.login }}</a> {% if a.is_demo %}<span class="badge text-bg-info">demo</span>{% endif %}
+          <td><a href="/admin/accounts/trading-accounts/{{ a.server_id }}:{{ a.login }}">{{ a.login }}</a> {% if a.is_demo %}<span class="badge text-bg-info">demo</span>{% endif %}
             {% if a.purpose.value != "trading" %}<span class="badge text-bg-dark">{{ a.purpose|label }}</span>{% endif %}</td>
+          <td class="small">{{ a.server.name }}</td>
           <td>{{ a.account_group.name if a.account_group else "" }}</td>
           <td class="mono small">{{ a.group }}</td>
           <td>1:{{ a.leverage }}</td>
           <td>{{ badge(a.status) }}{% if not a.trading_enabled %} <span class="badge text-bg-danger">trading off</span>{% endif %}</td>
-          <td>{{ trader_style(styles.get(a.login)) }}</td>
+          <td>{{ trader_style(styles.get(a.id)) }}</td>
           <td class="num">{{ a.balance|money }}</td><td class="num">{{ a.credit|money }}</td><td class="num">{{ a.equity|money }}</td>
           <td class="small">{{ a.last_synced_at|dt }}</td>
         </tr>
-      {% else %}{{ empty(10, "No MT5 accounts yet.") }}{% endfor %}
+      {% else %}{{ empty(11, "No MT5 accounts yet.") }}{% endfor %}
       </tbody>
     </table>
   </div>
@@ -196,7 +197,7 @@
         <tbody>
         {% for p in payments %}
           <tr><td><a href="/admin/payments/{{ p.id }}">{{ p.id }}</a></td><td>{{ p.kind|label }}</td>
-            <td class="num">{{ p.amount|money }}</td><td>{{ p.trading_login or "Wallet" }}</td><td>{{ badge(p.status) }}</td></tr>
+            <td class="num">{{ p.amount|money }}</td><td>{{ p.trading_login or "Wallet" }}{% if p.server %} · {{ p.server.name }}{% endif %}</td><td>{{ badge(p.status) }}</td></tr>
         {% else %}{{ empty(5, "No payments.") }}{% endfor %}
         </tbody>
       </table></div>

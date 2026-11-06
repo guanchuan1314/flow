@@ -108,6 +108,15 @@ def _health_alerts() -> list[dict]:
     return banner_alerts()
 
 
+def _server_options() -> list[tuple[int, str]]:
+    """The MT5 servers, for the server filter of every MT5 page (macros.server_select)."""
+    from app.db import SessionLocal
+    from app.services.servers import options
+
+    with SessionLocal() as db:
+        return options(db)
+
+
 def _live_quotes() -> list[dict]:
     """Current quotes for the price widgets every page can show (the site ticker); updated live in the browser."""
     from app.services import market
@@ -124,7 +133,8 @@ ADMIN_HUBS = {
         ("/admin/accounts/inactive-accounts", "Inactive accounts", ("accounts.cleanup",)),
         ("/admin/accounts/compact", "Compact", ("mt5_trades.compact",))]),
     "positions": ("Positions", "activity", [
-        ("/admin/trades/positions/data", "Data", ("trading.view",)),
+        ("/admin/trades/positions/data", "Open positions", ("trading.view",)),
+        ("/admin/trades/positions/closed", "Closed positions", ("trading.view",)),
         ("/admin/trades/positions/sync", "Sync", ("trading.view",)),
         ("/admin/trades/positions/history", "History", ("trading.view",))]),
     "orders": ("Orders", "card-checklist", [
@@ -156,9 +166,10 @@ ADMIN_HUBS = {
                                                "accounts.manage",
                                               "accounts.cleanup", "trading.sync", "symbols.manage", "liquidity.manage",
                                               "routing.manage"))]),
-    "tools": ("Server tools", "tools", [
-        ("/admin/server-tools/health", "Server health", ("mt5_health.view",)),
-        ("/admin/server-tools/restart", "Restart components", ("mt5_servers.restart",))]),
+    "servers": ("Servers", "hdd-network", [
+        ("/admin/servers/list", "Servers", ("mt5_servers.manage",)),
+        ("/admin/servers/health", "Server health", ("mt5_health.view",)),
+        ("/admin/servers/restart", "Restart components", ("mt5_servers.restart",))]),
     "staff": ("Staff", "person-badge", [
         ("/admin/staff/members", "Staff", ("staff.view",)),
         ("/admin/staff/roles", "Roles", ("staff.view",)),
@@ -183,7 +194,8 @@ def _hub_of(path: str) -> str | None:
     return None
 
 
-templates.env.globals.update(asset=_asset, settings=get_settings, brand=branding.current, live_quotes=_live_quotes, opts=_opts,
+templates.env.globals.update(asset=_asset, settings=get_settings, brand=branding.current, brand_mark=branding.mark,
+                             live_quotes=_live_quotes, opts=_opts, server_options=_server_options,
                              health_alerts=_health_alerts, admin_hubs=ADMIN_HUBS, hub_items=_hub_items, hub_of=_hub_of,
                              custom_menu=custom.menu, custom_problems=custom.problems)
 
@@ -437,7 +449,8 @@ COUNT_CAP = 10000  # lists count at most this many rows, so a huge table is not 
 
 
 class Page:
-    def __init__(self, db: Session, query: Select, page: int, per_page: int = 50):
+    def __init__(self, db: Session, query: Select, page: int, per_page: int = 50, rows: bool = False):
+        """`rows`: the items are whole result rows, not the first column of each."""
         counted = db.scalar(select(func.count()).select_from(
             query.order_by(None).limit(COUNT_CAP + 1).subquery())) or 0
         self.capped = counted > COUNT_CAP
@@ -445,7 +458,8 @@ class Page:
         self.per_page = per_page
         pages = max(1, math.ceil(min(counted, COUNT_CAP) / per_page))
         self.page = max(1, page) if self.capped else min(max(1, page), pages)
-        self.items = db.scalars(query.limit(per_page).offset((self.page - 1) * per_page)).all()
+        paged = query.limit(per_page).offset((self.page - 1) * per_page)
+        self.items = db.execute(paged).all() if rows else db.scalars(paged).all()
         if self.capped:  # pages beyond the cap stay reachable with Next while they are full
             self.pages = AtLeast(max(pages, self.page + 1 if len(self.items) == per_page else self.page))
         else:
@@ -466,10 +480,15 @@ def sync_message(results: dict) -> tuple[str, str]:
                     f"{r['clients_created']} new clients, {r['clients_linked']} linked to existing clients")
             if r["missing"]:
                 text += f", {r['missing']} no longer on MT5"
+            if r.get("removed"):
+                text += f"; removed from Flow: {r['removed']} accounts not on MT5, {r['clients_removed']} clients"
+            if r.get("removal_error"):
+                text += f"; accounts not on MT5 were not removed: {r['removal_error']}"
+                level = "warning"
             if t["created"]:
                 text += f"; {len(t['created'])} new account groups"
-            if r["conflicts"] or r["failed_groups"]:
-                text += f"; {len(r['conflicts'])} conflicts, {len(r['failed_groups'])} groups failed"
+            if r["failed_groups"]:
+                text += f"; {len(r['failed_groups'])} groups failed"
                 level = "warning"
         else:  # account groups
             text = f"{name}: {r['groups']} MT5 groups, {len(r['created'])} new account groups"

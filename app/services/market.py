@@ -168,13 +168,15 @@ def strategy_stats(db: Session) -> list[dict]:
     rows = []
     for s in db.scalars(select(CopyStrategy).where(CopyStrategy.is_public.is_(True),
                                                    CopyStrategy.status == StrategyStatus.active)):
-        closed = select(Deal).where(Deal.login == s.master_login, Deal.action.in_(TRADE_ACTIONS),
+        closed = select(Deal).where(Deal.server_id == s.server_id, Deal.login == s.master_login,
+                                    Deal.action.in_(TRADE_ACTIONS),
                                     Deal.entry.in_(CLOSING_ENTRIES)).subquery()
         trades, wins, pnl = db.execute(select(func.count(), func.sum(case((closed.c.profit > 0, 1), else_=0)),
                                               func.coalesce(func.sum(closed.c.profit), 0))).one()
         followers = db.scalar(select(func.count()).select_from(CopySubscription).where(
             CopySubscription.strategy_id == s.id, CopySubscription.status != SubscriptionStatus.stopped))
-        acc = db.scalar(select(TradingAccount).where(TradingAccount.login == s.master_login))
+        acc = db.scalar(select(TradingAccount).where(TradingAccount.server_id == s.server_id,
+                                                     TradingAccount.login == s.master_login))
         equity = Decimal(acc.equity) if acc else Decimal(0)
         rows.append({"strategy": s, "trades": trades or 0, "win_rate": round(100 * (wins or 0) / trades) if trades else None,
                      "profit": Decimal(pnl), "followers": followers, "equity": equity})

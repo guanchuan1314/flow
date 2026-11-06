@@ -1,0 +1,8 @@
+{% extends "admin/layout.html" %}
+{% block page_title %}Account {{ found[0].login }}{% endblock %}
+{% block content %}
+<p class="text-muted">More than one MT5 server has login {{ found[0].login }}. They are different accounts.</p>
+<div class="list-group mw-lg">
+  {% for a in found %}<a class="list-group-item list-group-item-action" href="/admin/accounts/trading-accounts/{{ a.ref }}">{{ a.login }} on {{ a.server.name }}</a>{% endfor %}
+</div>
+{% endblock %}

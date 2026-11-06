@@ -1,7 +1,7 @@
 """Client portal (server-rendered)."""
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -151,7 +151,8 @@ def dashboard(request: Request, client: Client = Depends(web_client), db: Sessio
                                                        PaymentRequest.kind == PaymentKind.deposit,
                                                        PaymentRequest.status == "approved")) is not None
     live = [a for a in accs if not a.is_demo]
-    traded = db.scalar(select(Deal.ticket).where(Deal.login.in_([a.login for a in live] or [0]),
+    traded = db.scalar(select(Deal.ticket).where(tuple_(Deal.server_id, Deal.login).in_([(a.server_id, a.login) for a in live]
+                                                                                        or [(0, 0)]),
                                                  Deal.action.in_((0, 1)))) is not None
     steps = [("Register", "Account created", True, "/portal/profile"),
              ("Verify", "Upload ID & address", client.kyc_status.value == "approved", "/portal/verification"),
@@ -277,7 +278,7 @@ def open_account(request: Request, account_group_id: int = Form(...), leverage: 
 
 
 @router.post("/accounts/{login}/leverage")
-def change_leverage(request: Request, login: int, leverage: int = Form(...), client: Client = Depends(web_client),
+def change_leverage(request: Request, login: str, leverage: int = Form(...), client: Client = Depends(web_client),
                     db: Session = Depends(get_db)):
     acc = accounts.get_client_account(db, client, login)
     return attempt(request, lambda: accounts.change_leverage(db, routed(), client, acc, leverage),
@@ -285,7 +286,7 @@ def change_leverage(request: Request, login: int, leverage: int = Form(...), cli
 
 
 @router.post("/accounts/{login}/password")
-def reset_mt5_password(request: Request, login: int, which: str = Form("master"), client: Client = Depends(web_client),
+def reset_mt5_password(request: Request, login: str, which: str = Form("master"), client: Client = Depends(web_client),
                        db: Session = Depends(get_db)):
     acc = accounts.get_client_account(db, client, login)
     try:
@@ -330,7 +331,7 @@ def deposit(request: Request, amount: str = Form(...), method_id: str = Form("")
         content = kyc_methods.read_upload(proof.file) if proof is not None and proof.filename else b""
         req = payments.create_request(
             db, client, client, PaymentKind.deposit, req_dec(amount), payment_method=m,
-            trading_login=opt_int(trading_login), promo_code=promo_code.strip() or None,
+            trading_login=trading_login.strip() or None, promo_code=promo_code.strip() or None,
             external_ref=external_ref.strip() or None, proof=(proof.filename, content) if content else None)
         if m.is_custom:  # the client pays on the provider's page
             back_url = f"{get_settings().public_url.rstrip('/')}/portal/wallet/return/{req.id}"
@@ -382,7 +383,7 @@ def withdraw(request: Request, amount: str = Form(...), details: str = Form(""),
 
 
 @router.post("/wallet/transfer")
-def transfer(request: Request, login: int = Form(...), direction: str = Form(...), amount: str = Form(...),
+def transfer(request: Request, login: str = Form(...), direction: str = Form(...), amount: str = Form(...),
              client: Client = Depends(web_client), db: Session = Depends(get_db)):
     acc = accounts.get_client_account(db, client, login)
 
@@ -403,15 +404,15 @@ def copy_page(request: Request, client: Client = Depends(web_client), db: Sessio
     followers = dict(db.execute(select(CopySubscription.strategy_id, func.count()).where(
         CopySubscription.status != "stopped").group_by(CopySubscription.strategy_id)).all())
     my_strategies = db.scalars(select(CopyStrategy).where(CopyStrategy.owner_client_id == client.id)).all()
-    busy = {sub.follower_login for sub in mine if sub.status.value != "stopped"}
+    busy = {(sub.server_id, sub.follower_login) for sub in mine if sub.status.value != "stopped"}
     following = {sub.strategy_id for sub in mine if sub.status.value != "stopped"}
-    free = [a for a in _live_accounts(db, client) if a.login not in busy]
+    free = [a for a in _live_accounts(db, client) if (a.server_id, a.login) not in busy]
     return render(request, "portal/copy.html", strategies=strategies, mine=mine, names=names, followers=followers,
                   accounts=free, following=following, modes=list(AllocationMode), my_strategies=my_strategies)
 
 
 @router.post("/copy/{strategy_id}/follow")
-def follow(request: Request, strategy_id: int, follower_login: int = Form(...), allocation_mode: str = Form("equity_ratio"),
+def follow(request: Request, strategy_id: int, follower_login: str = Form(...), allocation_mode: str = Form("equity_ratio"),
            ratio: str = Form("1"), max_lot: str = Form(""), client: Client = Depends(web_client), db: Session = Depends(get_db)):
     s = get_or_404(db, CopyStrategy, strategy_id, "Strategy")
 
@@ -435,7 +436,7 @@ def unfollow(request: Request, sub_id: int, close_positions: str = Form(""), cli
 
 
 @router.post("/copy/become-master")
-def become_master(request: Request, master_login: int = Form(...), name: str = Form(...), description: str = Form(""),
+def become_master(request: Request, master_login: str = Form(...), name: str = Form(...), description: str = Form(""),
                   performance_fee_pct: str = Form("20"), client: Client = Depends(web_client), db: Session = Depends(get_db)):
     def run():
         fee = opt_dec(performance_fee_pct) or 0

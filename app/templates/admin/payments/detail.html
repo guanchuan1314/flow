@@ -9,7 +9,7 @@
       <li class="list-group-item d-flex justify-content-between"><span>Client</span><a href="/admin/clients/{{ c.id }}?tab=finance">{{ c.full_name }}</a></li>
       <li class="list-group-item d-flex justify-content-between"><span>Type</span><span>{{ p.kind|label }}</span></li>
       <li class="list-group-item d-flex justify-content-between"><span>Amount</span><span class="fw-semibold">{{ p.amount|money }} {{ p.currency }}</span></li>
-      <li class="list-group-item d-flex justify-content-between"><span>Target</span><span>{{ ("MT5 " ~ p.trading_login) if p.trading_login else "Wallet" }}</span></li>
+      <li class="list-group-item d-flex justify-content-between"><span>Target</span><span>{{ ("MT5 " ~ p.trading_login ~ (" on " ~ p.server.name if p.server else "")) if p.trading_login else "Wallet" }}</span></li>
       <li class="list-group-item d-flex justify-content-between"><span>Method</span><span>{{ p.method|label }}</span></li>
       <li class="list-group-item d-flex justify-content-between"><span>Reference</span><span class="mono">{{ p.external_ref or "—" }}</span></li>
       {% if p.proof_path %}<li class="list-group-item d-flex justify-content-between"><span>Proof of payment</span>

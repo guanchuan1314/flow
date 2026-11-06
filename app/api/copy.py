@@ -15,6 +15,7 @@ from app.schemas import (
     StrategyIn, StrategyOut, StrategyStatusIn, SubscriptionOut, UnsubscribeIn,
 )
 from app.services import clients, copy_trading, pamm
+from app.services.accounts import ref_of
 
 router = APIRouter(tags=["copy trading"])
 # Moving a client's money in or out of a PAMM fund on their behalf is a finance decision too.
@@ -30,8 +31,8 @@ def list_strategies(db: Session = Depends(get_db), _: Staff = Depends(require("c
 @router.post("/copy/strategies", response_model=StrategyOut, status_code=201)
 def create_strategy(body: StrategyIn, db: Session = Depends(get_db), me: Staff = Depends(require("copy.manage"))):
     owner = clients.ensure_visible(db, me, body.owner_client_id)
-    return copy_trading.create_strategy(db, me, owner, body.master_login, body.name,
-                                        **body.model_dump(exclude={"owner_client_id", "master_login", "name"}))
+    return copy_trading.create_strategy(db, me, owner, ref_of(body.master_login, body.server_id), body.name,
+                                        **body.model_dump(exclude={"owner_client_id", "master_login", "name", "server_id"}))
 
 
 @router.put("/copy/strategies/{strategy_id}/status", response_model=StrategyOut)
@@ -50,7 +51,8 @@ def subscribe(strategy_id: int, body: StaffSubscribeIn, db: Session = Depends(ge
               gw: MT5Gateway = Depends(gateway), me: Staff = Depends(require("copy.manage"))):
     s = get_or_404(db, CopyStrategy, strategy_id)
     follower = clients.ensure_visible(db, me, body.follower_client_id)
-    return copy_trading.subscribe(db, gw, me, follower, s, body.follower_login, body.allocation_mode, body.ratio, body.max_lot)
+    return copy_trading.subscribe(db, gw, me, follower, s, ref_of(body.follower_login, body.server_id), body.allocation_mode,
+                                  body.ratio, body.max_lot)
 
 
 @router.post("/copy/subscriptions/{sub_id}/stop", response_model=SubscriptionOut)
@@ -88,8 +90,8 @@ def list_funds(db: Session = Depends(get_db), _: Staff = Depends(require("copy.v
 def create_fund(body: FundIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
                 me: Staff = Depends(require("copy.manage"))):
     manager = clients.ensure_visible(db, me, body.manager_client_id)
-    return pamm.create_fund(db, gw, me, manager, body.master_login, body.name,
-                            **body.model_dump(exclude={"manager_client_id", "master_login", "name"}))
+    return pamm.create_fund(db, gw, me, manager, ref_of(body.master_login, body.server_id), body.name,
+                            **body.model_dump(exclude={"manager_client_id", "master_login", "name", "server_id"}))
 
 
 @router.put("/pamm/funds/{fund_id}/status", response_model=FundOut)

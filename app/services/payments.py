@@ -25,12 +25,13 @@ from app.web.labels import label
 log = logging.getLogger(__name__)
 
 
-def _check_login(db: Session, client: Client, login: int | None):
+def _check_login(db: Session, client: Client, login):
     if login is None:
-        return
+        return None
     acc = accounts.get_client_account(db, client, login)
     if acc.is_demo or acc.status != AccountStatus.active or acc.purpose == AccountPurpose.pamm_master:
         raise ServiceError("Payments are only possible for active live trading accounts")
+    return acc
 
 
 def check_kyc(client: Client) -> None:
@@ -39,7 +40,7 @@ def check_kyc(client: Client) -> None:
 
 
 def create_request(db: Session, actor, client: Client, kind: PaymentKind, amount, *, method: str = "manual",
-                   trading_login: int | None = None, promo_code: str | None = None,
+                   trading_login: int | str | None = None, promo_code: str | None = None,
                    external_ref: str | None = None, details: str = "",
                    payment_method: PaymentMethod | None = None,
                    proof: tuple[str, bytes] | None = None) -> PaymentRequest:
@@ -53,14 +54,16 @@ def create_request(db: Session, actor, client: Client, kind: PaymentKind, amount
     if payment_method is not None:
         payment_methods.check_request(payment_method, kind, amount, get_settings().base_currency, proof is not None)
         method = payment_method.name
-    _check_login(db, client, trading_login)
+    target = _check_login(db, client, trading_login)
+    trading_login = target.login if target else None
     if promo_code:
         if kind != PaymentKind.deposit or not trading_login:
             raise ServiceError("Promo codes apply only to deposits into a trading account")
         campaigns.validate_code(db, promo_code, client.id, amount)
     req = PaymentRequest(client_id=client.id, kind=kind, amount=amount, method=method[:64],
                          method_id=payment_method.id if payment_method else None,
-                         trading_login=trading_login, promo_code=promo_code.upper() if promo_code else None,
+                         server_id=target.server_id if target else None, trading_login=trading_login,
+                         promo_code=promo_code.upper() if promo_code else None,
                          external_ref=external_ref, details=details,
                          created_by_staff_id=actor.id if isinstance(actor, Staff) else None)
     if proof is not None:
@@ -72,7 +75,7 @@ def create_request(db: Session, actor, client: Client, kind: PaymentKind, amount
         wallet.post(db, client.id, -amount, WalletTxKind.withdrawal, ref_type="payment", ref_id=req.id,
                     comment="Withdrawal hold")
     audit(db, actor, f"payment.{kind.value}.create", "payment", req.id,
-          {"amount": amount, "login": trading_login, "method": method})
+          {"amount": amount, "login": target.ref if target else None, "method": method})
     db.commit()
     return req
 
@@ -106,10 +109,10 @@ def approve_paid(db: Session, req: PaymentRequest, comment: str) -> PaymentReque
 def _execute(db: Session, gw: MT5Gateway | None, staff: Staff | None, req: PaymentRequest,
              comment: str | None) -> PaymentRequest:
     req.reviewed_by_staff_id, req.reviewed_at, req.review_comment = staff.id if staff else None, utcnow(), comment
-    if gw is None and req.trading_login:
+    if req.trading_login:
         from app.mt5 import for_login
 
-        gw = for_login(db, req.trading_login)
+        gw = gw.on(req.server_id) if gw is not None and req.server_id else gw or for_login(db, req.trading_login, req.server_id)
     try:
         if req.kind == PaymentKind.deposit:
             if req.trading_login:

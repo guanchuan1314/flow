@@ -79,18 +79,23 @@ def _in_scope(server: MT5Server, cfg: dict) -> list:
 
 def _busy():
     """Open positions or pending orders known to the CRM."""
-    return or_(exists().where(Position.login == TradingAccount.login, Position.is_open.is_(True)),
-               exists().where(Order.login == TradingAccount.login, Order.is_open.is_(True)))
+    return or_(exists().where(Position.server_id == TradingAccount.server_id, Position.login == TradingAccount.login,
+                              Position.is_open.is_(True)),
+               exists().where(Order.server_id == TradingAccount.server_id, Order.login == TradingAccount.login,
+                              Order.is_open.is_(True)))
 
 
 def _protected():
     """Accounts the CRM still needs: copy trading masters and followers, PAMM masters, non-trading purposes."""
     return or_(TradingAccount.purpose != AccountPurpose.trading,
-               exists().where(CopyStrategy.master_login == TradingAccount.login,
+               exists().where(CopyStrategy.server_id == TradingAccount.server_id,
+                              CopyStrategy.master_login == TradingAccount.login,
                               CopyStrategy.status != StrategyStatus.closed),
-               exists().where(CopySubscription.follower_login == TradingAccount.login,
+               exists().where(CopySubscription.server_id == TradingAccount.server_id,
+                              CopySubscription.follower_login == TradingAccount.login,
                               CopySubscription.status == SubscriptionStatus.active),
-               exists().where(PammFund.master_login == TradingAccount.login, PammFund.status != StrategyStatus.closed))
+               exists().where(PammFund.server_id == TradingAccount.server_id, PammFund.master_login == TradingAccount.login,
+                              PammFund.status != StrategyStatus.closed))
 
 
 def _candidates(server: MT5Server, cfg: dict, cutoff: datetime) -> list:
@@ -117,7 +122,7 @@ def scan(db: Session, server: MT5Server, cfg: dict | None = None) -> dict:
             "skipped": {"open positions or orders": busy, "copy trading or PAMM": protected},
             "never_seen": db.scalar(select(func.count()).select_from(TradingAccount).where(
                 *where, TradingAccount.last_access_at.is_(None))),
-            "candidates": [{"login": a.login, "group": a.group, "name": f"{c.first_name} {c.last_name}",
+            "candidates": [{"server_id": a.server_id, "login": a.login, "group": a.group, "name": f"{c.first_name} {c.last_name}",
                             "email": c.email, "last_access": a.last_access_at, "last_trade": a.last_trade_at,
                             "activity": a.last_activity_at or a.created_at, "registration": a.created_at}
                            for a, c in rows]}
@@ -172,9 +177,10 @@ def run(db: Session, actor, server: MT5Server, gw: MT5Gateway | None = None, log
         gone = [x for x in go if x not in refused]
         done += gone
         # saved batch by batch: what MT5 has already archived or deleted stays recorded if the run stops halfway
-        for acc in db.scalars(select(TradingAccount).where(TradingAccount.login.in_(gone))) if gone else []:
+        mine = select(TradingAccount).where(TradingAccount.server_id == server.id)
+        for acc in db.scalars(mine.where(TradingAccount.login.in_(gone))) if gone else []:
             acc.status, acc.on_server = AccountStatus.archived, False
-        for acc in db.scalars(select(TradingAccount).where(TradingAccount.login.in_(used))) if used else []:
+        for acc in db.scalars(mine.where(TradingAccount.login.in_(used))) if used else []:
             acc.last_access_at = seen[acc.login]  # connected since the last refresh: active again
             acc.last_activity_at = max(acc.last_activity_at or seen[acc.login], seen[acc.login])
         db.commit()

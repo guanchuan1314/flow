@@ -2,10 +2,12 @@
 {% from "macros.html" import empty, pagination, pnl %}
 {% block page_title %}Deals{% endblock %}
 {% block content %}
+{% if position %}<p class="small">The deals of position <strong class="mono">{{ position }}</strong>. <a href="/admin/trades/deals/data">All deals</a></p>{% endif %}
 <div class="card">
   <div class="card-header">
     <form class="row g-2" method="get">
       {% include "admin/trading/_filters.html" %}
+      {% if position %}<input type="hidden" name="position" value="{{ position }}">{% endif %}
       <div class="col-6 col-md-2"><select class="form-select form-select-sm" name="kind" aria-label="Deal type">
         <option value="">All deals</option>
         <option value="trades" {% if kind == "trades" %}selected{% endif %}>Trades only</option>
@@ -17,13 +19,14 @@
     </form>
   </div>
   <div class="table-responsive"><table class="table table-hover">
-    <thead><tr><th>Time</th><th>Ticket</th><th>Login</th><th>Client</th><th>Type</th><th>Symbol</th><th class="num">Lots</th><th class="num">Price</th><th class="num">Commission</th><th class="num">Swap</th><th class="num">Profit</th><th>Position</th><th>Comment</th></tr></thead>
+    <thead><tr><th>Time</th><th>Ticket</th><th>Server</th><th>Login</th><th>Client</th><th>Type</th><th>Symbol</th><th class="num">Lots</th><th class="num">Price</th><th class="num">Commission</th><th class="num">Swap</th><th class="num">Profit</th><th>Position</th><th>Comment</th></tr></thead>
     <tbody>
     {% for d in page.items %}
-      {% set owner = owners.get(d.login) %}
+      {% set owner = owners.get((d.server_id, d.login)) %}
       <tr>
         <td class="small">{{ d.time|dt }}</td><td class="mono">{{ d.ticket }}</td>
-        <td><a href="/admin/accounts/trading-accounts/{{ d.login }}">{{ d.login }}</a></td>
+        <td class="small">{{ servers.get(d.server_id) }}</td>
+        <td><a href="/admin/accounts/trading-accounts/{{ d.server_id }}:{{ d.login }}">{{ d.login }}</a></td>
         <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
         <td>{{ d.action|side }}{% if d.action < 2 %} <span class="text-muted small">{{ ["in", "out", "in/out", "out by"][d.entry] if d.entry < 4 else "" }}</span>{% endif %}</td>
         <td>{{ d.symbol }}</td>
@@ -35,7 +38,7 @@
         <td class="mono small">{{ d.position_id or "" }}</td>
         <td class="small">{{ d.comment }}</td>
       </tr>
-    {% else %}{{ empty(14, "No deals found.") }}{% endfor %}
+    {% else %}{{ empty(15, "No deals found.") }}{% endfor %}
     </tbody>
   </table></div>
   {{ pagination(page, request) }}

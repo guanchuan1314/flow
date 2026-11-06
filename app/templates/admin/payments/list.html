@@ -23,7 +23,7 @@
       <td><a href="/admin/clients/{{ p.client_id }}?tab=finance">{{ clients[p.client_id].full_name }}</a></td>
       <td>{{ p.kind|label }}{% if p.promo_code %} <span class="badge text-bg-info">{{ p.promo_code }}</span>{% endif %}</td>
       <td class="num fw-semibold">{{ p.amount|money }} {{ p.currency }}</td>
-      <td>{{ p.trading_login or "Wallet" }}</td>
+      <td>{{ p.trading_login or "Wallet" }}{% if p.server %} · {{ p.server.name }}{% endif %}</td>
       <td class="small">{{ p.method|label }}{% if p.external_ref %}<br><span class="mono">{{ p.external_ref }}</span>{% endif %}</td>
       <td class="small">{{ staff_names.get(p.created_by_staff_id, "Client") }}</td>
       <td>{{ badge(p.status) }}</td>

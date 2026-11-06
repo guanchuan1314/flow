@@ -1,11 +1,9 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import alert, csrf_input, post_button %}
+{% from "macros.html" import alert, csrf_input, post_button, server_filter %}
 {% block page_title %}Inactive demo accounts · {{ server.name }}{% endblock %}
 {% block content %}
 {% from "macros.html" import sync_panel %}{{ sync_panel(["demo_cleanup"]) }}
-<div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-  <a class="small" href="/admin/configuration"><i class="bi bi-arrow-left"></i> Configuration</a>
-</div>
+{{ server_filter(server.id) }}
 <p class="small text-muted">Demo accounts nobody uses still cost the MT5 server memory and work. This list comes from the CRM's own data:
   each account's last terminal connection (read every {{ refresh_minutes }} minutes from the Manager API's local copy of the accounts) and its
   last trade. It costs MT5 nothing to show. Accounts with open positions or orders, and copy trading or PAMM accounts, are never included.
@@ -41,7 +39,7 @@
           <th>Login</th><th>Group</th><th>Client</th><th>Email</th><th>Last connection</th><th>Last trade</th><th>Registered</th></tr></thead>
         <tbody>{% for c in found.candidates %}
           <tr><td><input class="form-check-input" type="checkbox" name="login" value="{{ c.login }}" form="clean" aria-label="Tick {{ c.login }}"></td>
-            <td><a href="/admin/accounts/trading-accounts/{{ c.login }}">{{ c.login }}</a></td><td>{{ c.group }}</td><td>{{ c.name }}</td><td>{{ c.email }}</td>
+            <td><a href="/admin/accounts/trading-accounts/{{ c.server_id }}:{{ c.login }}">{{ c.login }}</a></td><td>{{ c.group }}</td><td>{{ c.name }}</td><td>{{ c.email }}</td>
             <td>{{ c.last_access.strftime("%Y-%m-%d") if c.last_access else "never" }}</td>
             <td>{{ c.last_trade.strftime("%Y-%m-%d") if c.last_trade else "never" }}</td>
             <td>{{ c.registration.strftime("%Y-%m-%d") if c.registration else "" }}</td></tr>

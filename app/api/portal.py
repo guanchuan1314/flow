@@ -30,6 +30,7 @@ class PortalPaymentIn(BaseModel):
     kind: PaymentKind
     amount: PositiveMoney
     method_id: int
+    server_id: int | None = None  # needed when two servers have this login
     trading_login: int | None = None
     promo_code: str | None = None
     external_ref: str | None = None
@@ -79,16 +80,16 @@ def open_account(body: OpenAccountIn, client: Client = Depends(current_client), 
 
 
 @router.put("/accounts/{login}/leverage", response_model=TradingAccountOut)
-def leverage(login: int, body: LeverageIn, client: Client = Depends(current_client), db: Session = Depends(get_db),
+def leverage(login: str, body: LeverageIn, client: Client = Depends(current_client), db: Session = Depends(get_db),
              gw: MT5Gateway = Depends(gateway)):
     return accounts.change_leverage(db, gw, client, accounts.get_client_account(db, client, login), body.leverage)
 
 
 @router.post("/accounts/{login}/password", response_model=PasswordOut)
-def reset_password(login: int, body: PasswordResetIn, client: Client = Depends(current_client),
+def reset_password(login: str, body: PasswordResetIn, client: Client = Depends(current_client),
                    db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway)):
     acc = accounts.get_client_account(db, client, login)
-    return {"login": login, "password": accounts.reset_password(db, gw, client, acc, body.investor, body.new_password)}
+    return {"login": acc.login, "password": accounts.reset_password(db, gw, client, acc, body.investor, body.new_password)}
 
 
 # ---------------------------------------------------------------- wallet & money
@@ -109,13 +110,13 @@ def my_wallet_txs(limit: int = Query(100, le=1000), client: Client = Depends(cur
 @router.post("/transfer/to-mt5", response_model=TransferOut)
 def to_mt5(body: TransferIn, client: Client = Depends(current_client), db: Session = Depends(get_db),
            gw: MT5Gateway = Depends(gateway)):
-    return accounts.transfer_to_mt5(db, gw, client, client, accounts.get_client_account(db, client, body.login), body.amount)
+    return accounts.transfer_to_mt5(db, gw, client, client, accounts.get_client_account(db, client, accounts.ref_of(body.login, body.server_id)), body.amount)
 
 
 @router.post("/transfer/from-mt5", response_model=TransferOut)
 def from_mt5(body: TransferIn, client: Client = Depends(current_client), db: Session = Depends(get_db),
              gw: MT5Gateway = Depends(gateway)):
-    return accounts.transfer_from_mt5(db, gw, client, client, accounts.get_client_account(db, client, body.login), body.amount)
+    return accounts.transfer_from_mt5(db, gw, client, client, accounts.get_client_account(db, client, accounts.ref_of(body.login, body.server_id)), body.amount)
 
 
 @router.get("/payments", response_model=list[PaymentOut])
@@ -132,7 +133,8 @@ def request_payment(body: PortalPaymentIn, client: Client = Depends(current_clie
         raise ServiceError("Choose an available payment method")
     if m.is_custom and body.kind == PaymentKind.deposit:
         raise ServiceError(f"{m.name} deposits are made in the client portal")
-    data = body.model_dump(exclude={"kind", "amount", "method_id"})
+    data = body.model_dump(exclude={"kind", "amount", "method_id", "server_id"})
+    data["trading_login"] = accounts.ref_of(body.trading_login, body.server_id)
     return payments.create_request(db, client, client, body.kind, body.amount, payment_method=m, **data)
 
 
@@ -145,8 +147,8 @@ def public_strategies(_: Client = Depends(current_client), db: Session = Depends
 
 @router.post("/copy/strategies", response_model=StrategyOut, status_code=201)
 def become_master(body: ClientStrategyIn, client: Client = Depends(current_client), db: Session = Depends(get_db)):
-    return copy_trading.create_strategy(db, client, client, body.master_login, body.name,
-                                        **body.model_dump(exclude={"master_login", "name"}))
+    return copy_trading.create_strategy(db, client, client, accounts.ref_of(body.master_login, body.server_id), body.name,
+                                        **body.model_dump(exclude={"master_login", "name", "server_id"}))
 
 
 @router.get("/copy/subscriptions", response_model=list[SubscriptionOut])
@@ -160,7 +162,8 @@ def follow(strategy_id: int, body: SubscribeIn, client: Client = Depends(current
     s = get_or_404(db, CopyStrategy, strategy_id)
     if not s.is_public:
         raise Forbidden("Strategy is private")
-    return copy_trading.subscribe(db, gw, client, client, s, body.follower_login, body.allocation_mode, body.ratio, body.max_lot)
+    return copy_trading.subscribe(db, gw, client, client, s, accounts.ref_of(body.follower_login, body.server_id),
+                                  body.allocation_mode, body.ratio, body.max_lot)
 
 
 @router.post("/copy/subscriptions/{sub_id}/stop", response_model=SubscriptionOut)

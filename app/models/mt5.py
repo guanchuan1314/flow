@@ -103,12 +103,13 @@ class AccountPurpose(str, enum.Enum):
 
 class TradingAccount(Base, TimestampMixin):
     __tablename__ = "trading_accounts"
-    __table_args__ = (Index("ix_trading_accounts_server_activity", "server_id", "last_activity_at"),
+    __table_args__ = (UniqueConstraint("server_id", "login", name="uq_trading_accounts_server_login"),
+                      Index("ix_trading_accounts_server_activity", "server_id", "last_activity_at"),
                       Index("ix_trading_accounts_server_state", "server_id", "on_server", "status"))
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Logins are unique across the whole CRM: give each server its own login range.
-    login: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    # A login belongs to its server: two servers can have the same one, so an account is (server_id, login).
+    login: Mapped[int] = mapped_column(BigInteger, index=True)
     server_id: Mapped[int] = mapped_column(ForeignKey("mt5_servers.id"), index=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
     account_group_id: Mapped[int | None] = mapped_column(ForeignKey("account_groups.id"))
@@ -140,6 +141,11 @@ class TradingAccount(Base, TimestampMixin):
 
     account_group: Mapped[AccountGroup | None] = relationship()
     server: Mapped[MT5Server] = relationship(lazy="joined")
+
+    @property
+    def ref(self) -> str:
+        """How pages and links name the account: server:login."""
+        return f"{self.server_id}:{self.login}"
 
 
 class Symbol(Base, TimestampMixin):

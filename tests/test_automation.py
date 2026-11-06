@@ -53,7 +53,7 @@ def test_inactive_accounts(db, gw, account_groups):
     db.get(TradingAccount, old.id).last_activity_at = utcnow() - timedelta(days=40)
     db.get(TradingAccount, new.id).last_activity_at = utcnow()
     db.commit()
-    assert targets(db, rule(db, "inactive", params={"days": 30})) == {f"account:{old.login}"}
+    assert targets(db, rule(db, "inactive", params={"days": 30})) == {f"account:{old.ref}"}
 
 
 def test_many_deals_margin_and_equity(db, gw, account_groups):
@@ -62,14 +62,14 @@ def test_many_deals_margin_and_equity(db, gw, account_groups):
     for _ in range(3):
         gw.open_position(busy.login, "EURUSD", BUY, Decimal("0.1"))
     sync.full_sync(db, gw)
-    assert targets(db, rule(db, "many_deals", params={"deals": 3, "hours": 1})) == {f"account:{busy.login}"}
+    assert targets(db, rule(db, "many_deals", params={"deals": 3, "hours": 1})) == {f"account:{busy.ref}"}
     assert targets(db, rule(db, "many_deals", params={"deals": 4, "hours": 1})) == set()
 
     acc = db.scalar(select(TradingAccount).where(TradingAccount.login == busy.login))
     acc.margin, acc.margin_level, acc.equity = Decimal("100"), Decimal("120"), Decimal("40")
     db.commit()
-    assert targets(db, rule(db, "margin_level", params={"percent": 150})) == {f"account:{busy.login}"}
-    assert targets(db, rule(db, "equity_below", params={"amount": 50})) == {f"account:{busy.login}"}
+    assert targets(db, rule(db, "margin_level", params={"percent": 150})) == {f"account:{busy.ref}"}
+    assert targets(db, rule(db, "equity_below", params={"amount": 50})) == {f"account:{busy.ref}"}
     assert targets(db, rule(db, "equity_below", params={"amount": 30})) == set()
 
 
@@ -78,12 +78,12 @@ def test_filters_kind_and_groups(db, gw, account_groups):
     demo = account(db, gw, account_groups, "d@x.com", "demo")
     db.query(TradingAccount).update({TradingAccount.last_activity_at: utcnow() - timedelta(days=99)})
     db.commit()
-    assert targets(db, rule(db, "inactive", params={"days": 30})) == {f"account:{live.login}"}
+    assert targets(db, rule(db, "inactive", params={"days": 30})) == {f"account:{live.ref}"}
     assert targets(db, rule(db, "inactive", "email_client", params={"days": 30}, kind="demo",
-                            action_params={"subject": "Hi", "message": "x"})) == {f"account:{demo.login}"}
+                            action_params={"subject": "Hi", "message": "x"})) == {f"account:{demo.ref}"}
     assert len(targets(db, rule(db, "inactive", "notify_staff", params={"days": 30}, kind="any"))) == 2
     assert targets(db, rule(db, "inactive", "change_leverage", params={"days": 30}, kind="any", groups="demo\\*",
-                            action_params={"leverage": 100})) == {f"account:{demo.login}"}
+                            action_params={"leverage": 100})) == {f"account:{demo.ref}"}
 
 
 def test_trader_style(db, gw, account_groups):
@@ -94,7 +94,7 @@ def test_trader_style(db, gw, account_groups):
         gw.open_position(acc.login, "EURUSD", BUY, Decimal("0.1"))
     sync.full_sync(db, gw)
     assert targets(db, rule(db, "trader_style", params={"style": "ea", "days": 30, "min_deals": 10})) == \
-        {f"account:{acc.login}"}
+        {f"account:{acc.ref}"}
     assert targets(db, rule(db, "trader_style", "notify_staff", params={"style": "manual", "days": 30,
                                                                          "min_deals": 10})) == set()
 

@@ -39,7 +39,8 @@ def new_payment(request: Request, client_id: int, me: Staff = Depends(staff_perm
     accounts = db.scalars(select(TradingAccount).where(
         TradingAccount.client_id == client.id, TradingAccount.is_demo.is_(False),
         TradingAccount.status == AccountStatus.active)).all()
-    options = [(a.login, f"MT5 {a.login}" + (f" ({a.account_group.name})" if a.account_group else "")) for a in accounts]
+    options = [(a.ref, f"MT5 {a.login} on {a.server.name}" + (f" ({a.account_group.name})" if a.account_group else ""))
+               for a in accounts]
     methods = [(m.name, m.name) for m in db.scalars(select(PaymentMethod).order_by(PaymentMethod.sort_order))]
     return render(request, "admin/payments/new.html", c=client, account_options=options,
                   method_options=methods + [("cash", "Cash"), ("manual", "Manual adjustment")])
@@ -56,7 +57,7 @@ def create_payment(request: Request, client_id: int = Form(...), kind: str = For
     def run():
         k = opt_enum(PaymentKind, kind, "payment type")
         created["p"] = svc.create_request(db, me, client, k, req_dec(amount), method=method,
-                                          trading_login=opt_int(trading_login), promo_code=promo_code.strip() or None,
+                                          trading_login=trading_login.strip() or None, promo_code=promo_code.strip() or None,
                                           external_ref=external_ref.strip() or None, details=details.strip())
     resp = attempt(request, run, "Payment request created. Another staff member must approve it.",
                    f"/admin/clients/{client_id}?tab=finance")

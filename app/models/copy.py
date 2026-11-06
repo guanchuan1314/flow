@@ -40,12 +40,14 @@ class CopyStrategy(Base, TimestampMixin):
     """A master account whose trades are mirrored onto follower accounts (MAM)."""
 
     __tablename__ = "copy_strategies"
+    __table_args__ = (UniqueConstraint("server_id", "master_login", name="uq_copy_strategies_server_master_login"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
     description: Mapped[str] = mapped_column(String(512), default="")
     owner_client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"))
-    master_login: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    server_id: Mapped[int] = mapped_column(ForeignKey("mt5_servers.id"))
+    master_login: Mapped[int] = mapped_column(BigInteger, index=True)
     status: Mapped[StrategyStatus] = mapped_column(Enum(StrategyStatus), default=StrategyStatus.active)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
     performance_fee_pct: Mapped[Decimal] = mapped_column(Pct, default=Decimal("20"))
@@ -59,6 +61,7 @@ class CopySubscription(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     strategy_id: Mapped[int] = mapped_column(ForeignKey("copy_strategies.id"), index=True)
     follower_client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), index=True)
+    server_id: Mapped[int] = mapped_column(ForeignKey("mt5_servers.id"))  # the strategy's: followers share it
     follower_login: Mapped[int] = mapped_column(BigInteger, index=True)
     allocation_mode: Mapped[AllocationMode] = mapped_column(Enum(AllocationMode), default=AllocationMode.equity_ratio)
     ratio: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("1"))
@@ -117,12 +120,14 @@ class PammFund(Base, TimestampMixin):
     """Pooled fund: investors own units of a single master account. NAV = equity / units."""
 
     __tablename__ = "pamm_funds"
+    __table_args__ = (UniqueConstraint("server_id", "master_login", name="uq_pamm_funds_server_master_login"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
     description: Mapped[str] = mapped_column(String(512), default="")
     manager_client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"))
-    master_login: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    server_id: Mapped[int] = mapped_column(ForeignKey("mt5_servers.id"))
+    master_login: Mapped[int] = mapped_column(BigInteger, index=True)
     status: Mapped[StrategyStatus] = mapped_column(Enum(StrategyStatus), default=StrategyStatus.active)
     performance_fee_pct: Mapped[Decimal] = mapped_column(Pct, default=Decimal("20"))
     management_fee_pct_annual: Mapped[Decimal] = mapped_column(Pct, default=Decimal("0"))

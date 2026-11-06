@@ -152,15 +152,20 @@ def for_account(account) -> MT5Gateway:
     return get_gateway(account.server_id)
 
 
-def for_login(db, login: int) -> MT5Gateway:
+def for_login(db, login: int, server_id: int | None = None) -> MT5Gateway:
+    """The gateway of an account. Without `server_id`, of the one server Flow knows the login on."""
     from sqlalchemy import select
 
     from app.models import TradingAccount
 
-    server_id = db.scalar(select(TradingAccount.server_id).where(TradingAccount.login == login))
-    if server_id is None:
+    if server_id is not None:
+        return get_gateway(server_id)
+    servers = list(db.scalars(select(TradingAccount.server_id).where(TradingAccount.login == login)))
+    if not servers:
         raise MT5Error(f"trading account {login} is not known to the CRM")
-    return get_gateway(server_id)
+    if len(servers) > 1:
+        raise MT5Error(f"login {login} is on more than one MT5 server, so its server has to be given")
+    return get_gateway(servers[0])
 
 
 def for_account_group(db, account_group_id: int) -> MT5Gateway:
@@ -173,11 +178,11 @@ def for_account_group(db, account_group_id: int) -> MT5Gateway:
 
 
 def for_payment(db, payment) -> MT5Gateway | None:
-    return for_login(db, payment.trading_login) if payment.trading_login else None
+    return for_login(db, payment.trading_login, payment.server_id) if payment.trading_login else None
 
 
 def routed():
-    """Gateway that forwards every call to the CRM's MT5 server."""
+    """Gateway that forwards every call to the MT5 server of the account it is about."""
     from app.mt5.routing import routed as _routed
 
     return _routed()

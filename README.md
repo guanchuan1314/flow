@@ -73,7 +73,7 @@ in [docs/screenshots/](docs/screenshots/). All data shown is simulated (`run-dem
 
 1. [Use Flow as your CRM](#use-flow-as-your-crm)
 2. [Use Flow as internal tools](#use-flow-as-internal-tools)
-3. [Key concept: one MT5 server](#key-concept-one-mt5-server)
+3. [Key concept: MT5 servers](#key-concept-mt5-servers)
 4. [Quick start (development and demo)](#quick-start-development-and-demo)
 5. [Back-office menu](#back-office-menu)
 6. [MT5 tools](#mt5-tools)
@@ -122,20 +122,27 @@ Things to know:
 - **Rights:** the tools need the same [manager rights](#mt5-integration) as the CRM, including administrator
   access for symbols, liquidity providers, routing and the firewall.
 
-## Key concept: one MT5 server
+## Key concept: MT5 servers
 
-- Flow works with **exactly one MT5 server**. Adding a second one is refused.
-- **Live and demo accounts are both on it**, each in their own MT5 groups (for example `real\*` and `demo\*`).
-  Give live and demo groups their own login ranges in MT5 Administrator (for example live 1000000-1999999,
-  demo 5000000-5999999) so a login tells you which kind of account it is.
-- The server is set up in **MT5 → Configuration**: address (`host:port`), manager login and password (stored
+- Flow works with **any number of MT5 servers**. Each has its own accounts, groups, symbols, trading setup and trader
+  styles. Every MT5 page has a server filter, and the lists of accounts, account groups, trades, symbols and histories
+  show each row's server. A call about an account always goes to that account's server.
+- **Two servers can have the same login.** They are two accounts, usually of two clients: an account is its server and
+  its login. Links and forms name it as `server:login` (`3:1473`). A login alone is enough while only one server has it;
+  once two do, a change or an MT5 call that does not say which is refused rather than guessed, and an old link asks which
+  server. A client's own login always means their own account. The API takes an optional `server_id` beside a login, and
+  the same `server:login` in its paths.
+- **Live and demo accounts can share a server**, each in their own MT5 groups (for example `real\*` and `demo\*`).
+  Give live and demo groups their own login ranges (for example live 1000000-1999999, demo 5000000-5999999) so a
+  login tells you which kind of account it is.
+- Servers are set up in **MT5 → Servers**: address (`host:port`), manager login and password (stored
   encrypted, never shown again), the server name clients pick in the MT5 terminal, enable / disable and
-  **Test connection**. Website prices come from this server and stream live to visitors over a WebSocket (`/ws/quotes`, one shared
+  **Test connection**. Website prices come from the server marked as the **price feed** and stream live to visitors over a WebSocket (`/ws/quotes`, one shared
   read every 0.5 s however many visitors; `/quotes.json` is the fallback when a proxy blocks WebSockets).
 - On a fresh database, the first `migrate` creates the server from `MT5_SERVER`, `MT5_MANAGER_LOGIN` and
   `MT5_MANAGER_PASSWORD` when `MT5_GATEWAY=manager` (in development it creates the simulator). After that,
-  edit it only in MT5 → Configuration.
-- **Remove from the CRM** (on the Configuration page) deletes Flow's copy of the server's data only; nothing
+  edit it only in MT5 → Servers.
+- **Remove from the CRM** (on the server's page) deletes Flow's copy of the server's data only; nothing
   changes on MT5. It is refused while accounts have copy-trading / PAMM roles, pending payments or unpaid IB
   commissions.
 
@@ -218,17 +225,16 @@ Entries appear only for staff with the permission shown.
 | (top) | Dashboard |
 | **Clients** | Clients (`clients.view`), Referral links (`clients.referrals`), KYC queue (`kyc.review`), KYC methods (`kyc.methods`) |
 | **MT5** | **Accounts ▸** Trading accounts, with Data and Trader styles tabs (`accounts.view`), Inactive accounts (`accounts.cleanup`) and Compact (`mt5_trades.compact`); Account groups (`account_groups.manage`) |
-| | **Trades ▸** Positions, Orders, Deals, each with Data, Sync and History tabs (`trading.view`). Orders and Deals also have Controls (`mt5_trades.delete`) |
+| | **Trades ▸** Positions, with Open positions, Closed positions, Sync and History tabs; Orders and Deals, each with Data, Sync and History tabs (`trading.view`). Orders and Deals also have Controls (`mt5_trades.delete`) |
 | | **Symbols ▸** Data, Sync, History (`symbols.manage`) |
 | | **Trading setup ▸** Overview, Liquidity providers (`liquidity.manage`), Routing (`routing.manage`) |
 | | **Automation** (`automation.manage`) |
 | | **Imports ▸** Account groups, Trading accounts (`mt5_servers.manage`), Symbols & pricing (`symbols.manage`), Positions, Orders, Deals (`trading.view`), History (any sync permission) |
-| | **Server tools ▸** Server health (`mt5_health.view`), Restart components (`mt5_servers.restart`) |
-| | **Configuration** (`mt5_servers.manage`) |
+| | **Servers ▸** Servers (`mt5_servers.manage`), Server health (`mt5_health.view`), Restart components (`mt5_servers.restart`) |
 | **Finance** | Payments (`finance.view`), Payment methods (`finance.methods`) |
 | **Copy trading** | MAM strategies, PAMM funds (`copy.view`) |
 | **Marketing** | IBs, Commission plans, Commissions, Campaigns, Lead sources (`marketing.view`) |
-| **Administration** | **Staff ▸** Staff, Roles, Departments (`staff.view`); **Security ▸** Audit log, Login attempts (`security.view`), IP access rules (`security.ip_rules`); Branding (`settings.branding`); Website prices (`symbols.manage`) |
+| **Administration** | **Staff ▸** Staff, Roles, Departments (`staff.view`); **Security ▸** Audit log, Login attempts (`security.view`), IP access rules (`security.ip_rules`); Workers (`mt5_health.view`); Branding (`settings.branding`); Website prices (`symbols.manage`) |
 
 Groups marked ▸ open beside the menu on hover (under the group on a phone), or show their pages as tabs. A page
 in a group lives under the group's address: `/admin/<group>/<page>`, e.g. `/admin/symbols/data`,
@@ -291,16 +297,29 @@ what MT5 already archived or deleted stays recorded.
 - **Account groups → MT5 groups.** New groups arrive **disabled** so you can name them and set leverage and
   pricing first. Groups whose name starts with `demo` become demo groups. Groups gone from MT5 are flagged
   "not on server" and disabled. `MT5_SYNC_EXCLUDE_GROUPS` skips manager / system groups.
+- **Accounts no longer on MT5** go from Flow at the next import, once MT5 confirms it does not have them, with their
+  deals, orders, positions and compacted history. Their client goes too if it was only an imported placeholder with
+  nothing left. Real clients, payments and IB commissions stay. An account in a copy trading or PAMM role stays until
+  that is stopped. Deals and orders of an account still on MT5 stay in Flow even if MT5 no longer has them.
 - **Trading accounts → MT5 users.** Each user becomes a trading account linked to a client, matched by email or
   created (`lead_source = mt5-import`). Users without a usable email get a placeholder `mt5-<server>-<login>@import.invalid`
   address; set the real email before the client can use the portal. Group, leverage and rights are refreshed
   on each run; accounts deleted on MT5 are flagged "not on MT5". Balances and deal history are fetched after
   import.
-- **Live sync** (worker): deals are pushed in real time and polled every `SYNC_INTERVAL_SECONDS`; open orders,
-  order history and open positions are kept in step. **Polling follows activity:** accounts with an open
+- **Real-time sync** (worker): MT5 pushes deals, position changes and order changes as they happen. A pushed deal is
+  stored at once; a change to an account's positions or orders makes Flow read that account again (at most once a
+  second), with its balance and equity. Staff screens of open positions refresh every 3 seconds.
+- **Catching up:** whenever a server's link is new (the worker started, or the link dropped and came back), the worker
+  first syncs every account back to the last moment that server was known to be connected, then goes on as normal. Each
+  catch-up is in the sync history. If it fails, it is tried again on the next pass.
+- **Polling** stays as a safety net, every `SYNC_INTERVAL_SECONDS`. Deal periods reach a day past UTC, because MT5 dates
+  deals on its own clock, which can be ahead of UTC. **Polling follows activity:** accounts with an open
   position or order, or a deal in the last `SYNC_ACTIVE_MINUTES`, are polled every pass; idle ones every
   `SYNC_IDLE_INTERVAL_SECONDS`, spread evenly. With several MT5 servers each is polled in its own thread, so a
   slow server does not hold up the others. Results are under **MT5 → Trades → Positions / Orders / Deals**.
+- **Closed positions** (Positions → Closed positions) are rebuilt from deals: the deals that opened each position (in)
+  and closed it (out), with weighted open and close prices. A partly closed position stays under Open positions until
+  the rest is closed. Deals Compact removed still count, from their exact copies.
 - **Trade sync** (MT5 → Trades → Orders or Deals → Sync, or the same page under Imports) re-reads missing history as a background task for all
   accounts or a list of logins and a period: in batches of 50 accounts and one-month slices it adds the deals
   and orders Flow is missing (no duplicates), then refreshes positions, open orders and balances. The page
@@ -359,6 +378,10 @@ MT5's (comma-separated, `*` for any text, `!` to exclude); the first matching ro
 - **Removing a row** puts MT5 back (the symbol's own spread, no CRM commission, the LP's swap).
 
 ### Server health and restarts
+
+**Administration → Workers** (`mt5_health.view`) lists the background workers with their status, each server's link
+(real time, polling only, catching up, disconnected), events received, the last catch-up and the scheduled jobs. It
+reads what the worker reports with its heartbeat, so it also shows when the worker is stuck or stopped.
 
 - **Server health** (`mt5_health.view`) shows every component (trade, access, history, backup servers) with the
   peaks MT5 reports for CPU, memory, disk, connections and network, checked against MT5's warning levels, with
@@ -447,8 +470,9 @@ group, keeping the balance as it is.
 Rules live in Flow only and are created **switched off**.
 
 - **Triggers:** account inactive N days; trader style detected; N deals within H hours; margin level below X %;
-  equity below an amount; no deposit N days after registering; KYC waiting N days. Account triggers can be
-  limited to MT5 group masks and live / demo.
+  equity below an amount; no deposit N days after registering; KYC waiting N days. A rule can be limited to one MT5
+  server (triggers that find clients: those with an account on it), and account triggers to MT5 group masks and live /
+  demo. Deleting a server deletes its rules.
 - **Actions:** email staff (an address, or the client's account manager / sales), email the client, add a client
   note, move to an account group, change leverage, disable or enable trading (the last four on MT5). Messages
   can use `{client}`, `{email}`, `{login}`, `{group}`, `{rule}`, `{detail}`.
@@ -584,7 +608,8 @@ the database (live within 30 seconds); until then `PUBLIC_SYMBOLS` in `.env` is 
 the database: broker name, legal company name, tagline, brand colour, support email and phone, MT5 server
 name and regulatory text. An empty field falls back to `.env`. Every process picks a change up within 30
 seconds. The brand colour is served as CSS variables at `/brand.css` and used by the website, client area and
-back-office.
+back-office. The **logo** (PNG, JPEG, WebP or SVG, at most 2 MB) replaces the initials on every page; it is kept in the
+database and served at `/brand/logo` with a sandbox policy, so nothing in an SVG can run.
 
 **Production requirements.** `DATABASE_URL` must be PostgreSQL in every mode. With `APP_ENV=prod` the app
 refuses to start (and `check-config` fails) unless all of these hold:
@@ -648,7 +673,7 @@ From an elevated PowerShell in the project folder:
    which installs the three services below.
 
 On a brand-new database there is no MT5 server yet: `check-config` says so, and you add it after the first
-sign-in under **MT5 → Configuration** (the connection is tested when you save). Alternatively, set
+sign-in under **MT5 → Servers** (the connection is tested when you save). Alternatively, set
 `MT5_SERVER`, `MT5_MANAGER_LOGIN` and `MT5_MANAGER_PASSWORD` in `.env` before the first migrate and it is
 created from them.
 
@@ -692,7 +717,7 @@ Encrypt automatically once both DNS names point at the server.
   the `Server` header is removed, access logs go to `logs\caddy`.
 
 After the first sign-in (2FA setup is required), set your branding under **Administration → Branding**, check
-the server under **MT5 → Configuration**, then import groups and accounts under **MT5 → Imports**.
+the server under **MT5 → Servers**, then import groups and accounts under **MT5 → Imports**.
 
 ### Backups
 
@@ -769,7 +794,7 @@ app/
   services/      business logic shared by the UI, the API and the worker;
                  mt5_calls.py wraps MT5 calls (MT5 errors become ServiceError / HTTP 502)
   mt5/           gateway.py (MT5Gateway interface), manager.py (MT5Manager adapter), mock.py (simulator),
-                 routing.py (routed(): forwards to the one server), __init__.py (gateway registry)
+                 routing.py (routed(): sends each call to the account's server; gw.on(server_id) names it), __init__.py (gateway registry)
   web/           server-rendered UI: admin/ (back-office), portal.py, site.py, callbacks.py (provider
                  callbacks), sandbox.py (dev only), common.py (sessions, CSRF, guards)
   api/           JSON API routers under /api

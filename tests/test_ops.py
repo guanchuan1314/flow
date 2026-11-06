@@ -133,10 +133,10 @@ def test_deleting_a_server_never_touches_mt5(admin_web, db, gw, second_server):
     db.delete(db.get(PaymentRequest, req.id))
     db.commit()
 
-    r = form_post(admin_web, f"/admin/configuration/servers/{srv.id}", f"/admin/configuration/servers/{srv.id}/delete",
+    r = form_post(admin_web, f"/admin/servers/list/{srv.id}", f"/admin/servers/list/{srv.id}/delete",
                   {"purge": "on", "confirm_name": "wrong"})
     assert "Type the server name" in r.text
-    r = form_post(admin_web, f"/admin/configuration/servers/{srv.id}", f"/admin/configuration/servers/{srv.id}/delete",
+    r = form_post(admin_web, f"/admin/servers/list/{srv.id}", f"/admin/servers/list/{srv.id}/delete",
                   {"purge": "on", "confirm_name": "Old server"})
     assert "Nothing was changed on the MT5 server" in r.text
     db.expire_all()

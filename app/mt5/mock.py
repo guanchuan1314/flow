@@ -161,6 +161,8 @@ class MockGateway(MT5Gateway):
         self.restarts: list[tuple[str, int | str]] = []  # ("component", id) / ("links", kind), in order (not persisted)
         self.booted: dict[int, datetime] = {}  # component id -> last restart (not persisted)
         self._subscribers: list[DealCallback] = []
+        self._trade_subscribers: list = []
+        self._connections = 0
         if self.state_file and self.state_file.exists():
             with self.state_file.open("rb") as f:
                 for key, value in pickle.load(f).items():
@@ -212,6 +214,7 @@ class MockGateway(MT5Gateway):
     # ---------------------------------------------------------- connection
     def connect(self) -> None:
         self._connected = True
+        self._connections += 1
 
     def disconnect(self) -> None:
         self._connected = False
@@ -239,6 +242,14 @@ class MockGateway(MT5Gateway):
         close_price = bid if pos.action == BUY else ask
         diff = (close_price - pos.price_open) if pos.action == BUY else (pos.price_open - close_price)
         return _money(diff * pos.volume * contract)
+
+    @property
+    def connections(self) -> int:
+        return self._connections
+
+    def _trade_changed(self, kind: str, login: int) -> None:
+        for cb in list(self._trade_subscribers):
+            cb(kind, login)
 
     def _emit(self, deal: MT5Deal) -> None:
         self.deals.append(deal)
@@ -426,6 +437,7 @@ class MockGateway(MT5Gateway):
                                   symbol=symbol, volume=volume, price=price, profit=Decimal("0"),
                                   position_id=pos_id, comment=comment[:31])
         self._emit(deal)
+        self._trade_changed("position", login)
         return TradeResult(10009, deal.ticket, deal.ticket, pos_id, volume, price)
 
     @_persist
@@ -448,6 +460,7 @@ class MockGateway(MT5Gateway):
                                   entry=ENTRY_OUT, symbol=pos.symbol, volume=volume, price=price,
                                   profit=profit, position_id=position_id, comment=comment[:31])
         self._emit(deal)
+        self._trade_changed("position", login)
         return TradeResult(10009, deal.ticket, deal.ticket, position_id, volume, price)
 
     # ---------------------------------------------------------- orders
@@ -512,7 +525,8 @@ class MockGateway(MT5Gateway):
                                            volume_current=Decimal(volume), price_order=Decimal(price),
                                            price_current=ask if order_type % 2 == 0 else bid, time_setup=_now(),
                                            comment=comment)
-            return ticket
+        self._trade_changed("order", login)
+        return ticket
 
     @_persist
     def cancel_order(self, ticket: int) -> None:
@@ -521,6 +535,7 @@ class MockGateway(MT5Gateway):
             order = self.orders.pop(ticket)
             order.state, order.time_done = ORDER_CANCELLED, _now()
             self.order_history.append(order)
+        self._trade_changed("order", order.login)
 
     # ---------------------------------------------------------- firewall
     def get_firewall(self) -> list[MT5FirewallRule]:
@@ -769,3 +784,10 @@ class MockGateway(MT5Gateway):
     def unsubscribe_deals(self, callback: DealCallback) -> None:
         if callback in self._subscribers:
             self._subscribers.remove(callback)
+
+    def subscribe_trades(self, callback) -> None:
+        self._trade_subscribers.append(callback)
+
+    def unsubscribe_trades(self, callback) -> None:
+        if callback in self._trade_subscribers:
+            self._trade_subscribers.remove(callback)

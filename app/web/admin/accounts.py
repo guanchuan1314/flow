@@ -10,8 +10,8 @@ from app.models import (
 from app.mt5 import MT5Error, for_account_group, routed
 from app.services import accounts as svc
 from app.services import compact, mt5_calls, mt5_sync, trader_styles
-from app.services.clients import ensure_visible, visible_account, visible_client_ids, visible_logins
-from app.services.servers import the_server
+from app.services.clients import ensure_visible, visible_account, visible_accounts, visible_client_ids, visible_rows
+from app.services.servers import pick
 from app.web import syncs
 from app.web.common import (
     Page, attempt, flash, opt_dec, opt_enum, opt_int, redirect, render, req_dec, staff_perm,
@@ -25,34 +25,35 @@ COMPACT = "/admin/accounts/compact"
 
 @router.get("/accounts/compact")
 def compact_page(request: Request, logins: str = "", group: str = "", date_from: str = "", date_to: str = "",
-                 by: list[str] = Query([]), preview: str = "", page: int = 1,
+                 by: list[str] = Query([]), preview: str = "", server: str = "", page: int = 1,
                  me: Staff = Depends(staff_perm("mt5_trades.compact")), db: Session = Depends(get_db)):
     """Choose accounts and how to group: the preview only reads MT5."""
-    server = the_server(db)
+    srv = pick(db, server)
     by = [k for k in by if k in compact.GROUPINGS] if preview else list(compact.GROUPINGS)
     plans, error = [], False
-    if preview and server:
+    if preview and srv:
         try:
-            gw = mt5_calls.gateway(server)
-            plans = [compact.make_plan(db, gw, server, login, date_from, date_to, by)
-                     for login in compact.choose(db, me, server, logins, opt_int(group))]
+            gw = mt5_calls.gateway(srv)
+            plans = [compact.make_plan(db, gw, srv, login, date_from, date_to, by)
+                     for login in compact.choose(db, me, srv, logins, opt_int(group))]
         except (ServiceError, MT5Error) as exc:
             error = True
             flash(request, getattr(exc, "message", None) or str(exc), "danger")
-    query = (select(CompactSummary).where(CompactSummary.login.in_(visible_logins(me)))
+    query = (select(CompactSummary).where(visible_rows(me, CompactSummary),
+                                          CompactSummary.server_id == (srv.id if srv else 0))
              .order_by(CompactSummary.updated_at.desc(), CompactSummary.id.desc()))
-    groups = db.scalars(select(AccountGroup).where(AccountGroup.server_id == (server.id if server else 0))
+    groups = db.scalars(select(AccountGroup).where(AccountGroup.server_id == (srv.id if srv else 0))
                         .order_by(AccountGroup.name))
-    return render(request, "admin/accounts/compact.html", page=Page(db, query, page), plans=plans, preview=preview,
+    return render(request, "admin/accounts/compact.html", page=Page(db, query, page), plans=plans, preview=preview, server=srv,
                   error=error, logins=logins, group=group, date_from=date_from, date_to=date_to, by=by,
                   groups=list(groups), groupings=compact.GROUPINGS, comment_for=compact.comment_for)
 
 
 @router.post("/accounts/compact/run")
 def compact_run(request: Request, logins: str = Form(""), date_from: str = Form(""), date_to: str = Form(""),
-                by: list[str] = Form([]), me: Staff = Depends(staff_perm("mt5_trades.compact")),
+                by: list[str] = Form([]), server_id: str = Form(""), me: Staff = Depends(staff_perm("mt5_trades.compact")),
                 db: Session = Depends(get_db)):
-    server = the_server(db)
+    server = pick(db, server_id)
     if server is None:
         flash(request, "No enabled MT5 server", "danger")
         return redirect(COMPACT)
@@ -61,7 +62,7 @@ def compact_run(request: Request, logins: str = Form(""), date_from: str = Form(
     except ServiceError as exc:
         flash(request, exc.message, "danger")
         return redirect(COMPACT)
-    return syncs.start(request, db, me, "compact", server.id, COMPACT,
+    return syncs.start(request, db, me, "compact", server.id, f"{COMPACT}?server={server.id}",
                        {"logins": chosen, "date_from": date_from, "date_to": date_to,
                         "by": [k for k in by if k in compact.GROUPINGS]})
 
@@ -77,15 +78,17 @@ def compact_detail(request: Request, summary_id: int, page: int = 1, me: Staff =
                    db: Session = Depends(get_db)):
     """The exact deals behind a summary."""
     summary = get_or_404(db, CompactSummary, summary_id)
-    visible_account(db, me, summary.login)
+    visible_account(db, me, f"{summary.server_id}:{summary.login}")
     query = select(CompactedRecord).where(CompactedRecord.summary_id == summary.id).order_by(CompactedRecord.time)
     return render(request, "admin/accounts/compact_detail.html", summary=summary, page=Page(db, query, page))
 
 
 @router.get("/accounts/trading-accounts")
-def list_accounts(request: Request, q: str = "", status: str = "", kind: str = "", origin: str = "", page: int = 1,
-                  me: Staff = Depends(staff_perm("accounts.view")), db: Session = Depends(get_db)):
+def list_accounts(request: Request, q: str = "", status: str = "", kind: str = "", origin: str = "", server: str = "",
+                  page: int = 1, me: Staff = Depends(staff_perm("accounts.view")), db: Session = Depends(get_db)):
     query = select(TradingAccount).where(TradingAccount.client_id.in_(visible_client_ids(me)))
+    if server.isdigit():
+        query = query.where(TradingAccount.server_id == int(server))
     if q.strip().isdigit():
         query = query.where(TradingAccount.login == int(q.strip()))
     if status:
@@ -100,7 +103,7 @@ def list_accounts(request: Request, q: str = "", status: str = "", kind: str = "
     clients = {c.id: c for c in db.scalars(select(Client).where(Client.id.in_({a.client_id for a in pg.items})))}
     return render(request, "admin/accounts/list.html", page=pg, clients=clients,
                   styles=trader_styles.badges(db, list(pg.items)), q=q, status=status, kind=kind,
-                  origin=origin, statuses=list(AccountStatus))
+                  origin=origin, statuses=list(AccountStatus), server=server, servers=_server_names(db))
 
 
 @router.post("/clients/{client_id}/accounts")
@@ -119,26 +122,31 @@ def open_account(request: Request, client_id: int, account_group_id: int = Form(
 
 
 @router.get("/accounts/trading-accounts/{login}")
-def account_detail(request: Request, login: int, me: Staff = Depends(staff_perm("accounts.view")),
+def account_detail(request: Request, login: str, me: Staff = Depends(staff_perm("accounts.view")),
                    db: Session = Depends(get_db)):
-    acc = visible_account(db, me, login)
-    positions = db.scalars(select(Position).where(Position.login == login, Position.is_open.is_(True))
+    found = visible_accounts(db, me, login)
+    if len(found) > 1:  # an old link, with the login alone
+        return render(request, "admin/accounts/choose_server.html", found=found)
+    acc = svc.only(found, login)
+    positions = db.scalars(select(Position).where(Position.server_id == acc.server_id, Position.login == acc.login,
+                                                  Position.is_open.is_(True))
                            .order_by(Position.time_create.desc())).all()
-    deals = db.scalars(select(Deal).where(Deal.login == login).order_by(Deal.time.desc(), Deal.ticket.desc()).limit(100)).all()
+    deals = db.scalars(select(Deal).where(Deal.server_id == acc.server_id, Deal.login == acc.login)
+                       .order_by(Deal.time.desc(), Deal.ticket.desc()).limit(100)).all()
     return render(request, "admin/accounts/detail.html", a=acc, owner=db.get(Client, acc.client_id),
                   positions=positions, deals=deals, statuses=list(AccountStatus),
-                  style=trader_styles.badges(db, [acc]).get(acc.login))
+                  style=trader_styles.badges(db, [acc]).get(acc.id))
 
 
 @router.post("/accounts/trading-accounts/{login}/refresh")
-def refresh(request: Request, login: int, me: Staff = Depends(staff_perm("accounts.view")), db: Session = Depends(get_db)):
+def refresh(request: Request, login: str, me: Staff = Depends(staff_perm("accounts.view")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
     return attempt(request, lambda: svc.refresh_account(db, routed(), acc), "Account refreshed from MT5.",
                    f"/admin/accounts/trading-accounts/{login}")
 
 
 @router.post("/accounts/trading-accounts/{login}/leverage")
-def leverage(request: Request, login: int, leverage: int = Form(...),
+def leverage(request: Request, login: str, leverage: int = Form(...),
              me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
     return attempt(request, lambda: svc.change_leverage(db, routed(), me, acc, leverage),
@@ -146,7 +154,7 @@ def leverage(request: Request, login: int, leverage: int = Form(...),
 
 
 @router.post("/accounts/trading-accounts/{login}/password")
-def reset_password(request: Request, login: int, which: str = Form("master"),
+def reset_password(request: Request, login: str, which: str = Form("master"),
                    me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
     try:
@@ -159,7 +167,7 @@ def reset_password(request: Request, login: int, which: str = Form("master"),
 
 
 @router.post("/accounts/trading-accounts/{login}/trading")
-def trading(request: Request, login: int, enabled: str = Form(...),
+def trading(request: Request, login: str, enabled: str = Form(...),
             me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
     on = enabled == "1"
@@ -168,7 +176,7 @@ def trading(request: Request, login: int, enabled: str = Form(...),
 
 
 @router.post("/accounts/trading-accounts/{login}/status")
-def status(request: Request, login: int, status: str = Form(...),
+def status(request: Request, login: str, status: str = Form(...),
            me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
 
@@ -178,7 +186,7 @@ def status(request: Request, login: int, status: str = Form(...),
 
 
 @router.post("/accounts/trading-accounts/{login}/transfer")
-def transfer(request: Request, login: int, direction: str = Form(...), amount: str = Form(...),
+def transfer(request: Request, login: str, direction: str = Form(...), amount: str = Form(...),
              me: Staff = Depends(staff_perm("accounts.manage", "finance.create")), db: Session = Depends(get_db)):
     acc = visible_account(db, me, login)
     client = db.get(Client, acc.client_id)
@@ -192,22 +200,33 @@ def transfer(request: Request, login: int, direction: str = Form(...), amount: s
 
 # ---------------------------------------------------------------- account groups
 @router.post("/accounts/account-groups/sync")
-def groups_sync(request: Request, me: Staff = Depends(staff_perm("account_groups.manage")), db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "account_groups", None, "/admin/accounts/account-groups")
+def groups_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm("account_groups.manage")),
+                db: Session = Depends(get_db)):
+    return syncs.start(request, db, me, "account_groups", opt_int(server_id), f"/admin/accounts/account-groups?server={server_id}")
 
 
 @router.post("/accounts/trading-accounts/sync")
-def accounts_sync(request: Request, me: Staff = Depends(staff_perm("accounts.manage")), db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "trading_accounts", None, "/admin/accounts/trading-accounts")
+def accounts_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm("accounts.manage")),
+                  db: Session = Depends(get_db)):
+    return syncs.start(request, db, me, "trading_accounts", opt_int(server_id), f"/admin/accounts/trading-accounts?server={server_id}")
 
 
 @router.get("/accounts/account-groups")
-def groups_list(request: Request, me: Staff = Depends(staff_perm("account_groups.manage")), db: Session = Depends(get_db)):
-    return render(request, "admin/accounts/groups.html", groups=db.scalars(select(AccountGroup).order_by(AccountGroup.id)).all())
+def groups_list(request: Request, server: str = "", me: Staff = Depends(staff_perm("account_groups.manage")),
+                db: Session = Depends(get_db)):
+    query = select(AccountGroup).order_by(AccountGroup.id)
+    if server.isdigit():
+        query = query.where(AccountGroup.server_id == int(server))
+    return render(request, "admin/accounts/groups.html", groups=db.scalars(query).all(), server=server,
+                  servers=_server_names(db))
 
 
 def _servers(db: Session):
     return db.scalars(select(MT5Server).where(MT5Server.enabled.is_(True)).order_by(MT5Server.is_demo, MT5Server.name)).all()
+
+
+def _server_names(db: Session) -> dict:
+    return dict(db.execute(select(MT5Server.id, MT5Server.name)).tuples().all())
 
 
 @router.get("/accounts/account-groups/new")

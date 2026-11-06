@@ -23,19 +23,22 @@ MOVED = {
     "liquidity": "trading-setup/liquidity", "routing": "trading-setup/routing",
     "positions": "trades/positions/data", "orders": "trades/orders/data", "deals": "trades/deals/data",
     "sync": "trades/deals/sync", "trades": "trades/positions",
-    "server-health": "server-tools/health", "pricing": "import/pricing", "restart": "server-tools/restart",
+    "server-health": "servers/health", "pricing": "import/pricing", "restart": "servers/restart",
+    "server-tools": "servers", "configuration": "servers/list",
     "staff": "staff/members", "roles": "staff/roles", "departments": "staff/departments",
     "audit": "security/audit", "login-attempts": "security/login-attempts", "ip-rules": "security/ip-rules",
-    "mt5-servers": "configuration/servers",
+    "mt5-servers": "servers/list",
 }
 _OLD_SYMBOLS = "trading-setup/symbols"
 _SERVER_PAGES = re.compile(r"mt5-servers/\d+/(inactive|pricing|restart)")
 _SERVER_PAGE_MOVED = {"inactive": "accounts/inactive-accounts", "pricing": "import/pricing",
-                      "restart": "server-tools/restart"}
+                      "restart": "servers/restart"}
 
 
 def moved_to(path: str) -> str | None:
     """The new address of an old back-office page path ("symbols/12" -> "symbols/data/12"), or None."""
+    if path.startswith("configuration/servers"):
+        return "servers/list" + path[len("configuration/servers"):]
     if path == _OLD_SYMBOLS or path.startswith(_OLD_SYMBOLS + "/"):
         return "symbols/data" + path[len(_OLD_SYMBOLS):]
     if any(path == new or path.startswith(new + "/") for new in MOVED.values()):

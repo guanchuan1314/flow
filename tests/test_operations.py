@@ -283,13 +283,12 @@ def test_styles_from_deal_reasons_and_moves(db, gw, server, admin):
 
 def test_operations_pages_post(admin_web, db, gw):  # noqa: F811
     old = old_users(db, gw, db.get(MT5Server, 1), "demo\\standard", 1, 400)[0]
-    r = form_post(admin_web, "/admin/server-tools/health", "/admin/server-tools/health/refresh", {"server_id": 1})
+    r = form_post(admin_web, "/admin/servers/health", "/admin/servers/health/refresh", {"server_id": 1})
     assert "Read from MT5 just now" in r.text and "Main Trade Server" in r.text and "Access Server Europe" in r.text
-    assert "Nothing needs attention." in admin_web.get("/admin/server-tools/health?only=warnings").text
+    assert "Nothing needs attention." in admin_web.get("/admin/servers/health?only=warnings").text
 
-    menu = admin_web.get("/admin/configuration").text  # MT5 > Server tools in the menu, not on Configuration
-    assert 'href="/admin/server-tools/health"' in menu
-    assert "card-header\">Server tools" not in menu
+    menu = admin_web.get("/admin/servers/list").text  # MT5 > Servers in the menu, with its tabs
+    assert 'href="/admin/servers/health"' in menu and 'href="/admin/servers/restart"' in menu
     assert admin_web.get("/admin/accounts/inactive-accounts").url.path == "/admin/accounts/inactive-accounts"
     assert admin_web.get("/admin/mt5-servers/1/inactive").url.path == "/admin/accounts/inactive-accounts"  # old address
 
@@ -313,11 +312,11 @@ def test_mt5_menu_and_tabbed_pages(admin_web):  # noqa: F811
     accounts = nav[nav.find(">Accounts<"):nav.find(">Trading setup<")]
     assert "Trading accounts" in accounts and "Account groups" in accounts
     assert "Trader styles" not in accounts and "Inactive accounts" not in accounts  # tabs of Trading accounts
-    # Symbols, Trading setup, Imports and Server tools are one entry each, opening a page with tabs
+    # Symbols, Trading setup, Imports and Servers are one entry each, opening a page with tabs
     assert 'href="/admin/symbols/data"><i class="bi bi-currency-exchange"></i>Symbols' in nav
     assert 'href="/admin/trading-setup/overview"><i class="bi bi-diagram-3"></i>Trading setup' in nav
     assert 'href="/admin/import/account-groups"><i class="bi bi-cloud-download"></i>Imports' in nav
-    assert 'href="/admin/server-tools/health"><i class="bi bi-tools"></i>Server tools' in nav
+    assert 'href="/admin/servers/list"><i class="bi bi-hdd-network"></i>Servers' in nav
     assert nav.count("nav-link active") == 1 and 'nav-link active" href="/admin/symbols/data"' in nav
     tabs = page[page.find("crm-hub-tabs"):page.find("</ul>", page.find("crm-hub-tabs"))]
     assert [t in tabs for t in (">Data<", ">Sync<", ">History<")] == [True] * 3
@@ -329,9 +328,9 @@ def test_mt5_menu_and_tabbed_pages(admin_web):  # noqa: F811
                         ("/admin/trades/deals/data", (">Data<", ">Sync<", ">History<", ">Controls<")),
                         ("/admin/trades/orders/sync", (">Data<", ">Sync<", ">History<", ">Controls<")),
                         ("/admin/trades/deals/controls", (">Data<", ">Sync<", ">History<", ">Controls<")),
-                        ("/admin/trades/positions/history", (">Data<", ">Sync<", ">History<")),
+                        ("/admin/trades/positions/history", (">Open positions<", ">Closed positions<", ">Sync<", ">History<")),
                         ("/admin/symbols/sync", (">Data<", ">Sync<", ">History<")),
-                        ("/admin/server-tools/health", (">Server health<", ">Restart components<"))):
+                        ("/admin/servers/health", (">Servers<", ">Server health<", ">Restart components<"))):
         text = admin_web.get(url).text
         tabs = text[text.find("crm-hub-tabs"):text.find("</ul>", text.find("crm-hub-tabs"))]
         assert all(t in tabs for t in expect), url
@@ -345,7 +344,7 @@ def test_mt5_menu_and_tabbed_pages(admin_web):  # noqa: F811
         menu = text[text.find('<nav class="nav'):text.find("</nav>")]  # Trading accounts stays marked on every tab
         assert 'nav-group-toggle active' in menu and 'active" role="menuitem" href="/admin/accounts/trading-accounts"' in menu
     tabs = admin_web.get("/admin/trades/positions/sync").text
-    assert ">Data<" in tabs and ">Controls<" not in tabs  # positions are not deleted from here
+    assert ">Open positions<" in tabs and ">Controls<" not in tabs  # positions are not deleted from here
     assert admin_web.get("/admin/trades/positions/controls").status_code == 404
 
 
@@ -364,12 +363,12 @@ def test_trading_accounts_menu_opens_the_first_tab_you_may_see(api, admin, db):
 
 # ---------------------------------------------------------------- restarts
 def test_restart_a_component_and_all_gateways(admin_web, db, gw):  # noqa: F811
-    page = "/admin/server-tools/restart"
-    assert 'href="/admin/server-tools/restart"' in admin_web.get("/admin/server-tools/health").text  # a Server tools tab
+    page = "/admin/servers/restart"
+    assert 'href="/admin/servers/restart"' in admin_web.get("/admin/servers/health").text  # a Servers tab
     text = admin_web.get(page).text
     assert "Access Server Asia" in text and "type Main Trade Server" in text
 
-    post = "/admin/server-tools/restart/1"
+    post = "/admin/servers/restart/1"
     r = form_post(admin_web, page, post, {"component_id": "4"})
     assert "Access Server Asia is restarting on MT5" in r.text and gw.restarts == [("component", 4)]
     r = form_post(admin_web, page, post, {"component_id": "1", "confirm_name": "main"})  # the main one: typed name

@@ -1,0 +1,55 @@
+{% macro state(value) -%}
+  {% set colour = {"running": "success", "real time": "success", "catching up": "info", "polling only": "warning", "stuck": "danger",
+                   "stopped": "danger", "disconnected": "danger", "disabled": "secondary"}[value] %}
+  <span class="badge text-bg-{{ colour }}">{{ value|capitalize }}</span>
+{%- endmacro %}
+{% macro ago(seconds) -%}
+  {% if seconds is none %}—{% elif seconds < 90 %}{{ seconds|round|int }} s ago{% elif seconds < 5400 %}{{ (seconds / 60)|round|int }} min ago{% else %}{{ (seconds / 3600)|round(1) }} h ago{% endif %}
+{%- endmacro %}
+
+{% if not w.ever %}<div class="alert alert-warning">The worker has not reported yet. Start it (<span class="mono">python -m app.workers</span>), or wait a few seconds if it has just started.</div>
+{% elif not w.alive %}<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> <strong>The worker is not running.</strong> Nothing syncs from MT5 until it is back; it then catches up by itself. Last seen {{ ago(w.seen) }}.</div>
+{% else %}<div class="alert alert-success py-2 small mb-3"><i class="bi bi-check-circle"></i> Running on {{ w.process }}, since {{ w.started_at[:19].replace("T", " ") }} UTC. Last report {{ ago(w.seen) }}.
+  {{ w.queued }} deal(s) waiting{% if w.dropped %}, {{ w.dropped }} dropped for the poller to read{% endif %} · {{ w.syncs }} sync(s) and {{ w.tasks }} history task(s) running or queued.</div>{% endif %}
+
+<div class="card mb-3">
+  <div class="card-header">MT5 servers</div>
+  <div class="table-responsive"><table class="table align-middle mb-0">
+    <thead><tr><th>Server</th><th>Sync</th><th class="num">Events received</th><th>Last event</th><th>Last catch-up</th></tr></thead>
+    <tbody>
+    {% for s in w.servers %}
+      <tr><td class="fw-semibold">{{ s.name }}</td>
+        <td>{{ state(s.state) }}{% if s.error %}<div class="small text-danger">{{ s.error }}</div>{% endif %}</td>
+        <td class="num">{{ s.events }}</td><td class="small">{{ ago(s.last_event_age) }}</td>
+        <td class="small">{{ s.last_catch_up_at[:19].replace("T", " ") if s.last_catch_up_at else "—" }}</td></tr>
+    {% else %}<tr><td colspan="5" class="text-center text-muted py-3">No MT5 servers yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Workers</div>
+  <div class="table-responsive"><table class="table align-middle mb-0">
+    <thead><tr><th>Worker</th><th>Status</th><th>Last went round</th><th>What it does</th></tr></thead>
+    <tbody>
+    {% for t in w.threads %}
+      <tr><td class="fw-semibold text-nowrap">{{ t.name }}</td><td>{{ state(t.state) }}</td><td class="small text-nowrap">{{ ago(t.age) }}</td><td class="small text-muted">{{ t.text }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+{% if w.steps %}
+<div class="card">
+  <div class="card-header">Scheduled jobs</div>
+  <div class="table-responsive"><table class="table align-middle mb-0">
+    <thead><tr><th>Job</th><th>Last checked</th><th class="num">Took</th><th>Result</th></tr></thead>
+    <tbody>
+    {% for s in w.steps %}
+      <tr><td>{{ s.name[:1]|upper }}{{ s.name[1:] }}</td><td class="small">{{ ago(s.age) }}</td><td class="num small">{{ s.seconds }} s</td>
+        <td>{% if s.failed %}<span class="badge text-bg-danger">Failed</span> <span class="small text-danger">{{ s.failed }}</span>{% else %}<span class="badge text-bg-success">OK</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}

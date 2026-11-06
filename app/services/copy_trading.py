@@ -18,7 +18,7 @@ import logging
 from datetime import timedelta
 from decimal import ROUND_DOWN, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,7 @@ from app.models import (
     CopySubscription, Deal, PammFund, StrategyStatus, SubscriptionStatus, TradingAccount, WalletTxKind,
 )
 from app.models.trading import CLOSING_ENTRIES, DEAL_BUY, ENTRY_IN, TRADE_ACTIONS
-from app.mt5 import BUY, SELL, MT5Error, MT5Gateway, for_login
+from app.mt5 import BUY, SELL, MT5Error, MT5Gateway, get_gateway
 from app.services import accounts, wallet
 
 log = logging.getLogger(__name__)
@@ -50,18 +50,20 @@ def round_lots(volume: Decimal) -> Decimal:
 # ---------------------------------------------------------------- admin
 
 
-def create_strategy(db: Session, actor, owner: Client, master_login: int, name: str, **opts) -> CopyStrategy:
+def create_strategy(db: Session, actor, owner: Client, master_login, name: str, **opts) -> CopyStrategy:
     acc = accounts.get_client_account(db, owner, master_login)
     if acc.is_demo or acc.status != AccountStatus.active:
         raise ServiceError("Master must be an active live account")
-    if db.scalar(select(CopySubscription.id).where(CopySubscription.follower_login == master_login,
+    master_login = acc.login
+    if db.scalar(select(CopySubscription.id).where(CopySubscription.server_id == acc.server_id,
+                                                   CopySubscription.follower_login == master_login,
                                                    CopySubscription.status != SubscriptionStatus.stopped)):
         raise ServiceError("A follower account cannot be a master")
-    if db.scalar(select(PammFund.id).where(PammFund.master_login == master_login)):
+    if db.scalar(select(PammFund.id).where(PammFund.server_id == acc.server_id, PammFund.master_login == master_login)):
         raise Conflict("Account is already a PAMM master")
     if db.scalar(select(CopyStrategy.id).where(CopyStrategy.name == name)):
         raise Conflict("Strategy name already exists")
-    s = CopyStrategy(name=name, owner_client_id=owner.id, master_login=master_login, **opts)
+    s = CopyStrategy(name=name, owner_client_id=owner.id, server_id=acc.server_id, master_login=master_login, **opts)
     acc.purpose = AccountPurpose.copy_master
     db.add(s)
     db.flush()
@@ -70,7 +72,7 @@ def create_strategy(db: Session, actor, owner: Client, master_login: int, name: 
     return s
 
 
-def subscribe(db: Session, gw: MT5Gateway, actor, follower: Client, strategy: CopyStrategy, follower_login: int,
+def subscribe(db: Session, gw: MT5Gateway, actor, follower: Client, strategy: CopyStrategy, follower_login,
               allocation_mode: AllocationMode = AllocationMode.equity_ratio, ratio: Decimal = Decimal("1"),
               max_lot: Decimal | None = None) -> CopySubscription:
     if strategy.status != StrategyStatus.active:
@@ -80,25 +82,28 @@ def subscribe(db: Session, gw: MT5Gateway, actor, follower: Client, strategy: Co
         raise ServiceError("Follower must be an active trading account")
     if acc.is_demo:
         raise ServiceError("Demo accounts cannot follow live strategies")
-    if follower_login == strategy.master_login:
-        raise ServiceError("An account cannot follow itself")
-    master = accounts.get_account(db, strategy.master_login)
+    follower_login = acc.login
+    master = accounts.get_account(db, f"{strategy.server_id}:{strategy.master_login}")
     if master.server_id != acc.server_id:
         raise ServiceError(f"This strategy trades on {master.server.display_name}; your account must be on the same "
                            "MT5 server to copy it")
+    if follower_login == strategy.master_login:
+        raise ServiceError("An account cannot follow itself")
     if ratio <= 0:
         raise ServiceError("ratio must be positive")
-    active = db.scalar(select(CopySubscription).where(CopySubscription.follower_login == follower_login,
+    active = db.scalar(select(CopySubscription).where(CopySubscription.server_id == acc.server_id,
+                                                      CopySubscription.follower_login == follower_login,
                                                       CopySubscription.status != SubscriptionStatus.stopped))
     if active:
         raise Conflict("This account already follows a strategy")
-    equity = gw.get_account(follower_login).equity
+    equity = gw.on(acc.server_id).get_account(follower_login).equity
     if equity < strategy.min_investment:
         raise ServiceError(f"Minimum equity to follow is {strategy.min_investment}")
     sub = db.scalar(select(CopySubscription).where(CopySubscription.strategy_id == strategy.id,
                                                    CopySubscription.follower_login == follower_login))
     if sub is None:
-        sub = CopySubscription(strategy_id=strategy.id, follower_login=follower_login, follower_client_id=follower.id)
+        sub = CopySubscription(strategy_id=strategy.id, server_id=acc.server_id, follower_login=follower_login,
+                               follower_client_id=follower.id)
         db.add(sub)
     sub.allocation_mode, sub.ratio, sub.max_lot = allocation_mode, ratio, max_lot
     sub.status, sub.high_water_mark = SubscriptionStatus.active, equity
@@ -110,6 +115,7 @@ def subscribe(db: Session, gw: MT5Gateway, actor, follower: Client, strategy: Co
 
 
 def unsubscribe(db: Session, gw: MT5Gateway, actor, sub: CopySubscription, close_positions: bool = True) -> CopySubscription:
+    gw = gw.on(sub.server_id)
     if close_positions:
         for link in db.scalars(select(CopyLink).where(CopyLink.subscription_id == sub.id, CopyLink.is_open.is_(True))):
             res = gw.close_position(sub.follower_login, link.follower_position_id, link.symbol, link.side,
@@ -127,9 +133,10 @@ def unsubscribe(db: Session, gw: MT5Gateway, actor, sub: CopySubscription, close
     return sub
 
 
-def adjust_high_water_mark(db: Session, login: int, amount: Decimal) -> None:
+def adjust_high_water_mark(db: Session, acc: TradingAccount, amount: Decimal) -> None:
     """Deposits/withdrawals on a follower account move its HWM so they are not counted as profit."""
-    sub = db.scalar(select(CopySubscription).where(CopySubscription.follower_login == login,
+    sub = db.scalar(select(CopySubscription).where(CopySubscription.server_id == acc.server_id,
+                                                   CopySubscription.follower_login == acc.login,
                                                    CopySubscription.status != SubscriptionStatus.stopped))
     if sub:
         sub.high_water_mark = wallet.money(sub.high_water_mark + amount)
@@ -283,6 +290,7 @@ def reconcile(db: Session, gw: MT5Gateway, strategy: CopyStrategy) -> int:
           otherwise it is sent again.
     close: the linked position gone or reduced by the volume means it was closed; otherwise
           it is sent again. Returns how many were settled."""
+    gw = gw.on(strategy.server_id)
     ids = db.scalars(select(CopyExecution.id).join(CopySubscription, CopySubscription.id == CopyExecution.subscription_id)
                      .where(CopySubscription.strategy_id == strategy.id, CopyExecution.status == "unknown")
                      .order_by(CopyExecution.id)).all()
@@ -293,7 +301,7 @@ def reconcile(db: Session, gw: MT5Gateway, strategy: CopyStrategy) -> int:
         if ex is None:
             continue  # settled meanwhile, or another process is on it
         sub = db.get(CopySubscription, ex.subscription_id)
-        deal = db.scalar(select(Deal).where(Deal.login == strategy.master_login,
+        deal = db.scalar(select(Deal).where(Deal.server_id == strategy.server_id, Deal.login == strategy.master_login,
                                             Deal.ticket == ex.master_deal_ticket))
         try:
             positions = gw.get_positions([ex.follower_login])
@@ -327,6 +335,7 @@ def reconcile(db: Session, gw: MT5Gateway, strategy: CopyStrategy) -> int:
 def process_master_deal(db: Session, gw: MT5Gateway, strategy: CopyStrategy, deal: Deal) -> None:
     if strategy.status == StrategyStatus.closed:
         return
+    gw = gw.on(strategy.server_id)
     reconcile(db, gw, strategy)  # earlier timeouts first, so a close finds the position it closes
     subs = db.scalars(select(CopySubscription).where(CopySubscription.strategy_id == strategy.id,
                                                      CopySubscription.status != SubscriptionStatus.stopped))
@@ -343,15 +352,16 @@ def handle_deals(db: Session, deals: list[Deal]) -> None:
     trade_deals = [d for d in deals if d.action in TRADE_ACTIONS]
     if not trade_deals:
         return
-    logins = {d.login for d in trade_deals}
-    strategies = {s.master_login: s for s in db.scalars(select(CopyStrategy).where(CopyStrategy.master_login.in_(logins)))}
+    masters = list({(d.server_id, d.login) for d in trade_deals})
+    strategies = {(s.server_id, s.master_login): s for s in db.scalars(select(CopyStrategy).where(
+        tuple_(CopyStrategy.server_id, CopyStrategy.master_login).in_(masters)))}
     if not strategies:
         return
     for deal in trade_deals:
-        strategy = strategies.get(deal.login)
+        strategy = strategies.get((deal.server_id, deal.login))
         if strategy:
             try:
-                gw = for_login(db, strategy.master_login)  # followers share the master's server
+                gw = get_gateway(strategy.server_id)  # followers share the master's server
             except MT5Error as exc:
                 log.error("cannot copy deal %s of strategy %s: %s", deal.ticket, strategy.id, exc)
                 continue
@@ -364,6 +374,7 @@ def handle_deals(db: Session, deals: list[Deal]) -> None:
 def settle_fee(db: Session, gw: MT5Gateway, sub: CopySubscription) -> Decimal:
     """Charge the performance fee on equity above the high-water mark."""
     strategy = db.get(CopyStrategy, sub.strategy_id)
+    gw = gw.on(sub.server_id)
     equity = gw.get_account(sub.follower_login).equity
     profit = Decimal(equity) - Decimal(sub.high_water_mark)
     fee = wallet.money(profit * Decimal(strategy.performance_fee_pct) / 100) if profit > 0 else Decimal("0")
@@ -390,7 +401,7 @@ def settle_all_fees_due(db: Session, gw: MT5Gateway | None = None, period_days: 
         if sub.last_fee_at > cutoff:
             continue
         try:
-            out[sub.id] = settle_fee(db, gw or for_login(db, sub.follower_login), sub)
+            out[sub.id] = settle_fee(db, gw or get_gateway(sub.server_id), sub)
         except (MT5Error, ServiceError) as exc:
             db.rollback()
             log.error("fee settlement failed for subscription %s: %s", sub.id, exc)

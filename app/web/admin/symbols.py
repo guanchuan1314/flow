@@ -8,7 +8,7 @@ from app.core.errors import ServiceError, get_or_404
 from app.db import get_db
 from app.models import LiquidityConnection, Staff, Symbol
 from app.services import liquidity, symbols as svc
-from app.services.servers import require_server, the_server
+from app.services.servers import pick, require_server
 from app.web import syncs
 from app.web.common import Page, attempt, opt_dec, opt_int, render, staff_perm
 
@@ -59,9 +59,9 @@ def _choices() -> dict:
 
 
 @router.get("/symbols/data")
-def symbols_page(request: Request, q: str = "", page: int = 1,
+def symbols_page(request: Request, q: str = "", server: str = "", page: int = 1,
                  me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
-    srv = the_server(db)
+    srv = pick(db, server)
     query = select(Symbol).where(Symbol.server_id == (srv.id if srv else 0))
     if q.strip():
         like = f"%{q.strip()}%"
@@ -81,12 +81,13 @@ def symbols_history(request: Request, kind: str = "", trigger: str = "", status:
 @router.post("/symbols/data/sync")
 def symbols_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm("symbols.manage")),
                  db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "symbols", syncs.server_id(db), f"/admin/symbols/data?server={server_id}")
+    return syncs.start(request, db, me, "symbols", syncs.server_id(db, server_id), f"/admin/symbols/data?server={server_id}")
 
 
 @router.get("/symbols/data/new")
-def symbol_new(request: Request, me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
-    srv = the_server(db)
+def symbol_new(request: Request, server: str = "", me: Staff = Depends(staff_perm("symbols.manage")),
+               db: Session = Depends(get_db)):
+    srv = pick(db, server)
     templates = db.scalars(select(Symbol).where(Symbol.server_id == (srv.id if srv else 0))
                            .order_by(Symbol.path, Symbol.name)).all()
     return render(request, "admin/symbols/form.html", s=None, server=srv, templates=templates,
@@ -217,9 +218,9 @@ def _flags(kind: str, value: int) -> dict:
 
 
 @router.get("/trading-setup/liquidity")
-def liquidity_page(request: Request, kind: str = "gateway", me: Staff = Depends(staff_perm("liquidity.manage")),
+def liquidity_page(request: Request, kind: str = "gateway", server: str = "", me: Staff = Depends(staff_perm("liquidity.manage")),
                    db: Session = Depends(get_db)):
-    srv, kind = the_server(db), _kind(kind)
+    srv, kind = pick(db, server), _kind(kind)
     rows = db.scalars(select(LiquidityConnection).where(LiquidityConnection.server_id == (srv.id if srv else 0),
                                                         LiquidityConnection.kind == kind)
                       .order_by(LiquidityConnection.name)).all()
@@ -233,7 +234,7 @@ def liquidity_page(request: Request, kind: str = "gateway", me: Staff = Depends(
 @router.post("/trading-setup/liquidity/sync")
 def liquidity_sync(request: Request, server_id: str = Form(""), kind: str = Form("gateway"),
                    me: Staff = Depends(staff_perm("liquidity.manage")), db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "liquidity", syncs.server_id(db),
+    return syncs.start(request, db, me, "liquidity", syncs.server_id(db, server_id),
                        f"/admin/trading-setup/liquidity?server={server_id}&kind={_kind(kind)}")
 
 
@@ -243,7 +244,7 @@ def liquidity_restart(request: Request, server_id: str = Form(""), kind: str = F
     kind = _kind(kind)
 
     def run():
-        srv = require_server(db)
+        srv = require_server(db, server_id)
         liquidity.restart_all(db, me, srv, kind)
         return (f"{srv.name}: every {liquidity.KINDS[kind].lower()} is restarting. They reconnect to their LPs "
                 "within a minute; Sync from MT5 shows their status.")
@@ -251,9 +252,9 @@ def liquidity_restart(request: Request, server_id: str = Form(""), kind: str = F
 
 
 @router.get("/trading-setup/liquidity/new")
-def link_new(request: Request, kind: str = "gateway", module: str = "",
+def link_new(request: Request, kind: str = "gateway", module: str = "", server: str = "",
              me: Staff = Depends(staff_perm("liquidity.manage")), db: Session = Depends(get_db)):
-    srv, kind = the_server(db), _kind(kind)
+    srv, kind = pick(db, server), _kind(kind)
     mods, error = [], None
     if srv is not None:
         try:

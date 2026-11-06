@@ -1,4 +1,4 @@
-"""The CRM's one MT5 server, managed from the admin dashboard; live and demo accounts both live on it.
+"""MT5 servers, managed from the admin dashboard.
 
 These tests use the real gateway registry (no pinned test gateway), as the running CRM does.
 """
@@ -67,46 +67,44 @@ def _update(db, server, **changes):
 # ---------------------------------------------------------------- admin screens
 def test_admin_adds_edits_and_tests_the_server(web, admin, db, no_server):
     web_login(web, *ADMIN)
-    assert web.get("/admin/configuration/servers").url.path == "/admin/configuration"  # the old list is gone
-    assert "Save &amp; test connection" in web.get("/admin/configuration").text  # not set up yet: add it here
-    r = form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {
+    assert "No MT5 servers yet" in web.get("/admin/servers/list").text
+    assert "Save &amp; test connection" in web.get("/admin/servers/list/new").text
+    r = form_post(web, "/admin/servers/list/new", "/admin/servers/list/new", {
         "name": "Main", "kind": "simulator", "terminal_name": "Broker-Server", "timeout_seconds": "10", "enabled": "on"})
     assert "saved. Connection test: Connected successfully" in r.text
     server = db.scalar(select(MT5Server).where(MT5Server.name == "Main"))
     assert server.last_status == "ok" and server.timeout_ms == 10000 and server.is_price_feed and not server.is_demo
-    config = web.get("/admin/configuration").text
+    config = web.get(f"/admin/servers/list/{server.id}").text
     assert "Broker-Server" in config and "Test connection" in config
 
-    r = form_post(web, f"/admin/configuration/servers/{server.id}", f"/admin/configuration/servers/{server.id}", {
+    r = form_post(web, f"/admin/servers/list/{server.id}", f"/admin/servers/list/{server.id}", {
         "name": "Main 2", "kind": "simulator", "terminal_name": "Broker-Server2", "timeout_seconds": "10",
         "enabled": "on"})
     assert "Server settings saved" in r.text
     db.expire_all()
     assert db.get(MT5Server, server.id).terminal_name == "Broker-Server2"
-    r = form_post(web, "/admin/configuration", f"/admin/configuration/servers/{server.id}/test", {})
+    r = form_post(web, "/admin/servers/list", f"/admin/servers/list/{server.id}/test", {})
     assert "Connected successfully" in r.text
 
 
-def test_a_second_server_is_refused(web, admin, db):
-    with pytest.raises(Conflict, match="one MT5 server"):
+def test_a_second_server_can_be_added_but_not_under_the_same_name(web, admin, db):
+    assert not servers.create_server(db, None, name="Another", kind=ServerKind.simulator).is_price_feed
+    with pytest.raises(Conflict, match="already exists"):
         servers.create_server(db, None, name="Another", kind=ServerKind.simulator)
-    web_login(web, *ADMIN)
-    r = web.get("/admin/configuration/servers/new")  # the form sends you to the existing server
-    assert r.url.path == "/admin/configuration" and "instead of adding another" in r.text
 
 
 def test_manager_password_is_encrypted_and_never_shown(web, admin, db, no_server):
     web_login(web, *ADMIN)
-    form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {
+    form_post(web, "/admin/servers/list/new", "/admin/servers/list/new", {
         "name": "Real", "kind": "manager", "address": "127.0.0.1:1", "manager_login": "1001",
         "password": "Sup3r-Secret!", "timeout_seconds": "2", "enabled": "on"})
     server = db.scalar(select(MT5Server).where(MT5Server.name == "Real"))
     assert server.manager_password_enc and "Sup3r-Secret!" not in server.manager_password_enc
     assert decrypt_secret(server.manager_password_enc) == "Sup3r-Secret!"
-    page = web.get(f"/admin/configuration/servers/{server.id}").text
+    page = web.get(f"/admin/servers/list/{server.id}").text
     assert "Sup3r-Secret!" not in page and "unchanged" in page
     # saving without a password keeps the stored one
-    form_post(web, f"/admin/configuration/servers/{server.id}", f"/admin/configuration/servers/{server.id}", {
+    form_post(web, f"/admin/servers/list/{server.id}", f"/admin/servers/list/{server.id}", {
         "name": "Real", "kind": "manager", "address": "127.0.0.1:1", "manager_login": "1001", "password": "",
         "timeout_seconds": "2", "enabled": "on"})
     db.expire_all()
@@ -116,7 +114,7 @@ def test_manager_password_is_encrypted_and_never_shown(web, admin, db, no_server
 @pytest.mark.skipif(importlib.util.find_spec("MT5Manager") is None, reason="MT5Manager not installed")
 def test_unreachable_real_server_reports_the_error(web, admin, db, no_server):
     web_login(web, *ADMIN)
-    r = form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {
+    r = form_post(web, "/admin/servers/list/new", "/admin/servers/list/new", {
         "name": "Offline", "kind": "manager", "address": "127.0.0.1:1", "manager_login": "1001", "password": "x",
         "timeout_seconds": "2", "enabled": "on"})
     assert "Connection test:" in r.text and "Network error" in r.text
@@ -125,10 +123,10 @@ def test_unreachable_real_server_reports_the_error(web, admin, db, no_server):
 
 def test_server_form_validation(web, admin, db, no_server):
     web_login(web, *ADMIN)
-    r = form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {
+    r = form_post(web, "/admin/servers/list/new", "/admin/servers/list/new", {
         "name": "Bad", "kind": "manager", "address": "not a host!", "manager_login": "1", "password": "x"})
     assert "Address must look like" in r.text
-    r = form_post(web, "/admin/configuration/servers/new", "/admin/configuration/servers/new", {"name": "", "kind": "simulator"})
+    r = form_post(web, "/admin/servers/list/new", "/admin/servers/list/new", {"name": "", "kind": "simulator"})
     assert "Name is required" in r.text
 
 
@@ -138,7 +136,7 @@ def test_only_authorised_staff_manage_servers(web, admin, db):
     web.post("/api/staff", json={"email": "m@b.com", "full_name": "M", "password": "Manager-Pass1",
                                  "role_ids": [role.id]}, headers=admin_h)
     web_login(web, "m@b.com", "Manager-Pass1")
-    assert web.get("/admin/configuration").status_code == 403
+    assert web.get("/admin/servers/list").status_code == 403
 
 
 # ---------------------------------------------------------------- live and demo on one server

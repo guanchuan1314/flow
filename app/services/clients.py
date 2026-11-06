@@ -1,7 +1,7 @@
 import uuid
 from pathlib import Path
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, or_, select, tuple_
 from sqlalchemy.orm import Session, aliased
 
 from app.config import get_settings
@@ -44,9 +44,11 @@ def visible_client_ids(staff: Staff) -> Select:
     return visible_clients(staff).with_only_columns(Client.id)
 
 
-def visible_logins(staff: Staff) -> Select:
-    """The trading account logins of the clients a staff member may see, for `.in_()`."""
-    return select(TradingAccount.login).where(TradingAccount.client_id.in_(visible_client_ids(staff)))
+def visible_rows(staff: Staff, model):
+    """Condition: this row (of a model with server_id and login) belongs to an account of a client the staff member may
+    see. Both columns count: the same login on another server is another client's."""
+    return tuple_(model.server_id, model.login).in_(
+        select(TradingAccount.server_id, TradingAccount.login).where(TradingAccount.client_id.in_(visible_client_ids(staff))))
 
 
 def ensure_visible(db: Session, staff: Staff, client_id: int) -> Client:
@@ -58,13 +60,23 @@ def ensure_visible(db: Session, staff: Staff, client_id: int) -> Client:
     return client
 
 
-def visible_account(db: Session, staff: Staff, login: int) -> TradingAccount:
-    """The trading account, if its client is visible to the staff member (404 / 403 otherwise)."""
-    from app.services.accounts import get_account
+def visible_accounts(db: Session, staff: Staff, ref) -> list[TradingAccount]:
+    """The accounts `ref` can mean among those the staff member may see (404 / 403 when there are none)."""
+    from app.services.accounts import matching
 
-    acc = get_account(db, login)
-    ensure_visible(db, staff, acc.client_id)
-    return acc
+    found = matching(db, ref)
+    seen = set(db.scalars(visible_client_ids(staff).where(Client.id.in_({a.client_id for a in found}))))
+    mine = [a for a in found if a.client_id in seen]
+    if found and not mine:
+        raise Forbidden("Client is not assigned to you")
+    return mine
+
+
+def visible_account(db: Session, staff: Staff, ref) -> TradingAccount:
+    """The trading account, if its client is visible to the staff member (404 / 403 otherwise)."""
+    from app.services.accounts import only
+
+    return only(visible_accounts(db, staff, ref), ref)
 
 
 def _unique_referral_code(db: Session) -> str:

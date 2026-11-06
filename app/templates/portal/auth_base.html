@@ -5,7 +5,7 @@
 {% block body %}
 <div class="a-auth">
   <div class="a-auth-art d-flex">
-    <a class="s-brand s-brand-light" href="/"><span class="brand-mark s-mark-glow">{{ brand().initials }}</span>{{ brand().app_name }}</a>
+    <a class="s-brand s-brand-light" href="/">{{ brand_mark("s-mark-glow") }}{{ brand().app_name }}</a>
     <div>
       <h2>Trade forex, gold, indices &amp; crypto on MetaTrader 5</h2>
       <p class="a-auth-tag">{{ brand().brand_tagline }}.</p>
@@ -20,7 +20,7 @@
   </div>
   <div class="a-auth-form">
     <div class="inner {% block card_class %}{% endblock %}">
-      <a class="d-flex d-lg-none s-brand mb-4" href="/"><span class="brand-mark">{{ brand().initials }}</span>{{ brand().app_name }}</a>
+      <a class="d-flex d-lg-none s-brand mb-4" href="/">{{ brand_mark() }}{{ brand().app_name }}</a>
       <h1 class="h3 fw-bold mb-1">{% block subtitle %}{% endblock %}</h1>
       <p class="text-muted mb-4">{% block lead %}Welcome to the client area.{% endblock %}</p>
       {{ show_flashes(flashes) }}

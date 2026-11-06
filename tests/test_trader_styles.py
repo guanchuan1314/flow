@@ -59,7 +59,7 @@ def test_metrics(db, gw, server):
     d.position(START + timedelta(minutes=10), 2 * 86400, lots=1, profit=20, reason=16, close_reason=4)  # mobile, TP
     d.position(START + timedelta(minutes=11), 3600, lots=1, side=1, profit=-1, reason=16)  # sell while a buy is open
     d.position(START + timedelta(hours=1), 600, lots=3, symbol="XAUUSD")
-    m = trader_styles.metrics(db, server, 30)[login]
+    m = trader_styles.metrics(db, server, 30)[(server.id, login)]
     assert (m["deals"], m["placed"], m["positions"], m["symbols"]) == (10, 9, 5, 2)  # the TP close isn't placed
     assert (m["ea_pct"], m["mobile_pct"], m["desktop_pct"]) == (44.4, 33.3, 22.2)
     assert m["sl_tp_pct"] == 20.0 and m["quick_pct"] == 40.0 and m["overnight_pct"] == 20.0
@@ -188,7 +188,7 @@ def test_setup_pages(admin_web, db, gw, server):  # noqa: F811
     page = admin_web.get(url).text
     assert "Bigger after a loss" in page and "Martingale-like" in page
     assert "Deals per active day ≥ 50" in page and "Closed within 2 minutes ≥ 50%" in page
-    assert f"{url}/scalper" in page and f"{url}/new?kind=tag" in page
+    assert f"{url}/scalper" in page and f"{url}/new?server=1&amp;kind=tag" in page
     tried = admin_web.get(f"{url}?login={login}").text
     assert f"Account {login}" in tried and "EA / algo" in tried
 
@@ -239,8 +239,9 @@ def test_badges_on_account_lists(db, gw, server):
     Deals(db, idle).position(START, 600)  # one trade: too few to have a style
     rows = db.scalars(select(TradingAccount).where(TradingAccount.login.in_([ea, idle]))).all()
     found = trader_styles.badges(db, rows)
-    assert set(found) == {ea} and found[ea]["style"][0] == trader_styles.STYLES["ea"]
-    assert trader_styles.logins_with_style(db, "ea") == {ea}
+    mine = next(a for a in rows if a.login == ea)
+    assert set(found) == {mine.id} and found[mine.id]["style"][0] == trader_styles.STYLES["ea"]
+    assert trader_styles.accounts_with_style(db, "ea") == {(mine.server_id, ea)}
 
 
 def test_trading_filters_wildcards_group_and_style(db, gw, server, admin_web):  # noqa: F811

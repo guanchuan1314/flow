@@ -1,5 +1,5 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import csrf_input %}
+{% from "macros.html" import csrf_input, post_button %}
 {% block page_title %}Branding{% endblock %}
 {% block content %}
 <p class="small text-muted">How the broker appears on the website, client area, back-office and in emails. Leave a field empty to use
@@ -7,6 +7,16 @@
 
 <div class="row g-4">
   <div class="col-lg-8">
+    <div class="card mb-4"><div class="card-header">Logo</div><div class="card-body">
+      <p class="small text-muted">Shown on the website, client area, back-office and sign-in pages in place of the initials. PNG, JPEG, WebP or SVG,
+        at most 2 MB. A wide logo with a transparent background works best.</p>
+      <form method="post" action="/admin/branding/logo" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-center">
+        {{ csrf_input(csrf) }}
+        <input class="form-control w-auto" type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" aria-label="Logo file" required>
+        <button class="btn btn-primary" type="submit">Upload logo</button>
+      </form>
+      {% if has_logo %}<div class="mt-3">{{ post_button("/admin/branding/logo/remove", '<i class="bi bi-trash"></i> Remove logo', csrf, "btn-outline-danger btn-sm", confirm="Remove the logo and show the initials again?") }}</div>{% endif %}
+    </div></div>
     <div class="card"><div class="card-body">
       <form method="post" action="/admin/branding">
         {{ csrf_input(csrf) }}
@@ -38,7 +48,7 @@
     <div class="card"><div class="card-header">Now showing</div><div class="card-body">
       {% set b = brand() %}
       <div class="d-flex align-items-center gap-2 mb-3">
-        <span class="brand-mark">{{ b.initials }}</span><strong class="fs-5">{{ b.app_name }}</strong>
+        {{ brand_mark() }}<strong class="fs-5">{{ b.app_name }}</strong>
       </div>
       <p class="small mb-2">{{ b.brand_tagline }}</p>
       <p class="small text-muted mb-2">&copy; {{ b.company_legal_name }}</p>

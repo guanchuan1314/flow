@@ -3,8 +3,9 @@
 * sync_account_groups    : MT5 groups      -> account_groups   (one per server + group)
 * sync_trading_accounts : MT5 users       -> trading_accounts (+ clients for unknown owners)
 
-Both are idempotent and safe to run repeatedly (manually or on a schedule). They never
-delete anything: what disappeared from MT5 is flagged `on_server = False`.
+Both are idempotent and safe to run repeatedly (manually or on a schedule). A group that
+disappeared from MT5 is flagged `on_server = False`; so is an account, which then goes from
+Flow once MT5 confirms it does not have it (services.account_removal).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from app.models import (
 )
 from app.mt5 import MT5Error, MT5Gateway, get_gateway
 from app.mt5.gateway import MT5Group, MT5User
+from app.services import account_removal
 from app.services import clients as client_svc
 from app.services import sync
 from app.services import sync_runs
@@ -235,7 +237,7 @@ def sync_trading_accounts(db: Session, server: MT5Server, actor=None, gw: MT5Gat
     now = utcnow()
     groups = {t.mt5_group: t for t in db.scalars(select(AccountGroup).where(
         AccountGroup.server_id == server.id, AccountGroup.on_server.is_(True)))}
-    created, updated, clients_created, clients_linked, conflicts, failed_groups = 0, 0, 0, 0, [], []
+    created, updated, clients_created, clients_linked, failed_groups = 0, 0, 0, 0, []
     seen: set[int] = set()
     new_logins: list[int] = []
     pending = 0
@@ -250,14 +252,11 @@ def sync_trading_accounts(db: Session, server: MT5Server, actor=None, gw: MT5Gat
             continue
         for chunk in sync._chunks(users, IMPORT_CHUNK):  # one query per chunk for accounts, one for owners
             accounts = {a.login: a for a in db.scalars(select(TradingAccount).where(
-                TradingAccount.login.in_([u.login for u in chunk])))}
+                TradingAccount.server_id == server.id, TradingAccount.login.in_([u.login for u in chunk])))}
             owners = _clients_by_email(db, [u for u in chunk if u.login not in accounts])
             for user in chunk:
                 seen.add(user.login)
                 acc = accounts.get(user.login)
-                if acc is not None and acc.server_id != server.id:
-                    conflicts.append(f"login {user.login} already belongs to server {acc.server_id}")
-                    continue
                 status = AccountStatus.active if user.enabled else AccountStatus.disabled
                 if acc is None:
                     client, is_new = _owner(db, server, user, now, owners)
@@ -290,7 +289,7 @@ def sync_trading_accounts(db: Session, server: MT5Server, actor=None, gw: MT5Gat
                     db.commit()
                     pending = 0
     missing = 0
-    if not failed_groups:  # only flag accounts as gone when every group was read successfully
+    if not failed_groups and seen:  # only flag accounts as gone when every group was read successfully
         for acc in db.scalars(select(TradingAccount).where(TradingAccount.server_id == server.id,
                                                            TradingAccount.on_server.is_(True),
                                                            TradingAccount.status != AccountStatus.archived)):
@@ -298,10 +297,12 @@ def sync_trading_accounts(db: Session, server: MT5Server, actor=None, gw: MT5Gat
                 acc.on_server = False
                 missing += 1
     db.commit()
+    removal = account_removal.remove_gone(db, server, gw, actor)
     if new_logins:  # balances and equity for the newly imported accounts straight away
         sync.sync_accounts(db, gw, new_logins, server.id)
-    summary = {"seen": len(seen), "created": created, "updated": updated, "clients_created": clients_created,
-               "clients_linked": clients_linked, "missing": missing, "conflicts": conflicts[:50],
+    summary = {"removed": removal["removed"], "clients_removed": removal["clients"], "removal_error": removal["error"],
+               "seen": len(seen), "created": created, "updated": updated, "clients_created": clients_created,
+               "clients_linked": clients_linked, "missing": missing,
                "failed_groups": failed_groups, "account_groups": types_summary}
     server.accounts_synced_at = now
     server.last_sync_summary = {**{k: v for k, v in summary.items() if k != "account_groups"},
@@ -309,8 +310,8 @@ def sync_trading_accounts(db: Session, server: MT5Server, actor=None, gw: MT5Gat
     audit(db, actor, "mt5_sync.trading_accounts", "mt5_server", server.id,
           {k: (len(v) if isinstance(v, list) else v) for k, v in summary.items() if k != "account_groups"})
     db.commit()
-    log.info("server %s: %d accounts seen, %d imported, %d updated, %d missing, %d conflicts", server.name,
-             len(seen), created, updated, missing, len(conflicts))
+    log.info("server %s: %d accounts seen, %d imported, %d updated, %d missing", server.name,
+             len(seen), created, updated, missing)
     return summary
 
 

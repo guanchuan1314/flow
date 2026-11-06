@@ -53,9 +53,14 @@
     </div>
     {% endfor %}
     <div class="row border-top pt-3">
-      <div class="col-md-8 mb-2"><label class="form-label small" for="f-groups">Only MT5 groups (account triggers)</label>
+      <div class="col-md-4 mb-2"><label class="form-label small" for="f-server">MT5 server</label>
+        <select class="form-select form-select-sm" id="f-server" name="server_id">
+          <option value="">All servers</option>
+          {% for id, name in server_options() %}<option value="{{ id }}" {% if rule and rule.server_id == id %}selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+        <div class="form-text">For rules that find clients: those with an account on it.</div></div>
+      <div class="col-md-5 mb-2"><label class="form-label small" for="f-groups">Only MT5 groups (account triggers)</label>
         <input class="form-control form-control-sm mono" id="f-groups" name="groups" value="{{ f.get('groups', '') }}" placeholder="all, or e.g. real\*, !real\vip"></div>
-      <div class="col-md-4 mb-2"><label class="form-label small" for="f-kind">Accounts</label>
+      <div class="col-md-3 mb-2"><label class="form-label small" for="f-kind">Accounts</label>
         <select class="form-select form-select-sm" id="f-kind" name="kind">
           {% for k, l in kinds.items() %}<option value="{{ k }}" {% if f.get('kind', 'live') == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
     </div>
@@ -92,7 +97,7 @@
       <div class="table-responsive"><table class="table table-sm mb-0 small">
         <thead><tr><th>Target</th><th>Found</th><th></th></tr></thead>
         <tbody>{% for m in preview.matches %}
-          <tr><td>{% if m.login %}<a href="/admin/accounts/trading-accounts/{{ m.login }}">{{ m.login }}</a>{% else %}<a href="/admin/clients/{{ m.client_id }}">client {{ m.client_id }}</a>{% endif %}</td>
+          <tr><td>{% if m.login %}<a href="/admin/accounts/trading-accounts/{{ m.server_id }}:{{ m.login }}">{{ m.login }}</a>{% else %}<a href="/admin/clients/{{ m.client_id }}">client {{ m.client_id }}</a>{% endif %}</td>
             <td>{{ m.detail }}</td><td>{% if m.cooling %}<span class="badge text-bg-light border">cooldown</span>{% endif %}</td></tr>
         {% else %}{{ empty(3, "Nothing matches now.") }}{% endfor %}</tbody>
       </table></div>
@@ -107,7 +112,7 @@
       <thead><tr><th>When</th><th>Target</th><th>Outcome</th><th>Message</th></tr></thead>
       <tbody>{% for x in runs %}
         <tr><td>{{ x.at|dt }}</td>
-          <td>{% if x.login %}<a href="/admin/accounts/trading-accounts/{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
+          <td>{% if x.login %}<a href="/admin/accounts/trading-accounts/{{ x.server_id }}:{{ x.login }}">{{ x.login }}</a>{% elif x.client_id %}<a href="/admin/clients/{{ x.client_id }}">client {{ x.client_id }}</a>{% endif %}</td>
           <td>{% if x.outcome == "done" %}<span class="badge text-bg-success">done</span>{% else %}<span class="badge text-bg-danger">failed</span>{% endif %}</td>
           <td>{{ x.message }}</td></tr>
       {% else %}{{ empty(4, "Nothing done yet.") }}{% endfor %}</tbody>

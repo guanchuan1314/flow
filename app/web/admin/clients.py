@@ -132,11 +132,11 @@ def client_detail(request: Request, client_id: int, tab: str = "overview",
         ctx["notes"] = db.scalars(select(ClientNote).where(ClientNote.client_id == client.id)
                                   .order_by(ClientNote.id.desc())).all()
     elif tab == "activity":
-        logins = [a.login for a in ctx["accounts"]]
+        accounts = [x for a in ctx["accounts"] for x in (a.ref, str(a.login))]  # older entries name the login alone
         ctx["events"] = db.scalars(select(AuditLog).where(or_(
             (AuditLog.entity == "client") & (AuditLog.entity_id == str(client.id)),
             (AuditLog.actor_type == "client") & (AuditLog.actor_id == client.id),
-            (AuditLog.entity == "trading_account") & AuditLog.entity_id.in_([str(x) for x in logins]),
+            (AuditLog.entity == "trading_account") & AuditLog.entity_id.in_(accounts),
         )).order_by(AuditLog.id.desc()).limit(200)).all()
     return render(request, "admin/clients/detail.html", **ctx)
 

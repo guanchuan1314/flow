@@ -10,7 +10,7 @@
       {% for f in rows %}
         <tr>
           <td><a href="/admin/pamm/{{ f.id }}">{{ f.name }}</a></td>
-          <td><a href="/admin/accounts/trading-accounts/{{ f.master_login }}">{{ f.master_login }}</a></td>
+          <td><a href="/admin/accounts/trading-accounts/{{ f.server_id }}:{{ f.master_login }}">{{ f.master_login }}</a></td>
           <td><a href="/admin/clients/{{ f.manager_client_id }}">{{ managers[f.manager_client_id].full_name }}</a></td>
           <td>{{ badge(f.status) }}</td>
           <td class="num">{{ f.last_nav|money(4) }}</td><td class="num">{{ f.total_units|money(2) }}</td>
@@ -29,7 +29,7 @@
         {{ field("name", "Fund name", required=True) }}
         <div class="row">
           {{ field("manager_client_id", "Manager client ID", type="number", required=True, col="col-12 col-md-6") }}
-          {{ field("master_login", "Master MT5 login", type="number", required=True, col="col-12 col-md-6") }}
+          {{ field("master_login", "Master MT5 login", required=True, col="col-12 col-md-6") }}
           {{ field("performance_fee_pct", "Performance fee %", 20, type="number", step="0.01", col="col-12 col-md-6") }}
           {{ field("management_fee_pct_annual", "Management fee % / yr", 0, type="number", step="0.01", col="col-12 col-md-6") }}
         </div>

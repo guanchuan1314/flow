@@ -193,10 +193,10 @@ def test_every_admin_page_renders(admin_web, db, gw, account_groups):
         "/admin/symbols/history?kind=symbols&partial=1", "/admin/trading-setup/liquidity", "/admin/trading-setup/liquidity?kind=feed",
         "/admin/trading-setup/liquidity/new?kind=gateway", "/admin/trading-setup/liquidity/new?kind=feed&module=DXFeeder64.exe",
         "/admin/trading-setup/liquidity/new?kind=gateway&module=LMAXGateway64.exe", "/admin/trading-setup/routing", "/admin/trading-setup/routing/new",
-        "/admin/trading-setup/overview", "/admin/server-tools/health", "/admin/accounts/trader-styles", "/admin/accounts/trader-styles?style=suggested&demo=1",
-        "/admin/configuration", "/admin/accounts/inactive-accounts", "/admin/server-tools/restart", "/admin/import/pricing", "/admin/website-prices",
+        "/admin/trading-setup/overview", "/admin/servers/health", "/admin/accounts/trader-styles", "/admin/accounts/trader-styles?style=suggested&demo=1",
+        "/admin/servers/list", "/admin/accounts/inactive-accounts", "/admin/servers/restart", "/admin/import/pricing", "/admin/website-prices",
         "/admin/import/account-groups", "/admin/import/trading-accounts", "/admin/automation", "/admin/automation/new",
-        "/admin/accounts/trader-styles/setup", "/admin/server-tools/health?only=warnings", "/admin/server-tools/health?server=1",
+        "/admin/accounts/trader-styles/setup", "/admin/servers/health?only=warnings", "/admin/servers/health?server=1",
         "/admin/accounts/trader-styles?server=1",
         f"/admin/accounts/account-groups/{ids['type']}", "/admin/payments", "/admin/payments?status=", f"/admin/payments/{payment_id}",
         f"/admin/payments/new?client_id={ids['client']}", "/admin/trades/positions/data", "/admin/trades/positions/data?partial=1", "/admin/trades/positions/data?comment=*copy*",
@@ -445,8 +445,8 @@ def test_pages_live_under_their_menu_and_old_addresses_redirect(admin_web):
                      ("/admin/positions", "/admin/trades/positions/data"), ("/admin/deals?kind=trades", "/admin/trades/deals/data"),
                      ("/admin/orders?status=history", "/admin/trades/orders/data"), ("/admin/trades", "/admin/trades/positions/data"),
                      ("/admin/trades/deals", "/admin/trades/deals/data"),
-                     ("/admin/server-health", "/admin/server-tools/health"), ("/admin/mt5-servers/1/pricing", "/admin/import/pricing"),
-                     ("/admin/server-tools/pricing", "/admin/import/pricing")):
+                     ("/admin/server-health", "/admin/servers/health"), ("/admin/mt5-servers/1/pricing", "/admin/import/pricing"),
+                     ("/admin/servers/pricing", "/admin/import/pricing")):
         r = admin_web.get(old)
         assert r.status_code == 200 and r.url.path == new, (old, r.url)
     assert admin_web.get("/admin/audit?action=client").url.query == b"action=client"
@@ -454,4 +454,4 @@ def test_pages_live_under_their_menu_and_old_addresses_redirect(admin_web):
     assert admin_web.get("/admin/no-such-page").status_code == 404
     menu = admin_web.get("/admin").text
     assert 'href="/admin/trading-setup/overview"' in menu and 'href="/admin/staff/members"' in menu
-    assert 'href="/admin/security/audit"' in menu and 'href="/admin/server-tools/health"' in menu
+    assert 'href="/admin/security/audit"' in menu and 'href="/admin/servers/list"' in menu

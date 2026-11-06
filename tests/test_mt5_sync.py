@@ -96,9 +96,12 @@ def test_changes_and_deletions_on_mt5_are_applied(db, gw, server, account_groups
     acc = db.scalar(select(TradingAccount).where(TradingAccount.login == login))
     assert s["updated"] == 1 and (acc.leverage, acc.group, acc.trading_enabled) == (500, "real\\ecn", False)
     del gw.users[login]  # deleted in MT5
-    assert mt5_sync.sync_trading_accounts(db, server)["missing"] == 1
+    gw.create_user(group="real\\ecn", leverage=100, name="Still There", email="there@example.com", phone="", country="DE",
+                   master_password="Pass-12345", investor_password="Inv-12345")
+    s = mt5_sync.sync_trading_accounts(db, server)
+    assert (s["missing"], s["removed"]) == (1, 1)
     db.expire_all()
-    assert db.scalar(select(TradingAccount.on_server).where(TradingAccount.login == login)) is False
+    assert db.scalar(select(TradingAccount).where(TradingAccount.login == login)) is None
 
 
 def test_imported_account_gets_its_full_deal_history(db, gw, server, account_groups):

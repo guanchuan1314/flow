@@ -3,7 +3,7 @@
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, true
 
 from app.core.errors import ServiceError
 from app.db import utcnow
@@ -23,7 +23,7 @@ DEAL_OPEN, DEAL_CLOSED, DEAL_BALANCE = 11, 12, 13
 @pytest.fixture
 def trades(db, gw, monkeypatch):
     """Orders and deals of one account, on MT5 and in the CRM: position 5001 is open, 5002 is closed."""
-    monkeypatch.setattr(trade_cleanup, "visible_logins", lambda me: [LOGIN])
+    monkeypatch.setattr(trade_cleanup, "visible_rows", lambda me, model: true())
     server, now = db.get(MT5Server, 1), utcnow()
     orders = [(FILLED_OPEN, 4, OPEN_POS, False), (FILLED_CLOSED, 4, CLOSED_POS, False), (PENDING, 1, 0, True),
               (CANCELLED, 2, 0, False), (REJECTED, 5, OPEN_POS, False), (EXPIRED_OPEN, 6, OPEN_POS, False)]
@@ -154,7 +154,7 @@ def test_the_sync_page_also_opens_under_import_and_stays_there(admin_web, db, gw
 
 
 def test_comment_filter_also_limits_delete_all(admin_web, db, gw, trades, monkeypatch):  # noqa: F811
-    monkeypatch.setattr("app.web.admin.trading.visible_logins", lambda me: [LOGIN])
+    monkeypatch.setattr("app.web.admin.trading.visible_rows", lambda me, model: true())
     db.get(Order, (trades.id, CANCELLED)).comment = "copy#1 close"
     db.get(Order, (trades.id, REJECTED)).comment = "manual"
     db.get(Deal, (trades.id, DEAL_CLOSED)).comment = "copy#2 close"
@@ -180,12 +180,12 @@ def test_history_tab_shows_only_its_own_runs(admin_web, db, gw, trades):  # noqa
         text = admin_web.get(url).text
         return text[text.find('id="sync-runs"'):]
     form_post(admin_web, "/admin/trades/positions/sync", "/admin/trades/positions/sync", {})
-    assert "Open positions<div" in runs("/admin/trades/positions/history")
+    assert "Open positions</td>" in runs("/admin/trades/positions/history")
     assert "No synchronizations yet" in runs("/admin/trades/deals/history")
     form_post(admin_web, "/admin/trades/deals/sync", "/admin/trades/sync/all", {})
     full = runs("/admin/trades/deals/history")
-    assert "Trades<div" in full and "Open positions<div" not in full
-    assert "Open positions<div" not in runs("/admin/trades/positions/history?kind=trades")  # the same filters
+    assert "Trades</td>" in full and "Open positions</td>" not in full
+    assert "Open positions</td>" not in runs("/admin/trades/positions/history?kind=trades")  # the same filters
 
     page = admin_web.get("/admin/trades/positions/history").text
     choices = page[page.find('name="kind"'):page.find('name="trigger"')]

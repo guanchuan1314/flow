@@ -32,7 +32,7 @@ def test_ingest_is_idempotent_across_sessions(db):
         again = sync.ingest_deals(other, [_deal(2), _deal(3)], publish=False, server_id=1)
     assert [d.ticket for d in again] == [3]  # only the deal this call inserted is "new"
     assert db.scalar(select(func.count()).select_from(Deal)) == 3
-    state = db.get(SyncState, 500001)
+    state = db.get(SyncState, (1, 500001))
     assert state.last_deal_time is not None and state.server_id == 1
 
 

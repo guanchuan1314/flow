@@ -1,8 +1,9 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import no_server_alert, post_button %}
+{% from "macros.html" import no_server_alert, post_button, server_filter %}
 {% block page_title %}Trading setup{% endblock %}
 {% block content %}
 {% from "macros.html" import sync_panel %}{{ sync_panel(["trading_setup"]) }}
+{{ server_filter(server.id if server else "") }}
 <p class="small text-muted">Everything that decides how a server's clients trade, in the order a trade flows through it: quotes come in from
   <strong>data feeds</strong> (and gateways), clients trade the <strong>symbols</strong>, <strong>routing rules</strong> decide what happens
   to each request, and <strong>gateways</strong> send orders on to your LPs. Every change made in the CRM is written to MT5 first.</p>

@@ -5,7 +5,7 @@
 {% set manage = staff.has_perm("copy.manage") %}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
   {{ badge(f.status) }}
-  <span class="small text-muted">Master <a href="/admin/accounts/trading-accounts/{{ f.master_login }}">{{ f.master_login }}</a> ·
+  <span class="small text-muted">Master <a href="/admin/accounts/trading-accounts/{{ f.server_id }}:{{ f.master_login }}">{{ f.master_login }}</a> ·
     manager <a href="/admin/clients/{{ f.manager_client_id }}">{{ clients[f.manager_client_id].full_name }}</a> ·
     fees {{ f.performance_fee_pct|money }}% performance, {{ f.management_fee_pct_annual|money }}% / yr management</span>
   {% if manage %}

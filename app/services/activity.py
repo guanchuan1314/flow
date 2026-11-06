@@ -30,7 +30,7 @@ _TRADE_SQL = text("""
     UPDATE trading_accounts
        SET last_trade_at = GREATEST(COALESCE(last_trade_at, :t), :t),
            last_activity_at = GREATEST(COALESCE(last_activity_at, :t), :t)
-     WHERE login = :login""")
+     WHERE login = :login AND server_id = :server_id""")
 _ACCESS_SQL = text("""
     UPDATE trading_accounts
        SET last_access_at = :t,
@@ -38,14 +38,14 @@ _ACCESS_SQL = text("""
      WHERE login = :login AND server_id = :server_id""")
 
 
-def record_trades(db: Session, deals) -> None:
-    """Move the last trade forward for the accounts of these deals (rows or MT5Deals); the caller commits."""
+def record_trades(db: Session, deals, server_id: int) -> None:
+    """Move the last trade forward for the accounts of these deals of a server (rows or MT5Deals); the caller commits."""
     latest: dict[int, datetime] = {}
     for d in deals:
         if d.action in TRADES:
             latest[d.login] = max(latest.get(d.login, d.time), d.time)
     if latest:
-        db.execute(_TRADE_SQL, [{"login": login, "t": t} for login, t in latest.items()])
+        db.execute(_TRADE_SQL, [{"login": login, "t": t, "server_id": server_id} for login, t in latest.items()])
 
 
 def refresh_access(db: Session, server: MT5Server, gw: MT5Gateway | None = None) -> int:

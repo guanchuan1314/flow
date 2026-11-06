@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, TimestampMixin
 
@@ -78,7 +78,9 @@ class PaymentRequest(Base, TimestampMixin):
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     method: Mapped[str] = mapped_column(String(64), default="manual")  # the method's name when requested
     method_id: Mapped[int | None] = mapped_column(ForeignKey("payment_methods.id"), index=True)
+    server_id: Mapped[int | None] = mapped_column(ForeignKey("mt5_servers.id"))  # of trading_login
     trading_login: Mapped[int | None] = mapped_column(Integer)
+    server = relationship("MT5Server")
     status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.pending)
     promo_code: Mapped[str | None] = mapped_column(String(32))
     external_ref: Mapped[str | None] = mapped_column(String(128))

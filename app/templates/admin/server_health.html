@@ -1,5 +1,5 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import no_server_alert, post_button %}
+{% from "macros.html" import no_server_alert, post_button, server_select %}
 {% block page_title %}Server health{% endblock %}
 {% block content %}
 {% macro status_badge(level) -%}
@@ -21,13 +21,14 @@
   The CRM reads them every few minutes, keeps them for a week, and alerts on every page when a component disconnects.</p>
 <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
   <form method="get" class="d-flex gap-2">
+    {{ server_select(chosen, every=True, all_value="all", col="") }}
     <select class="form-select form-select-sm" name="only" aria-label="Show" data-autosubmit>
       <option value="">Everything</option>
       <option value="warnings" {% if only == "warnings" %}selected{% endif %}>Warnings only</option>
     </select>
   </form>
   {% if summary %}<div class="ms-auto">
-    {{ post_button("/admin/server-tools/health/refresh", '<i class="bi bi-arrow-repeat"></i> ' ~ "Read now", csrf,
+    {{ post_button("/admin/servers/health/refresh", '<i class="bi bi-arrow-repeat"></i> ' ~ "Read now", csrf,
                    "btn-primary btn-sm", fields={"server_id": chosen}) }}</div>{% endif %}
 </div>
 

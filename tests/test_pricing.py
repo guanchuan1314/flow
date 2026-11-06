@@ -113,4 +113,4 @@ def test_pricing_page(admin_web, db, gw, server):  # noqa: F811
     r = form_post(admin_web, other, post + "/apply", {}, headers={"referer": f"http://testserver{other}"})
     assert r.url.path == other
     run = admin_web.get("/admin/symbols/history").text
-    assert "Symbols and pricing<div" in run
+    assert "Symbols and pricing</td>" in run

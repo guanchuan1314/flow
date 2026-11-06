@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.db import get_db, utcnow
@@ -15,8 +15,8 @@ from app.web.common import render, web_staff
 
 def dashboard(request: Request, staff: Staff = Depends(web_staff), db: Session = Depends(get_db)):
     client_ids = visible_client_ids(staff)
-    logins = select(TradingAccount.login).where(TradingAccount.client_id.in_(client_ids),
-                                                TradingAccount.is_demo.is_(False))
+    live = (TradingAccount.client_id.in_(client_ids), TradingAccount.is_demo.is_(False))
+    logins = select(TradingAccount.server_id, TradingAccount.login).where(*live)
     now = utcnow()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -33,14 +33,14 @@ def dashboard(request: Request, staff: Staff = Depends(web_staff), db: Session =
         "new_clients": count(select(func.count()).select_from(Client).where(
             Client.id.in_(client_ids), Client.created_at >= now - timedelta(days=7))),
         "live_accounts": count(select(func.count()).select_from(TradingAccount).where(
-            TradingAccount.login.in_(logins), TradingAccount.status == AccountStatus.active)),
-        "equity": db.scalar(select(func.coalesce(func.sum(TradingAccount.equity), 0)).where(TradingAccount.login.in_(logins))),
+            *live, TradingAccount.status == AccountStatus.active)),
+        "equity": db.scalar(select(func.coalesce(func.sum(TradingAccount.equity), 0)).where(*live)),
         "deposits_month": money_sum(PaymentKind.deposit),
         "withdrawals_month": money_sum(PaymentKind.withdrawal),
         "open_positions": count(select(func.count()).select_from(Position).where(
-            Position.login.in_(logins), Position.is_open.is_(True))),
+            tuple_(Position.server_id, Position.login).in_(logins), Position.is_open.is_(True))),
         "floating": db.scalar(select(func.coalesce(func.sum(Position.profit), 0)).where(
-            Position.login.in_(logins), Position.is_open.is_(True))),
+            tuple_(Position.server_id, Position.login).in_(logins), Position.is_open.is_(True))),
         "sync_errors": count(select(func.count()).select_from(SyncState).where(SyncState.last_error.is_not(None))),
     }
     pending_payments = db.scalars(select(PaymentRequest).where(

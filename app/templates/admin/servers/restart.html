@@ -1,7 +1,8 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import alert, csrf_input, post_button %}
+{% from "macros.html" import alert, csrf_input, post_button, server_filter %}
 {% block page_title %}Restart: {{ s.name }}{% endblock %}
 {% block content %}
+{{ server_filter(s.id) }}
 {{ alert(mt5_warning) }}
 <p class="small text-muted mw-lg">Each part of the MT5 platform can be restarted on its own, as in MT5 Administrator. While a part
   restarts, the people connected to it are disconnected; MT5 brings it back by itself, usually within a minute.
@@ -19,7 +20,7 @@
       <td class="small text-muted">{{ effects.get(c.type, "Its connections drop until it is back.") }}</td>
       <td class="text-end text-nowrap">
         {% if c.type == 0 %}
-        <form method="post" action="/admin/server-tools/restart/{{ s.id }}" class="d-flex gap-2 justify-content-end"
+        <form method="post" action="/admin/servers/restart/{{ s.id }}" class="d-flex gap-2 justify-content-end"
               data-confirm="Restart {{ c.name }}? Every client on {{ s.name }} is disconnected and trading stops until it is back."
               data-confirm-variant="danger" data-confirm-ok="Restart">
           {{ csrf_input(csrf) }}<input type="hidden" name="component_id" value="{{ c.id }}">
@@ -28,7 +29,7 @@
           <button class="btn btn-sm btn-danger" type="submit"><i class="bi bi-bootstrap-reboot"></i> Restart</button>
         </form>
         {% else %}
-        {{ post_button("/admin/server-tools/restart/" ~ s.id, '<i class="bi bi-bootstrap-reboot"></i> Restart', csrf,
+        {{ post_button("/admin/servers/restart/" ~ s.id, '<i class="bi bi-bootstrap-reboot"></i> Restart', csrf,
                        "btn-outline-danger btn-sm", fields={"component_id": c.id}, danger=True, ok="Restart",
                        confirm="Restart " ~ c.name ~ " on " ~ s.name ~ "? " ~ effects.get(c.type, "Its connections drop until it is back.")) }}
         {% endif %}
@@ -39,5 +40,5 @@
 </table></div></div>
 <p class="small text-muted mt-2">Gateways and data feeds are restarted from
   <a href="/admin/trading-setup/liquidity?server={{ s.id }}">Liquidity providers</a>.
-  <a href="/admin/configuration">Back to Configuration</a></p>
+  <a href="/admin/servers/list">Back to Servers</a></p>
 {% endblock %}

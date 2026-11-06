@@ -1,0 +1,32 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import badge, empty, post_button %}
+{% block page_title %}Servers{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <p class="small text-muted mb-0">The MT5 servers Flow connects to. Each has its own accounts, groups, symbols and setup; the MT5 pages have a
+    filter to choose between them. Two servers can have the same login: they are two accounts, and lists show each row's server.</p>
+  <a class="btn btn-success btn-sm text-nowrap" href="/admin/servers/list/new"><i class="bi bi-plus-lg"></i> New server</a>
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Name</th><th>Type</th><th>Address</th><th>Clients see</th><th class="num">Accounts</th><th class="num">Account groups</th><th>Connection</th><th>Last checked</th><th></th></tr></thead>
+  <tbody>
+  {% for s in servers %}
+    <tr class="{% if not s.enabled %}text-muted{% endif %}">
+      <td class="fw-semibold"><a href="/admin/servers/list/{{ s.id }}">{{ s.name }}</a>
+        {% if s.is_price_feed %}<span class="badge text-bg-light border">price feed</span>{% endif %}
+        {% if not s.enabled %}<span class="badge text-bg-secondary">disabled</span>{% endif %}</td>
+      <td>{{ "Simulator" if s.kind.value == "simulator" else "MT5 Manager API" }}</td>
+      <td class="mono small">{{ s.address or "—" }}</td>
+      <td class="small">{{ s.terminal_name or "—" }}</td>
+      <td class="num">{{ usage.get(s.id, {}).get("accounts", 0) }}</td>
+      <td class="num">{{ usage.get(s.id, {}).get("groups", 0) }}</td>
+      <td>{{ badge(s.last_status) }}{% if s.last_error %}<div class="small text-danger">{{ s.last_error }}</div>{% endif %}</td>
+      <td class="small">{{ s.last_checked_at|dt }}</td>
+      <td class="text-end text-nowrap">
+        {{ post_button("/admin/servers/list/" ~ s.id ~ "/test", '<i class="bi bi-plug"></i> Test', csrf, "btn-outline-primary btn-sm") }}
+        <a class="btn btn-sm btn-outline-secondary" href="/admin/servers/list/{{ s.id }}">Edit</a></td>
+    </tr>
+  {% else %}{{ empty(9, "No MT5 servers yet. Add the first one with New server.") }}{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

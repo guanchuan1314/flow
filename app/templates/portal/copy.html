@@ -2,7 +2,7 @@
 {% from "macros.html" import field, select, csrf_input, badge, empty %}
 {% block page_title %}Copy trading{% endblock %}
 {% block content %}
-{% set accs = [] %}{% for a in accounts %}{% set _ = accs.append((a.login, "MT5 " ~ a.login ~ " (equity " ~ a.equity|money ~ ")")) %}{% endfor %}
+{% set accs = [] %}{% for a in accounts %}{% set _ = accs.append((a.ref, "MT5 " ~ a.login ~ " on " ~ a.server.display_name ~ " (equity " ~ a.equity|money ~ ")")) %}{% endfor %}
 <div class="alert alert-light border small">Copy trading mirrors another trader's positions onto your account automatically.
   Past performance is not a guide to future results, and you can lose money. You can stop copying at any time.</div>
 

@@ -52,7 +52,7 @@ def create_strategy(request: Request, owner_client_id: str = Form(...), master_l
         if not 0 <= fee <= 100:
             raise ServiceError("Performance fee must be between 0 and 100%")
         created["s"] = copy_trading.create_strategy(
-            db, me, _client(db, me, owner_client_id), opt_int(master_login), name.strip(), description=description.strip(),
+            db, me, _client(db, me, owner_client_id), master_login, name.strip(), description=description.strip(),
             performance_fee_pct=fee, min_investment=opt_dec(min_investment) or 0, is_public=is_public == "on")
     resp = attempt(request, run, "Strategy created.", "/admin/copy")
     return redirect(f"/admin/copy/{created['s'].id}") if "s" in created else resp
@@ -89,7 +89,7 @@ def subscribe(request: Request, strategy_id: int, follower_client_id: str = Form
 
     def run():
         mode = opt_enum(AllocationMode, allocation_mode, "allocation mode")
-        copy_trading.subscribe(db, routed(), me, _client(db, me, follower_client_id), s, opt_int(follower_login),
+        copy_trading.subscribe(db, routed(), me, _client(db, me, follower_client_id), s, follower_login,
                                mode, req_dec(ratio, "Ratio"), opt_dec(max_lot))
     return attempt(request, run, "Follower added.", f"/admin/copy/{strategy_id}")
 
@@ -132,7 +132,7 @@ def create_fund(request: Request, manager_client_id: str = Form(...), master_log
         perf, mgmt = opt_dec(performance_fee_pct) or 0, opt_dec(management_fee_pct_annual) or 0
         if not 0 <= perf <= 100 or not 0 <= mgmt <= 10:
             raise ServiceError("Performance fee must be 0-100% and management fee 0-10% per year")
-        created["f"] = pamm.create_fund(db, routed(), me, _client(db, me, manager_client_id), opt_int(master_login),
+        created["f"] = pamm.create_fund(db, routed(), me, _client(db, me, manager_client_id), master_login,
                                         name.strip(), description=description.strip(), performance_fee_pct=perf,
                                         management_fee_pct_annual=mgmt, min_investment=opt_dec(min_investment) or 0)
     resp = attempt(request, run, "PAMM fund created.", "/admin/pamm")

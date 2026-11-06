@@ -16,7 +16,7 @@
             {% if a.purpose.value != "trading" %}<span class="a-tag grey">{{ a.purpose|label }}</span>{% endif %}</div>
           <span class="small text-muted"><i class="bi bi-hdd-network"></i> {{ a.server.display_name }}</span>
         </div>
-        <div class="login">#{{ a.login }}</div>
+        <div class="login">#{{ a.login }} · {{ a.server.display_name }}</div>
         <div class="eq my-2">{{ a.equity|money }} <span class="fs-6 text-muted">{{ a.currency }}</span></div>
         <div class="kv"><span>Balance</span><span>{{ a.balance|money }}</span></div>
         <div class="kv"><span>Credit</span><span>{{ a.credit|money }}</span></div>
@@ -25,14 +25,14 @@
         {% if a.status.value == "active" %}
         <div class="border-top mt-3 pt-3 d-flex flex-wrap gap-2">
           {% if a.account_group and a.account_group.leverage_options|length > 1 %}
-          <form method="post" action="/portal/accounts/{{ a.login }}/leverage" class="d-flex gap-1">
+          <form method="post" action="/portal/accounts/{{ a.ref }}/leverage" class="d-flex gap-1">
             {{ csrf_input(csrf) }}
             <select class="form-select form-select-sm" name="leverage" aria-label="Leverage">{% for l in a.account_group.leverage_options %}<option value="{{ l }}" {% if l == a.leverage %}selected{% endif %}>1:{{ l }}</option>{% endfor %}</select>
             <button class="btn btn-sm btn-outline-secondary">Set</button>
           </form>
           {% endif %}
-          {{ post_button("/portal/accounts/" ~ a.login ~ "/password", '<i class="bi bi-key"></i> Trading password', csrf, "btn-outline-secondary btn-sm", confirm="Generate a new trading password? Open terminals will need to log in again.", fields={"which": "master"}) }}
-          {{ post_button("/portal/accounts/" ~ a.login ~ "/password", '<i class="bi bi-eye"></i> Investor password', csrf, "btn-outline-secondary btn-sm", fields={"which": "investor"}) }}
+          {{ post_button("/portal/accounts/" ~ a.ref ~ "/password", '<i class="bi bi-key"></i> Trading password', csrf, "btn-outline-secondary btn-sm", confirm="Generate a new trading password? Open terminals will need to log in again.", fields={"which": "master"}) }}
+          {{ post_button("/portal/accounts/" ~ a.ref ~ "/password", '<i class="bi bi-eye"></i> Investor password', csrf, "btn-outline-secondary btn-sm", fields={"which": "investor"}) }}
         </div>
         {% endif %}
       </div>

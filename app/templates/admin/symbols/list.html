@@ -1,8 +1,9 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import csrf_input, empty, pagination, post_button %}
+{% from "macros.html" import csrf_input, empty, pagination, post_button, server_filter %}
 {% block page_title %}Symbols{% endblock %}
 {% block content %}
 {% from "macros.html" import sync_panel %}{{ sync_panel(["symbols"]) }}
+{{ server_filter(server.id if server else "") }}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <p class="small text-muted mb-0">The symbols of each MT5 server. Creating, editing and deleting here changes the symbol on MT5 first;
     <strong>Sync from MT5</strong> brings in changes made in MT5 Administrator.</p>
@@ -58,13 +59,14 @@
     </form>
   </div>
   <div class="table-responsive"><table class="table table-hover">
-    <thead><tr><th><span class="visually-hidden">Select</span></th><th>Symbol</th><th>Folder</th><th>Description</th><th>Currencies</th><th class="num">Digits</th><th class="num">Contract</th>
+    <thead><tr><th><span class="visually-hidden">Select</span></th><th>Symbol</th><th>Server</th><th>Folder</th><th>Description</th><th>Currencies</th><th class="num">Digits</th><th class="num">Contract</th>
       <th>Trade</th><th>Execution</th><th class="num">Volume min / max / step</th><th class="num">Spread</th><th class="num">Swap long / short</th></tr></thead>
     <tbody>
     {% for s in page.items %}
       <tr class="{% if s.trade_mode == 0 %}text-muted{% endif %}">
         <td><input class="form-check-input" type="checkbox" name="ids" value="{{ s.id }}" form="bulk" aria-label="Select {{ s.name }}"></td>
         <td class="mono"><a href="/admin/symbols/data/{{ s.id }}">{{ s.name }}</a></td>
+        <td class="small">{{ server.name }}</td>
         <td class="small">{{ s.path.rpartition("\\")[0] }}</td>
         <td class="small">{{ s.description }}</td>
         <td class="small">{{ s.currency_base }}{% if s.currency_profit %}/{{ s.currency_profit }}{% endif %}</td>
@@ -76,7 +78,7 @@
         <td class="num">{{ s.spread if s.spread else "floating" }}</td>
         <td class="num small">{% if s.swap_mode %}{{ s.swap_long|num }} / {{ s.swap_short|num }}{% else %}—{% endif %}</td>
       </tr>
-    {% else %}{{ empty(12, "No symbols yet. Use Sync from MT5 to import this server's symbols." if not q else "No symbol matches.") }}{% endfor %}
+    {% else %}{{ empty(13, "No symbols yet. Use Sync from MT5 to import this server's symbols." if not q else "No symbol matches.") }}{% endfor %}
     </tbody>
   </table></div>
   {{ pagination(page, request) }}

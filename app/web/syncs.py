@@ -4,7 +4,7 @@ Imports > History."""
 
 from concurrent.futures import TimeoutError as FutureTimeout
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
 
@@ -39,7 +39,7 @@ def _setup(r: dict) -> str:
 
 
 def _one(kind: str, r: dict) -> str:
-    if kind == "trades":
+    if kind in ("trades", "catch_up"):
         text = (f"{r['new_deals']} new deals, {r['open_positions']} open positions, {r['open_orders']} open orders, "
                 f"{r['accounts']} accounts updated")
         return text + (f"; errors: {'; '.join(r['errors'][:3])}" if r.get("errors") else "")
@@ -126,22 +126,26 @@ def history_page(request, db: Session, title: str = "Synchronization history", o
     """A history page with its filters: Imports > History, or a menu's History tab (`only` its kinds)."""
     choices = {k: name for k, name in sync_runs.KINDS.items() if only is None or k in only}
     q = select(SyncRun).where(SyncRun.kind.in_(choices))
+    server = request.query_params.get("server", "")
+    if server.isdigit():  # a sync over every server belongs to each of them
+        q = q.where(or_(SyncRun.server_id == int(server), SyncRun.server_id.is_(None)))
     if kind in choices:
         q = q.where(SyncRun.kind == kind)
     if trigger in ("manual", "schedule"):
         q = q.where(SyncRun.trigger == trigger)
     if status in ("queued", "running", "done", "failed"):
         q = q.where(SyncRun.status.in_(("queued", "running")) if status == "running" else SyncRun.status == status)
-    ctx = dict(title=title, everything=only is None, choices=choices, kind=kind, trigger=trigger, status=status,
+    ctx = dict(title=title, everything=only is None, choices=choices, kind=kind, trigger=trigger, status=status, server=server,
                **history(db, q.order_by(SyncRun.id.desc()), page))
     return render(request, "admin/servers/sync_runs.html" if partial else "admin/servers/sync_history.html", **ctx)
 
 
-def server_id(db: Session) -> int | None:
-    """The MT5 server a page's sync button works on (None before one is set up: the sync then says so)."""
-    from app.services.servers import the_server
+def server_id(db: Session, chosen: str | int | None = "") -> int | None:
+    """The MT5 server a page's sync button works on: the one chosen on the page, else the default one. None before
+    one is set up: the sync then says so."""
+    from app.services.servers import pick
 
-    server = the_server(db)
+    server = pick(db, chosen)
     return server.id if server else None
 
 

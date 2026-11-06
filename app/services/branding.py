@@ -4,9 +4,12 @@ overrides them in the database, so a change shows without a restart (each proces
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import re
 from dataclasses import dataclass, fields, replace
 
+from markupsafe import Markup, escape
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -16,6 +19,8 @@ from app.services import app_settings
 
 KEY = "branding"
 CACHE_SECONDS = app_settings.CACHE_SECONDS
+LOGO_KEY = "logo"
+LOGO_MAX_BYTES = 2 * 1024 * 1024
 DEFAULT_ACCENT = "#2563eb"
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -100,6 +105,62 @@ def save(db: Session, staff, values: dict, ip: str | None = None) -> Brand:
 def stored(db: Session) -> dict:
     """What the back-office saved (empty = .env default), for the form."""
     return app_settings.stored(db, KEY)
+
+
+def _logo_type(content: bytes) -> str | None:
+    """The image type from the file's own first bytes: what a file is called or claims to be proves nothing."""
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    head = content[:1024].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
+    if head.startswith(b"<svg") or (head.startswith(b"<?xml") and b"<svg" in head):
+        return "image/svg+xml"
+    return None
+
+
+def logo() -> dict:
+    """The saved logo: {type, data (base64), version}, or {} when there is none. In the database, like the rest of the
+    branding, so every process and every server of the deployment has it."""
+    return app_settings.load(LOGO_KEY)
+
+
+def logo_file() -> tuple[bytes, str] | None:
+    saved = logo()
+    return (base64.b64decode(saved["data"]), saved["type"]) if saved else None
+
+
+def save_logo(db: Session, staff, content: bytes, ip: str | None = None) -> None:
+    if not content:
+        raise ServiceError("Choose a logo file first")
+    if len(content) > LOGO_MAX_BYTES:
+        raise ServiceError("The logo is too big (at most 2 MB)")
+    kind = _logo_type(content)
+    if kind is None:
+        raise ServiceError("The logo must be a PNG, JPEG, WebP or SVG image")
+    app_settings.save(db, LOGO_KEY, {"type": kind, "data": base64.b64encode(content).decode(),
+                                     "version": hashlib.sha256(content).hexdigest()[:12]})
+    audit(db, staff, "branding.logo", "app_settings", LOGO_KEY, {"type": kind, "bytes": len(content)}, ip=ip)
+    db.commit()
+    app_settings.clear(LOGO_KEY)
+
+
+def remove_logo(db: Session, staff, ip: str | None = None) -> None:
+    app_settings.save(db, LOGO_KEY, {})
+    audit(db, staff, "branding.logo", "app_settings", LOGO_KEY, {"removed": True}, ip=ip)
+    db.commit()
+    app_settings.clear(LOGO_KEY)
+
+
+def mark(classes: str = "") -> Markup:
+    """The broker's logo, or the mark with its initials while it has none. `classes` set the size."""
+    brand, saved = current(), logo()
+    if saved:
+        return Markup('<img class="brand-logo {}" src="/brand/logo?v={}" alt="{}">').format(
+            classes, saved["version"], brand.app_name)
+    return Markup('<span class="brand-mark {}">{}</span>').format(classes, escape(brand.initials))
 
 
 def css(brand: Brand) -> str:

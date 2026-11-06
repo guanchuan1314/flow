@@ -11,7 +11,7 @@
 {% block body %}
 <div class="a-shell">
   <aside class="a-side">
-    <a class="brand text-decoration-none" href="/portal"><span class="brand-mark s-mark-sm">{{ brand().initials }}</span>{{ brand().app_name }}</a>
+    <a class="brand text-decoration-none" href="/portal">{{ brand_mark("s-mark-sm") }}{{ brand().app_name }}</a>
     <nav class="nav flex-column">
       {{ navlink("/portal", "grid-1x2", "Dashboard", exact=True) }}
       {{ navlink("/portal/accounts", "wallet2", "My accounts") }}

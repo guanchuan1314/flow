@@ -228,8 +228,8 @@ class SyncRun(Base):
 class SyncState(Base):
     __tablename__ = "sync_state"
 
+    server_id: Mapped[int] = mapped_column(ForeignKey("mt5_servers.id"), primary_key=True)
     login: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
-    server_id: Mapped[int | None] = mapped_column(ForeignKey("mt5_servers.id"))
     last_deal_time: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     last_deal_sync_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_position_sync_at: Mapped[datetime | None] = mapped_column(DateTime)

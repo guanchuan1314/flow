@@ -1,8 +1,9 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import post_button, empty, badge, csrf_input %}
+{% from "macros.html" import post_button, empty, badge, csrf_input, server_filter %}
 {% block page_title %}{{ noun|capitalize }} sync{% endblock %}
 {% block content %}
-{% from "macros.html" import sync_panel %}{{ sync_panel([what, "trades"]) }}
+{% from "macros.html" import sync_panel %}{{ sync_panel([what, "trades", "catch_up"]) }}
+{{ server_filter(server, every=True) }}
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3"><div class="card kpi h-100"><div class="card-body">
     <div class="kpi-label">MT5 servers</div>
@@ -16,9 +17,9 @@
   </div></div></div>
 </div>
 {% if staff.has_perm("trading.sync") %}
-<div class="mb-3 d-flex flex-wrap gap-2 align-items-center">{{ post_button("/admin/trades/" ~ what ~ "/sync", '<i class="bi bi-arrow-repeat"></i> Sync ' ~ noun ~ ' now', csrf, "btn-primary") }}
-  {{ post_button("/admin/trades/sync/all", "Full sync", csrf, "btn-outline-primary") }}
-  <span class="small text-muted">{% if what == "orders" %}Orders that ended arrive with the deals, so this reads both. {% endif %}The background worker syncs automatically every {{ settings().sync_interval_seconds }} s and receives deals in real time.</span></div>
+<div class="mb-3 d-flex flex-wrap gap-2 align-items-center">{{ post_button("/admin/trades/" ~ what ~ "/sync", '<i class="bi bi-arrow-repeat"></i> Sync ' ~ noun ~ ' now', csrf, "btn-primary", fields={"server_id": server}) }}
+  {{ post_button("/admin/trades/sync/all", "Full sync", csrf, "btn-outline-primary", fields={"server_id": server}) }}
+  <span class="small text-muted">{% if what == "orders" %}Orders that ended arrive with the deals, so this reads both. {% endif %}MT5 pushes deals, positions and orders to Flow in real time; the background worker also checks every {{ settings().sync_interval_seconds }} s and catches up after a break.</span></div>
 {% endif %}
 <div data-tabs>
 {% if what != "positions" %}<section data-tab="Missing history" id="history">
@@ -30,7 +31,7 @@
       (nothing is duplicated), then refreshes open positions, open orders and balances. It runs in the background:
       you can leave this page and come back.</p>
     <form method="post" action="/admin/trades/sync/jobs" class="row g-2 align-items-end">
-      {{ csrf_input(csrf) }}
+      {{ csrf_input(csrf) }}<input type="hidden" name="server_id" value="{{ server }}">
       <div class="col-md-3"><label class="form-label small" for="job-logins">Accounts</label>
         <input class="form-control form-control-sm" id="job-logins" name="logins" placeholder="All, or logins: 500123, 500124"></div>
       <div class="col-md-2"><label class="form-label small" for="job-from">From</label>
@@ -50,7 +51,7 @@
 <section data-tab="Servers" id="servers">
 <div class="card">
   <div class="card-header d-flex justify-content-between">Servers
-    {% if staff.has_perm("mt5_servers.manage") %}<a class="small fw-normal" href="/admin/configuration">Configuration</a>{% endif %}</div>
+    {% if staff.has_perm("mt5_servers.manage") %}<a class="small fw-normal" href="/admin/servers/list">Servers</a>{% endif %}</div>
   <div class="table-responsive"><table class="table">
     <thead><tr><th>Server</th><th>Type</th><th>Address</th><th class="num">Accounts</th><th>Connection (this process)</th><th>Worker status</th><th>Last checked</th></tr></thead>
     <tbody>
@@ -77,7 +78,7 @@
     <thead><tr><th>Login</th><th>Last successful deal sync</th><th>Error</th></tr></thead>
     <tbody>
     {% for e in errors %}
-      <tr><td><a href="/admin/accounts/trading-accounts/{{ e.login }}">{{ e.login }}</a></td><td>{{ e.last_deal_sync_at|dt }}</td><td class="small text-danger">{{ e.last_error }}</td></tr>
+      <tr><td><a href="/admin/accounts/trading-accounts/{{ e.server_id }}:{{ e.login }}">{{ e.login }}</a></td><td>{{ e.last_deal_sync_at|dt }}</td><td class="small text-danger">{{ e.last_error }}</td></tr>
     {% else %}{{ empty(3, "No sync errors.") }}{% endfor %}
     </tbody>
   </table></div>

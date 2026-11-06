@@ -29,7 +29,7 @@ def _values(form) -> dict:
                 params={k: form.get(f"t_{trigger}_{k}") for k in t_params},
                 action_params={k: form.get(f"a_{action}_{k}") for k in a_params},
                 filters={"groups": form.get("groups", ""), "kind": form.get("kind", "live")},
-                cooldown_hours=opt_int(form.get("cooldown_hours")) or 0)
+                cooldown_hours=opt_int(form.get("cooldown_hours")) or 0, server_id=opt_int(form.get("server_id")))
 
 
 @router.get("/automation")

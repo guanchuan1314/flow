@@ -63,37 +63,37 @@ def open_account(body: StaffOpenAccountIn, db: Session = Depends(get_db), gw: MT
 
 
 @router.get("/accounts/{login}", response_model=TradingAccountOut)
-def get_account(login: int, db: Session = Depends(get_db), me: Staff = Depends(require("accounts.view"))):
+def get_account(login: str, db: Session = Depends(get_db), me: Staff = Depends(require("accounts.view"))):
     return visible_account(db, me, login)
 
 
 @router.post("/accounts/{login}/refresh", response_model=TradingAccountOut)
-def refresh(login: int, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
+def refresh(login: str, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
             me: Staff = Depends(require("accounts.view"))):
     return svc.refresh_account(db, gw, visible_account(db, me, login))
 
 
 @router.put("/accounts/{login}/leverage", response_model=TradingAccountOut)
-def leverage(login: int, body: LeverageIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
+def leverage(login: str, body: LeverageIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
              me: Staff = Depends(require("accounts.manage"))):
     return svc.change_leverage(db, gw, me, visible_account(db, me, login), body.leverage)
 
 
 @router.post("/accounts/{login}/password", response_model=PasswordOut)
-def reset_password(login: int, body: PasswordResetIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
+def reset_password(login: str, body: PasswordResetIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
                    me: Staff = Depends(require("accounts.manage"))):
-    pwd = svc.reset_password(db, gw, me, visible_account(db, me, login), body.investor, body.new_password)
-    return {"login": login, "password": pwd}
+    acc = visible_account(db, me, login)
+    return {"login": acc.login, "password": svc.reset_password(db, gw, me, acc, body.investor, body.new_password)}
 
 
 @router.put("/accounts/{login}/trading", response_model=TradingAccountOut)
-def set_trading(login: int, body: EnabledIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
+def set_trading(login: str, body: EnabledIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
                 me: Staff = Depends(require("accounts.manage"))):
     return svc.set_trading_enabled(db, gw, me, visible_account(db, me, login), body.enabled)
 
 
 @router.put("/accounts/{login}/status", response_model=TradingAccountOut)
-def set_status(login: int, body: StatusIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
+def set_status(login: str, body: StatusIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
                me: Staff = Depends(require("accounts.manage"))):
     return svc.set_status(db, gw, me, visible_account(db, me, login), body.status)
 
@@ -101,12 +101,12 @@ def set_status(login: int, body: StatusIn, db: Session = Depends(get_db), gw: MT
 @router.post("/accounts/transfer/to-mt5", response_model=TransferOut)
 def to_mt5(body: TransferIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
            me: Staff = Depends(require("accounts.manage", "finance.create"))):
-    acc = visible_account(db, me, body.login)
+    acc = visible_account(db, me, svc.ref_of(body.login, body.server_id))
     return svc.transfer_to_mt5(db, gw, me, db.get(Client, acc.client_id), acc, body.amount)
 
 
 @router.post("/accounts/transfer/from-mt5", response_model=TransferOut)
 def from_mt5(body: TransferIn, db: Session = Depends(get_db), gw: MT5Gateway = Depends(gateway),
              me: Staff = Depends(require("accounts.manage", "finance.create"))):
-    acc = visible_account(db, me, body.login)
+    acc = visible_account(db, me, svc.ref_of(body.login, body.server_id))
     return svc.transfer_from_mt5(db, gw, me, db.get(Client, acc.client_id), acc, body.amount)

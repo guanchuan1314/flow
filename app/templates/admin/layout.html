@@ -45,7 +45,7 @@
 {% set staff_initials = ((who[0][:1] ~ (who[-1][:1] if who|length > 1 else "")))|upper %}
 <div class="crm-shell">
   <aside class="crm-sidebar" aria-label="Main menu">
-    <a class="brand" href="/admin"><span class="brand-mark">{{ brand().initials }}</span>
+    <a class="brand" href="/admin">{{ brand_mark() }}
       <span class="brand-name">{{ brand().app_name }}<span class="brand-sub">Back-office</span></span></a>
     <nav class="nav flex-column pb-4">
       {{ navlink("/admin", "speedometer2", "Dashboard", exact=True) }}
@@ -75,8 +75,7 @@
       {{ navhub("setup") }}
       {{ navlink("/admin/automation", "lightning-charge", "Automation", "automation.manage") }}
       {{ navhub("import") }}
-      {{ navhub("tools") }}
-      {{ navlink("/admin/configuration", "gear", "Configuration", "mt5_servers.manage") }}
+      {{ navhub("servers") }}
 
       {% if staff.has_perm("finance.view") %}<div class="nav-section">Finance</div>{% endif %}
       {{ navlink("/admin/payments", "cash-coin", "Payments", "finance.view") }}
@@ -94,9 +93,10 @@
       {{ navlink("/admin/sources", "bar-chart", "Lead sources", "marketing.view") }}
 
       {% if staff.has_perm("staff.view") or staff.has_perm("security.view") or staff.has_perm("security.ip_rules")
-            or staff.has_perm("settings.branding") or staff.has_perm("symbols.manage") %}<div class="nav-section">Administration</div>{% endif %}
+            or staff.has_perm("settings.branding") or staff.has_perm("symbols.manage") or staff.has_perm("mt5_health.view") %}<div class="nav-section">Administration</div>{% endif %}
       {{ navhub("staff") }}
       {{ navhub("security") }}
+      {{ navlink("/admin/workers", "cpu", "Workers", "mt5_health.view") }}
       {{ navlink("/admin/branding", "palette", "Branding", "settings.branding") }}
       {{ navlink("/admin/website-prices", "graph-up-arrow", "Website prices", "symbols.manage") }}
 
@@ -134,7 +134,7 @@
         <div class="flex-grow-1">{% if a.error %}MT5 could not be read at {{ a.since.strftime("%H:%M") }} UTC ({{ a.error }}).
           {% else %}<strong>MT5 {{ a.kind }} "{{ a.name }}" is disconnected</strong> since {{ a.since.strftime("%Y-%m-%d %H:%M") }} UTC.
           {% if a.access %}Clients connected to it are cut off, or moved to another access server if they have one.{% endif %}{% endif %}</div>
-        <a class="alert-link text-nowrap" href="/admin/server-tools/health?server={{ a.server_id }}">Server health</a>
+        <a class="alert-link text-nowrap" href="/admin/servers/health?server={{ a.server_id }}">Server health</a>
       </div>{% endfor %}{% endif %}
       {% if staff and staff.has_perm("mt5_servers.manage") %}{% for name, error in custom_problems().items() %}
       <div class="alert alert-danger py-2 small" role="alert">Custom module {{ name }} has a problem: {{ error }}. See the log.</div>{% endfor %}{% endif %}

@@ -7,7 +7,7 @@ from app.core.errors import ServiceError, get_or_404
 from app.db import get_db
 from app.models import LiquidityConnection, RoutingRule, Staff
 from app.services import liquidity, mt5_setup, routing_rules as svc
-from app.services.servers import require_server, the_server
+from app.services.servers import pick, require_server
 from app.web import syncs
 from app.web.common import WebForbidden, attempt, opt_int, render, staff_perm, web_staff
 
@@ -23,8 +23,8 @@ def any_setup_perm(staff: Staff = Depends(web_staff)) -> Staff:
 
 # ---------------------------------------------------------------- trading setup
 @router.get("/trading-setup/overview")
-def setup_page(request: Request, me: Staff = Depends(any_setup_perm), db: Session = Depends(get_db)):
-    srv = the_server(db)
+def setup_page(request: Request, server: str = "", me: Staff = Depends(any_setup_perm), db: Session = Depends(get_db)):
+    srv = pick(db, server)
     return render(request, "admin/trading_setup.html", server=srv,
                   o=mt5_setup.overview(db, srv) if srv else None, kinds=liquidity.KINDS)
 
@@ -32,7 +32,7 @@ def setup_page(request: Request, me: Staff = Depends(any_setup_perm), db: Sessio
 @router.post("/trading-setup/overview/sync")
 def setup_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(any_setup_perm),
                db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "trading_setup", syncs.server_id(db), f"/admin/trading-setup/overview?server={server_id}")
+    return syncs.start(request, db, me, "trading_setup", syncs.server_id(db, server_id), f"/admin/trading-setup/overview?server={server_id}")
 
 
 # ---------------------------------------------------------------- routing rules
@@ -99,8 +99,8 @@ def _rule_ctx(db: Session, rule: RoutingRule | None, server) -> dict:
 
 
 @router.get("/trading-setup/routing")
-def routing_page(request: Request, me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
-    srv = the_server(db)
+def routing_page(request: Request, server: str = "", me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
+    srv = pick(db, server)
     rows = svc.rules(db, srv.id) if srv else []
     targets = svc.gateway_targets(db, srv.id) if srv else {}
     return render(request, "admin/routing/list.html", server=srv,
@@ -109,24 +109,24 @@ def routing_page(request: Request, me: Staff = Depends(staff_perm("routing.manag
 
 
 @router.post("/trading-setup/routing/preset")
-def routing_preset(request: Request, key: str = Form(...), value: str = Form(""),
+def routing_preset(request: Request, key: str = Form(...), value: str = Form(""), server_id: str = Form(""),
                    me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
     def run():
-        rule = svc.add_load_preset(db, me, require_server(db).id, key, value)
+        rule = svc.add_load_preset(db, me, require_server(db, server_id).id, key, value)
         return f"Rule '{rule.name}' added on MT5 at the top, switched off. Switch it on when you want it to apply."
-    return attempt(request, run, "{result}", "/admin/trading-setup/routing")
+    return attempt(request, run, "{result}", f"/admin/trading-setup/routing?server={server_id}")
 
 
 @router.post("/trading-setup/routing/sync")
 def routing_sync(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm("routing.manage")),
                  db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "routing", syncs.server_id(db), f"/admin/trading-setup/routing?server={server_id}")
+    return syncs.start(request, db, me, "routing", syncs.server_id(db, server_id), f"/admin/trading-setup/routing?server={server_id}")
 
 
 @router.get("/trading-setup/routing/new")
-def rule_new(request: Request, gateway: str = "",
+def rule_new(request: Request, gateway: str = "", server: str = "",
              me: Staff = Depends(staff_perm("routing.manage")), db: Session = Depends(get_db)):
-    srv = the_server(db)
+    srv = pick(db, server)
     ctx = _rule_ctx(db, None, srv)
     if gateway.isdigit():  # "Route orders here" from a gateway
         ctx["target"] = int(gateway)

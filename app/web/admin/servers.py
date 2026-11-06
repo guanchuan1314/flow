@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Form, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -24,31 +25,35 @@ def _form_values(form) -> dict:
         address=str(form.get("address", "")), manager_login=opt_int(form.get("manager_login")),
         password=str(form.get("password") or "") or None, terminal_name=str(form.get("terminal_name", "")),
         timeout_ms=(opt_int(form.get("timeout_seconds")) or 30) * 1000, enabled=form.get("enabled") == "on",
-        notes=str(form.get("notes", "")),
+        notes=str(form.get("notes", "")), price_feed=form.get("price_feed") == "on",
     )
 
 
-CONFIG = "/admin/configuration"
+SERVERS = "/admin/servers/list"
 
 
-def _only(db: Session) -> MT5Server:
-    """The MT5 server (enabled or not), or 404 before it is set up."""
-    return get_or_404(db, MT5Server, getattr(svc.the_server(db, enabled_only=False), "id", 0), "MT5 server")
+def _chosen(db: Session, server: str) -> MT5Server:
+    """The server a page is on (enabled or not), or 404 before one is set up."""
+    return get_or_404(db, MT5Server, getattr(svc.pick(db, server, enabled_only=False), "id", 0), "MT5 server")
 
 
-def _import_page(request: Request, db: Session, what: str):
+def _import_page(request: Request, db: Session, what: str, server: str):
     """MT5 > Imports: account groups (MT5 groups) or trading accounts (MT5 users)."""
-    return render(request, "admin/servers/import.html", s=svc.the_server(db, enabled_only=False), what=what)
+    return render(request, "admin/servers/import.html", s=svc.pick(db, server, enabled_only=False), what=what)
 
 
 @router.post("/import/account-groups/sync")
-def import_groups_run(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "account_groups", syncs.server_id(db), "/admin/import/account-groups")
+def import_groups_run(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm(PERM)),
+                      db: Session = Depends(get_db)):
+    chosen = syncs.server_id(db, server_id)
+    return syncs.start(request, db, me, "account_groups", chosen, f"/admin/import/account-groups?server={chosen or ''}")
 
 
 @router.post("/import/trading-accounts/sync")
-def import_accounts_run(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
-    return syncs.start(request, db, me, "trading_accounts", syncs.server_id(db), "/admin/import/trading-accounts")
+def import_accounts_run(request: Request, server_id: str = Form(""), me: Staff = Depends(staff_perm(PERM)),
+                        db: Session = Depends(get_db)):
+    chosen = syncs.server_id(db, server_id)
+    return syncs.start(request, db, me, "trading_accounts", chosen, f"/admin/import/trading-accounts?server={chosen or ''}")
 
 
 # ---------------------------------------------------------------- synchronization history
@@ -78,79 +83,69 @@ def sync_panel(request: Request, kinds: str = "", live: int = 0, me: Staff = Dep
 
 
 @router.get("/import/account-groups")
-def import_groups(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
-    return _import_page(request, db, "groups")
+def import_groups(request: Request, server: str = "", me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+    return _import_page(request, db, "groups", server)
 
 
 @router.get("/import/trading-accounts")
-def import_accounts(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
-    return _import_page(request, db, "accounts")
+def import_accounts(request: Request, server: str = "", me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+    return _import_page(request, db, "accounts", server)
 
 
-@router.get("/configuration")
-def configuration(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
-    """The MT5 server's details (the CRM has one): connection, manager login, imports. Before it is set up,
-    the same page adds it."""
-    server = svc.the_server(db, enabled_only=False)
-    if server is None:
-        return render(request, "admin/servers/form.html", s=None, simulators_allowed=not get_settings().is_prod)
-    return render(request, "admin/servers/form.html", s=server, usage=svc.usage(db).get(server.id, {}),
-                  crm_data=svc.crm_data(db, server), connected=bool(peek(server.id) and peek(server.id).connected),
-                  simulators_allowed=not get_settings().is_prod)
+@router.get("/servers/list")
+def server_list(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+    """Every MT5 server Flow connects to."""
+    servers = db.scalars(select(MT5Server).order_by(MT5Server.id)).all()
+    return render(request, "admin/servers/list.html", servers=servers, usage=svc.usage(db))
 
 
-@router.get("/configuration/servers")
-def server_list(request: Request, me: Staff = Depends(staff_perm(PERM))):
-    return redirect(CONFIG)  # one server: its page is Configuration
+@router.get("/servers/list/new")
+def server_new(request: Request, me: Staff = Depends(staff_perm(PERM))):
+    return render(request, "admin/servers/form.html", s=None, simulators_allowed=not get_settings().is_prod)
 
 
-@router.get("/configuration/servers/new")
-def server_new(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
-    existing = svc.the_server(db, enabled_only=False)
-    if existing is not None:  # one MT5 server only
-        flash(request, svc.ONE_SERVER.format(name=existing.name), "info")
-    return redirect(CONFIG)
-
-
-@router.post("/configuration/servers/new")
+@router.post("/servers/list/new")
 async def server_create(request: Request, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     form = await request.form()
     created = {}
 
     def run():
         created["s"] = svc.create_server(db, me, **_form_values(form))
-    resp = attempt(request, run, None, CONFIG)
+    resp = attempt(request, run, None, f"{SERVERS}/new")
     if "s" not in created:
         return resp
     server = created["s"]
     ok, message = svc.test_server(db, me, server)  # test straight away so the admin sees the result
     flash(request, f"Server '{server.name}' saved. Connection test: {message}", "success" if ok else "warning")
-    return redirect(CONFIG)
+    return redirect(SERVERS)
 
 
-@router.get("/configuration/servers/{server_id}")
-def server_edit(request: Request, server_id: int, me: Staff = Depends(staff_perm(PERM))):
-    return redirect(CONFIG)
+@router.get("/servers/list/{server_id:int}")
+def server_edit(request: Request, server_id: int, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
+    server = get_or_404(db, MT5Server, server_id, "MT5 server")
+    return render(request, "admin/servers/form.html", s=server, usage=svc.usage(db).get(server.id, {}),
+                  crm_data=svc.crm_data(db, server), connected=bool(peek(server.id) and peek(server.id).connected),
+                  simulators_allowed=not get_settings().is_prod)
 
 
-@router.post("/configuration/servers/{server_id}")
+@router.post("/servers/list/{server_id:int}")
 async def server_update(request: Request, server_id: int, me: Staff = Depends(staff_perm(PERM)),
                         db: Session = Depends(get_db)):
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
     form = await request.form()
     return attempt(request, lambda: svc.update_server(db, me, server, **_form_values(form)),
-                   "Server settings saved. Connections reconnect with the new settings.", CONFIG)
+                   "Server settings saved. Connections reconnect with the new settings.", f"{SERVERS}/{server_id}")
 
 
-@router.post("/configuration/servers/{server_id}/test")
+@router.post("/servers/list/{server_id:int}/test")
 def server_test(request: Request, server_id: int, me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
     ok, message = svc.test_server(db, me, server)
     flash(request, f"{server.name}: {message}", "success" if ok else "danger")
-    return back(request, CONFIG)
+    return back(request, SERVERS)
 
 
-@router.post("/configuration/servers/{server_id}/delete")
+@router.post("/servers/list/{server_id:int}/delete")
 def server_delete(request: Request, server_id: int, purge: str = Form(""), confirm_name: str = Form(""),
                   me: Staff = Depends(staff_perm(PERM)), db: Session = Depends(get_db)):
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
@@ -161,34 +156,34 @@ def server_delete(request: Request, server_id: int, purge: str = Form(""), confi
             raise ServiceError(f"Type the server name ({name}) to confirm deleting its CRM data")
         svc.delete_server(db, me, server, purge=purge == "on")
     return attempt(request, run, f"Server '{name}' removed from the CRM. Nothing was changed on the MT5 server.",
-                   CONFIG)
+                   SERVERS)
 
 
 # ---------------------------------------------------------------- restart components
-@router.get("/server-tools/restart")
-def restart_page(request: Request, me: Staff = Depends(staff_perm("mt5_servers.restart")),
+@router.get("/servers/restart")
+def restart_page(request: Request, server: str = "", me: Staff = Depends(staff_perm("mt5_servers.restart")),
                  db: Session = Depends(get_db)):
     from app.mt5 import MT5Error
     from app.mt5.gateway import COMPONENT_TYPES
     from app.services import server_health
 
-    server = _only(db)
+    srv = _chosen(db, server)
     components, error = [], None
     try:
-        components = server_health.live_components(server)
+        components = server_health.live_components(srv)
     except MT5Error as exc:
         error = f"Could not read the server's components from MT5: {exc}"
-    return render(request, "admin/servers/restart.html", s=server, components=components, mt5_warning=error,
+    return render(request, "admin/servers/restart.html", s=srv, components=components, mt5_warning=error,
                   types=COMPONENT_TYPES, effects=server_health.RESTART_EFFECT)
 
 
-@router.post("/server-tools/restart/{server_id:int}")
+@router.post("/servers/restart/{server_id:int}")
 def restart_component(request: Request, server_id: int, component_id: int = Form(...), confirm_name: str = Form(""),
                       me: Staff = Depends(staff_perm("mt5_servers.restart")), db: Session = Depends(get_db)):
     from app.services import server_health
 
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
-    page = "/admin/server-tools/restart"
+    page = f"/admin/servers/restart?server={server_id}"
 
     def run():
         main = next((c for c in server_health.live_components(server) if c.id == component_id and c.type == 0), None)
@@ -203,23 +198,24 @@ def restart_component(request: Request, server_id: int, component_id: int = Form
 PRICING = "/admin/import/pricing"
 
 
-@router.get("/server-tools/pricing")
+@router.get("/servers/pricing")
 def old_pricing_page():
     return redirect(PRICING)
 
 
 @router.get("/symbols/sync")
 @router.get("/import/pricing")
-def pricing_page(request: Request, me: Staff = Depends(staff_perm("symbols.manage")), db: Session = Depends(get_db)):
+def pricing_page(request: Request, server: str = "", me: Staff = Depends(staff_perm("symbols.manage")),
+                 db: Session = Depends(get_db)):
     from app.services import pricing
 
-    server = _only(db)
+    srv = _chosen(db, server)
     pending, error = None, None
     try:
-        pending = pricing.preview(db, server)
+        pending = pricing.preview(db, srv)
     except (ServiceError, Exception) as exc:  # noqa: BLE001 - the page still shows the settings
         error = f"Could not read the groups from MT5 ({getattr(exc, 'message', exc)}): what's pending isn't known."
-    return render(request, "admin/servers/pricing.html", s=server, p=pricing.settings(server), pending=pending,
+    return render(request, "admin/servers/pricing.html", s=srv, p=pricing.settings(srv), pending=pending,
                   mt5_warning=error)
 
 
@@ -238,7 +234,7 @@ async def pricing_save(request: Request, server_id: int, me: Staff = Depends(sta
         summary = pricing.save(db, me, server, rules, form.get("auto_enabled") == "on",
                                opt_int(form.get("auto_minutes")))
         return "Saved. " + pricing.describe(summary)
-    return attempt(request, run, "{result}", sent_from(request, PRICING))
+    return attempt(request, run, "{result}", sent_from(request, f"{PRICING}?server={server_id}"))
 
 
 @router.post("/import/pricing/{server_id:int}/apply")
@@ -248,4 +244,4 @@ def pricing_apply(request: Request, server_id: int, me: Staff = Depends(staff_pe
 
     server = get_or_404(db, MT5Server, server_id, "MT5 server")
 
-    return syncs.start(request, db, me, "pricing", server.id, sent_from(request, PRICING))
+    return syncs.start(request, db, me, "pricing", server.id, sent_from(request, f"{PRICING}?server={server_id}"))

@@ -261,7 +261,7 @@ def test_flow_failing_leaves_mt5_correct_and_the_next_account_goes_on(db, gw, se
     first, second = accounts(db, gw, server, 2)
     money(gw, first, ("10", "Deposit #1"), ("5", "Deposit #2"))
     money(gw, second, ("20", "Deposit #3"), ("5", "Deposit #4"))
-    real = compact._saved
+    real = compact.saved
     calls = []
 
     def failing(session, work):
@@ -269,7 +269,7 @@ def test_flow_failing_leaves_mt5_correct_and_the_next_account_goes_on(db, gw, se
         if len(calls) == 2:  # the save after the first group's MT5 work
             raise RuntimeError("database gone")
         real(session, work)
-    monkeypatch.setattr(compact, "_saved", failing)
+    monkeypatch.setattr(compact, "saved", failing)
     result = compact.run(db, admin, server, [first, second], gw=gw)
     assert result["failed"] == 1 and "database gone" in result["errors"][0] and result["accounts"] == 1
     assert [d.profit for d in history(gw, first)] == [15] and gw.check_balance(first)[0]  # MT5 finished its part
@@ -283,13 +283,13 @@ def test_a_collision_with_a_sync_is_tried_again(db, monkeypatch):
         tries.append(1)
         if len(tries) < 3:
             raise OperationalError("delete", {}, Exception("deadlock detected"))
-    compact._saved(db, work)
+    compact.saved(db, work)
     assert len(tries) == 3
 
     def never():
         raise OperationalError("delete", {}, Exception("deadlock detected"))
     with pytest.raises(OperationalError):
-        compact._saved(db, never)
+        compact.saved(db, never)
 
 
 def test_a_sync_does_not_bring_compacted_deals_back(db, gw, server, admin, login):

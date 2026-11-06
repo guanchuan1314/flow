@@ -1,8 +1,9 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import empty, post_button %}
+{% from "macros.html" import empty, post_button, server_filter %}
 {% block page_title %}Liquidity providers{% endblock %}
 {% block content %}
 {% from "macros.html" import sync_panel %}{{ sync_panel(["liquidity"]) }}
+{{ server_filter(server.id if server else "", keep={"kind": kind}) }}
 <p class="small text-muted">How each MT5 server connects to its liquidity providers: <strong>gateways</strong> send clients' orders to an LP
   (and can bring its quotes), <strong>data feeds</strong> bring in an LP's quotes. Creating, editing and deleting here changes MT5 first;
   <strong>Sync from MT5</strong> brings in changes made in MT5 Administrator. Which orders go to which gateway is set by the

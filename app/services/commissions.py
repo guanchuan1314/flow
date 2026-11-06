@@ -113,7 +113,8 @@ def _held_long_enough(db: Session, plan: CommissionPlan, deal: Deal) -> bool:
 def calculate_for_deal(db: Session, deal: Deal) -> list[IBCommission]:
     if deal.action not in TRADE_ACTIONS or deal.volume <= 0:
         return []
-    acc = db.scalar(select(TradingAccount).where(TradingAccount.login == deal.login))
+    acc = db.scalar(select(TradingAccount).where(TradingAccount.server_id == deal.server_id,
+                                                 TradingAccount.login == deal.login))
     if acc is None or acc.is_demo:
         return []
     client = db.get(Client, acc.client_id)

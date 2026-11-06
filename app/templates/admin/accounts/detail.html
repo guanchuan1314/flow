@@ -63,7 +63,7 @@
   <section data-tab="Manage" id="manage">
     <div class="row g-3">
       <div class="col-md-6 col-xl-4"><div class="card h-100"><div class="card-header">Leverage</div><div class="card-body">
-        <form method="post" action="/admin/accounts/trading-accounts/{{ a.login }}/leverage" class="d-flex gap-2">
+        <form method="post" action="/admin/accounts/trading-accounts/{{ a.server_id }}:{{ a.login }}/leverage" class="d-flex gap-2">
           {{ csrf_input(csrf) }}
           <select class="form-select" name="leverage" aria-label="Leverage">
             {% for l in (a.account_group.leverage_options if a.account_group else [a.leverage]) %}
@@ -98,7 +98,7 @@
   {% if manage and staff.has_perm("finance.create") and not a.is_demo %}
   <section data-tab="Wallet transfer" id="transfer">
     <div class="card mw-sm"><div class="card-body">
-      <form method="post" action="/admin/accounts/trading-accounts/{{ a.login }}/transfer" data-confirm="Move funds between the client's wallet and this account?">
+      <form method="post" action="/admin/accounts/trading-accounts/{{ a.server_id }}:{{ a.login }}/transfer" data-confirm="Move funds between the client's wallet and this account?">
         {{ csrf_input(csrf) }}
         <div class="mb-2"><select class="form-select" name="direction" aria-label="Direction">
           <option value="to_mt5">Wallet → MT5 account</option>

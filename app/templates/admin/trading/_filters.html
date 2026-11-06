@@ -1,4 +1,6 @@
 {# Shared filters of the positions, deals and orders lists. Login, symbol and comment accept * and ? wildcards. #}
+{% from "macros.html" import server_select %}
+{{ server_select(server, every=True) }}
 <div class="col-6 col-md-2"><input class="form-control form-control-sm" name="login" value="{{ login }}" placeholder="Login, e.g. 50*"
   title="MT5 login. * matches any text, ? one character: 50* = logins starting with 50" aria-label="MT5 login"></div>
 <div class="col-6 col-md-2"><input class="form-control form-control-sm" name="symbol" value="{{ symbol }}" placeholder="Symbol, e.g. *EUR*"

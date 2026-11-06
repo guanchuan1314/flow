@@ -23,6 +23,9 @@ log = logging.getLogger(__name__)
 
 CHUNK = 100
 HISTORY_START = datetime(2000, 1, 1)
+# MT5 dates things on its own clock, up to 14 hours from UTC: a period ending "now" has to reach past that, or
+# the newest deals of a server ahead of UTC stay out of it. The margin of a catch-up has the same reason.
+CLOCK_MARGIN = timedelta(days=1)
 _ingest_lock = threading.Lock()  # push and poll paths may deliver the same deal concurrently
 
 
@@ -59,13 +62,11 @@ def _deal_values(d: MT5Deal, server_id: int, now: datetime) -> dict:
     )
 
 
-def _state(db: Session, login: int, server_id: int | None = None) -> SyncState:
-    state = db.get(SyncState, login)
+def _state(db: Session, login: int, server_id: int) -> SyncState:
+    state = db.get(SyncState, (server_id, login))
     if state is None:
         state = SyncState(login=login, server_id=server_id)
         db.add(state)
-    elif server_id is not None:
-        state.server_id = server_id
     return state
 
 
@@ -75,8 +76,7 @@ def _bump_last_deal_time(db: Session, latest: dict[int, datetime], server_id: in
         return
     stmt = pg_insert(SyncState).values([{"login": login, "server_id": server_id, "last_deal_time": t}
                                         for login, t in latest.items()])
-    stmt = stmt.on_conflict_do_update(index_elements=[SyncState.login], set_={
-        "server_id": stmt.excluded.server_id,
+    stmt = stmt.on_conflict_do_update(index_elements=[SyncState.server_id, SyncState.login], set_={
         "last_deal_time": func.greatest(func.coalesce(SyncState.last_deal_time, stmt.excluded.last_deal_time),
                                         stmt.excluded.last_deal_time)})
     db.scalars(stmt.returning(SyncState), execution_options={"populate_existing": True}).all()  # refresh loaded rows
@@ -113,7 +113,7 @@ def ingest_deals(db: Session, mt5_deals: list[MT5Deal], publish: bool = True,
         latest: dict[int, datetime] = {}
         for row in new:
             latest[row.login] = max(latest.get(row.login, row.time), row.time)
-        activity.record_trades(db, new)
+        activity.record_trades(db, new, server_id)
         _bump_last_deal_time(db, latest, server_id)
         db.commit()
     rows = sorted(new, key=lambda r: (r.time_msc, r.ticket))
@@ -151,7 +151,8 @@ def _resolve(db: Session, gw: MT5Gateway | None, server_id: int | None) -> tuple
 
 
 def sync_deals(db: Session, gw: MT5Gateway | None = None, logins: list[int] | None = None,
-               server_id: int | None = None) -> int:
+               server_id: int | None = None, since: datetime | None = None) -> int:
+    """New deals of these accounts, and their orders that ended. `since` also reaches back to that moment."""
     s = get_settings()
     gw, server_id = _resolve(db, gw, server_id)
     logins = logins if logins is not None else tracked_logins(db, server_id)
@@ -160,8 +161,9 @@ def sync_deals(db: Session, gw: MT5Gateway | None = None, logins: list[int] | No
     total = 0
     for chunk in _chunks(logins):
         created = dict(db.execute(select(TradingAccount.login, TradingAccount.created_at)
-                                  .where(TradingAccount.login.in_(chunk))).all())
-        states = {st.login: st for st in db.scalars(select(SyncState).where(SyncState.login.in_(chunk)))}
+                                  .where(TradingAccount.server_id == server_id, TradingAccount.login.in_(chunk))).all())
+        states = {st.login: st for st in db.scalars(select(SyncState).where(SyncState.server_id == server_id,
+                                                                            SyncState.login.in_(chunk)))}
         starts = []
         for login in chunk:
             st = states.get(login)
@@ -171,8 +173,9 @@ def sync_deals(db: Session, gw: MT5Gateway | None = None, logins: list[int] | No
                 starts.append(created[login] - timedelta(days=1))
             else:
                 starts.append(HISTORY_START)
+        start = min(starts + [since] if since else starts)
         try:
-            deals = gw.get_deals(chunk, min(starts), now + timedelta(minutes=1))
+            deals = gw.get_deals(chunk, start, now + CLOCK_MARGIN)
         except MT5Error as exc:
             log.error("deal sync failed for %s logins: %s", len(chunk), exc)
             for login in chunk:
@@ -181,11 +184,11 @@ def sync_deals(db: Session, gw: MT5Gateway | None = None, logins: list[int] | No
             continue
         total += len(ingest_deals(db, deals, server_id=server_id))
         try:  # orders that left the open list in the same period (filled, cancelled, expired)
-            ingest_orders(db, gw.get_order_history(chunk, min(starts), now + timedelta(minutes=1)), server_id, False)
+            ingest_orders(db, gw.get_order_history(chunk, start, now + CLOCK_MARGIN), server_id, False)
         except MT5Error as exc:
             log.error("order history sync failed for %s logins: %s", len(chunk), exc)
         for login in chunk:
-            st = _state(db, login)
+            st = _state(db, login, server_id)
             st.last_deal_sync_at, st.last_error = now, None
         db.commit()
     return total
@@ -221,7 +224,7 @@ def sync_positions(db: Session, gw: MT5Gateway | None = None, logins: list[int] 
             if row.position_id not in seen:
                 row.is_open, row.closed_at, row.synced_at = False, now, now
         for login in chunk:
-            _state(db, login).last_position_sync_at = now
+            _state(db, login, server_id).last_position_sync_at = now
         db.commit()
         count += len(positions)
     return count
@@ -247,7 +250,7 @@ def sync_orders(db: Session, gw: MT5Gateway | None = None, logins: list[int] | N
             if row.ticket not in seen:
                 row.is_open, row.synced_at = False, now
         for login in chunk:
-            _state(db, login).last_order_sync_at = now
+            _state(db, login, server_id).last_order_sync_at = now
         db.commit()
         count += len(orders)
     return count
@@ -264,7 +267,8 @@ def sync_accounts(db: Session, gw: MT5Gateway | None = None, logins: list[int] |
         except MT5Error as exc:
             log.error("account sync failed: %s", exc)
             continue
-        for acc in db.scalars(select(TradingAccount).where(TradingAccount.login.in_(chunk))):
+        for acc in db.scalars(select(TradingAccount).where(TradingAccount.server_id == server_id,
+                                                           TradingAccount.login.in_(chunk))):
             if acc.login in infos:
                 apply_account_info(acc, infos[acc.login])
                 count += 1
@@ -276,8 +280,8 @@ def active_logins(db: Session, server_id: int, since: datetime) -> set[int]:
     """Accounts that can change any moment: an open position or order, or a deal since `since`."""
     found = set(db.scalars(select(Position.login).where(Position.server_id == server_id, Position.is_open.is_(True))))
     found.update(db.scalars(select(Order.login).where(Order.server_id == server_id, Order.is_open.is_(True))))
-    found.update(db.scalars(select(SyncState.login).join(TradingAccount, TradingAccount.login == SyncState.login)
-                            .where(TradingAccount.server_id == server_id, SyncState.last_deal_time >= since)))
+    found.update(db.scalars(select(SyncState.login).where(SyncState.server_id == server_id,
+                                                          SyncState.last_deal_time >= since)))
     return found
 
 
@@ -293,8 +297,7 @@ def poll(db: Session, gw: MT5Gateway, server_id: int) -> dict:
     idle = [x for x in tracked if x not in active]
     due_before = now - timedelta(seconds=s.sync_idle_interval_seconds)
     last = dict(db.execute(select(SyncState.login, SyncState.last_deal_sync_at)
-                           .join(TradingAccount, TradingAccount.login == SyncState.login)
-                           .where(TradingAccount.server_id == server_id)).all())
+                           .where(SyncState.server_id == server_id)).all())
     due = sorted((x for x in idle if last.get(x) is None or last[x] <= due_before),
                  key=lambda x: last.get(x) or HISTORY_START)
     share = -(-len(idle) * max(1, s.sync_interval_seconds) // max(1, s.sync_idle_interval_seconds))
@@ -333,10 +336,18 @@ def _empty_totals() -> dict:
     return {"new_deals": 0, "open_positions": 0, "open_orders": 0, "accounts": 0, "errors": []}
 
 
-def _sync_logins(db: Session, gw: MT5Gateway, scope: list[int], server_id: int, totals: dict) -> dict:
+def catch_up(db: Session, gw: MT5Gateway, server_id: int, since: datetime | None) -> dict:
+    """What pushed events would have brought while nothing was listening: every account, not a slice of them, back
+    to `since`, the last moment the server was known to be connected."""
+    return _sync_logins(db, gw, tracked_logins(db, server_id), server_id, _empty_totals(),
+                        since - CLOCK_MARGIN if since else None)
+
+
+def _sync_logins(db: Session, gw: MT5Gateway, scope: list[int], server_id: int, totals: dict,
+                 since: datetime | None = None) -> dict:
     """Deals, positions, orders and account summaries of these (tracked) logins, added to `totals`."""
     report(0, 4)  # progress of a background sync: four steps
-    totals["new_deals"] += sync_deals(db, gw, scope, server_id)
+    totals["new_deals"] += sync_deals(db, gw, scope, server_id, since)
     report(1, 4)
     totals["open_positions"] += sync_positions(db, gw, scope, server_id)
     report(2, 4)

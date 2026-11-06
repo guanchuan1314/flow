@@ -1,8 +1,9 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import empty, post_button %}
+{% from "macros.html" import empty, post_button, server_filter %}
 {% block page_title %}Routing{% endblock %}
 {% block content %}
 {% from "macros.html" import sync_panel %}{{ sync_panel(["routing"]) }}
+{{ server_filter(server.id if server else "") }}
 <p class="small text-muted">What MT5 does with each trade request: confirm it, send it to a gateway (your LP) or a dealer, delay, requote or
   reject it. MT5 checks the enabled rules <strong>from the top</strong>: the first rule that matches and ends in a final action decides.
   Delays and SL / TP clearing change the request and let MT5 go on to the next rule. Changes here are made on MT5 first;

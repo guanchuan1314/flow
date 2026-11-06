@@ -91,8 +91,24 @@
   {% if msg %}<div class="alert alert-{{ level }} {{ cls }}">{{ msg }}</div>{% endif %}
 {%- endmacro %}
 
+{# The server filter of the MT5 pages. server_select goes in a page's filter form; server_filter is a form of its
+   own, keeping the page's other values. `every` adds a choice for all servers, sent as `all_value`. #}
+{% macro server_select(current, every=False, all_value="", col="col-6 col-md-2") -%}
+  <div class="{{ col }}"><select class="form-select form-select-sm" name="server" aria-label="MT5 server" data-autosubmit>
+    {% if every %}<option value="{{ all_value }}" {% if current|string == all_value %}selected{% endif %}>All servers</option>{% endif %}
+    {% for id, name in server_options() %}<option value="{{ id }}" {% if current|string == id|string %}selected{% endif %}>{{ name }}</option>{% endfor %}
+  </select></div>
+{%- endmacro %}
+
+{% macro server_filter(current, every=False, keep={}) -%}
+  <form class="row g-2 mb-3" method="get">
+    {% for k, v in keep.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    {{ server_select(current, every, col="col-12 col-md-3") }}
+  </form>
+{%- endmacro %}
+
 {% macro no_server_alert() -%}
-  <div class="alert alert-info">Set up the MT5 server first (<a href="/admin/configuration">MT5 → Configuration</a>).</div>
+  <div class="alert alert-info">Set up an MT5 server first (<a href="/admin/servers/list">MT5 → Servers</a>).</div>
 {%- endmacro %}
 
 {# Add / remove rows of a repeated-fields table (app.js: data-add-row copies the <template> into the tbody). #}

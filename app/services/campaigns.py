@@ -53,7 +53,7 @@ def apply_deposit_bonus(db: Session, gw: MT5Gateway, payment: PaymentRequest) ->
         bonus = min(bonus, c.max_bonus)
     if bonus <= 0:
         return None
-    gw.balance_operation(payment.trading_login, bonus, f"Bonus {c.code}", credit=True)
+    gw.on(payment.server_id).balance_operation(payment.trading_login, bonus, f"Bonus {c.code}", credit=True)
     r = CampaignRedemption(campaign_id=c.id, client_id=payment.client_id, payment_request_id=payment.id,
                            login=payment.trading_login, bonus_amount=bonus)
     db.add(r)

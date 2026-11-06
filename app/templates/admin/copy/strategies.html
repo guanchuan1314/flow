@@ -10,7 +10,7 @@
       {% for s in rows %}
         <tr>
           <td><a href="/admin/copy/{{ s.id }}">{{ s.name }}</a></td>
-          <td><a href="/admin/accounts/trading-accounts/{{ s.master_login }}">{{ s.master_login }}</a></td>
+          <td><a href="/admin/accounts/trading-accounts/{{ s.server_id }}:{{ s.master_login }}">{{ s.master_login }}</a></td>
           <td><a href="/admin/clients/{{ s.owner_client_id }}">{{ owners[s.owner_client_id].full_name }}</a></td>
           <td>{{ badge(s.status) }}</td>
           <td>{{ "Public" if s.is_public else "Private" }}</td>
@@ -30,7 +30,7 @@
         {{ field("name", "Name", required=True) }}
         <div class="row">
           {{ field("owner_client_id", "Owner client ID", type="number", required=True, col="col-12 col-md-6") }}
-          {{ field("master_login", "Master MT5 login", type="number", required=True, col="col-12 col-md-6") }}
+          {{ field("master_login", "Master MT5 login", required=True, col="col-12 col-md-6") }}
           {{ field("performance_fee_pct", "Performance fee %", 20, type="number", step="0.01", col="col-12 col-md-6") }}
           {{ field("min_investment", "Min. follower equity", 100, type="number", step="0.01", col="col-12 col-md-6") }}
         </div>

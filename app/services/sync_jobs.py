@@ -37,7 +37,8 @@ def create_job(db: Session, actor, *, server_id: int | None, logins: list[int], 
     if server_id is not None and db.get(MT5Server, server_id) is None:
         raise ServiceError("Unknown MT5 server")
     if logins:
-        known = set(db.scalars(select(TradingAccount.login).where(TradingAccount.login.in_(logins))))
+        accounts = select(TradingAccount.login).where(TradingAccount.login.in_(logins))
+        known = set(db.scalars(accounts.where(TradingAccount.server_id == server_id) if server_id else accounts))
         unknown = sorted(set(logins) - known)
         if unknown:
             raise ServiceError(f"Not CRM accounts: {', '.join(map(str, unknown[:10]))}. Import them first (Sync from MT5).")

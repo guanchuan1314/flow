@@ -285,6 +285,7 @@ class StaffOpenAccountIn(OpenAccountIn):
 
 class TradingAccountOut(ORM):
     id: int
+    server_id: int
     login: int
     client_id: int
     account_group_id: int | None
@@ -334,6 +335,7 @@ class StatusIn(BaseModel):
 
 class TransferIn(BaseModel):
     login: int
+    server_id: int | None = None  # needed when two servers have this login
     amount: PositiveMoney
 
 
@@ -366,6 +368,7 @@ class PaymentIn(BaseModel):
     amount: PositiveMoney
     method: str = "manual"
     trading_login: int | None = None
+    server_id: int | None = None  # needed when two servers have this login
     promo_code: str | None = None
     external_ref: str | None = None
     details: str = ""
@@ -382,6 +385,7 @@ class PaymentOut(ORM):
     amount: Decimal
     currency: str
     method: str
+    server_id: int | None
     trading_login: int | None
     status: PaymentStatus
     promo_code: str | None
@@ -401,6 +405,7 @@ class ReviewIn(BaseModel):
 # ---------------------------------------------------------------- trading
 class DealOut(ORM):
     ticket: int
+    server_id: int
     login: int
     time: datetime
     action: int
@@ -417,6 +422,7 @@ class DealOut(ORM):
 
 class PositionOut(ORM):
     position_id: int
+    server_id: int
     login: int
     symbol: str
     action: int
@@ -437,6 +443,7 @@ class SyncIn(BaseModel):
 
 
 class SyncStateOut(ORM):
+    server_id: int
     login: int
     last_deal_time: datetime | None
     last_deal_sync_at: datetime | None
@@ -448,6 +455,7 @@ class SyncStateOut(ORM):
 class StrategyIn(BaseModel):
     owner_client_id: int
     master_login: int
+    server_id: int | None = None  # needed when two servers have this login
     name: str
     description: str = ""
     is_public: bool = True
@@ -457,6 +465,7 @@ class StrategyIn(BaseModel):
 
 class ClientStrategyIn(BaseModel):
     master_login: int
+    server_id: int | None = None  # needed when two servers have this login
     name: str
     description: str = ""
     performance_fee_pct: Decimal = Field(default=Decimal("20"), ge=0, le=50)
@@ -468,6 +477,7 @@ class StrategyOut(ORM):
     name: str
     description: str
     owner_client_id: int
+    server_id: int
     master_login: int
     status: StrategyStatus
     is_public: bool
@@ -481,6 +491,7 @@ class StrategyStatusIn(BaseModel):
 
 class SubscribeIn(BaseModel):
     follower_login: int
+    server_id: int | None = None  # needed when two servers have this login
     allocation_mode: AllocationMode = AllocationMode.equity_ratio
     ratio: Decimal = Field(default=Decimal("1"), gt=0)
     max_lot: Decimal | None = Field(default=None, gt=0)
@@ -494,6 +505,7 @@ class SubscriptionOut(ORM):
     id: int
     strategy_id: int
     follower_client_id: int
+    server_id: int
     follower_login: int
     allocation_mode: AllocationMode
     ratio: Decimal
@@ -525,6 +537,7 @@ class CopyExecutionOut(ORM):
 class FundIn(BaseModel):
     manager_client_id: int
     master_login: int
+    server_id: int | None = None  # needed when two servers have this login
     name: str
     description: str = ""
     performance_fee_pct: Decimal = Field(default=Decimal("20"), ge=0, le=100)
@@ -537,6 +550,7 @@ class FundOut(ORM):
     name: str
     description: str
     manager_client_id: int
+    server_id: int
     master_login: int
     status: StrategyStatus
     performance_fee_pct: Decimal

@@ -1,0 +1,40 @@
+{% extends "admin/layout.html" %}
+{% from "macros.html" import empty, pagination, pnl %}
+{% block page_title %}Closed positions{% endblock %}
+{% block content %}
+<p class="small text-muted">Rebuilt from deals: the deals that opened each position (in) and closed it (out). A partly closed position stays under
+  Open positions until the rest is closed. Compacted accounts are included, from the exact deals Flow keeps.</p>
+<div class="card">
+  <div class="card-header">
+    <form class="row g-2" method="get">
+      {% include "admin/trading/_filters.html" %}
+      <div class="col-6 col-md-2"><input class="form-control form-control-sm" type="date" name="date_from" value="{{ date_from }}" aria-label="Closed from"></div>
+      <div class="col-6 col-md-2"><input class="form-control form-control-sm" type="date" name="date_to" value="{{ date_to }}" aria-label="Closed to"></div>
+      <div class="col-md-auto"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button></div>
+    </form>
+  </div>
+  <div class="d-flex flex-wrap gap-4 px-3 pt-2 small"><span>Closed lots: <strong>{{ totals[0]|money }}</strong></span>
+    <span>Commission: <strong>{{ totals[1]|money }}</strong></span><span>Swap: <strong>{{ totals[2]|money }}</strong></span>
+    <span>Profit: <strong>{{ pnl(totals[3]) }}</strong></span></div>
+  <div class="table-responsive"><table class="table table-hover">
+    <thead><tr><th>Position</th><th>Server</th><th>Login</th><th>Client</th><th>Symbol</th><th>Side</th><th class="num">Lots</th><th>Opened</th><th class="num">Open price</th><th>Closed</th><th class="num">Close price</th><th class="num">Commission</th><th class="num">Swap</th><th class="num">Profit</th></tr></thead>
+    <tbody>
+    {% for p in page.items %}
+      {% set owner = owners.get((p.server_id, p.login)) %}
+      <tr>
+        <td class="mono"><a href="/admin/trades/deals/data?position={{ p.position_id }}&amp;server={{ p.server_id }}" title="The deals of this position">{{ p.position_id }}</a></td>
+        <td class="small">{{ servers.get(p.server_id) }}</td>
+        <td><a href="/admin/accounts/trading-accounts/{{ p.server_id }}:{{ p.login }}">{{ p.login }}</a></td>
+        <td>{% if owner %}<a href="/admin/clients/{{ owner[0] }}">{{ owner[1] }}</a>{% endif %}</td>
+        <td>{{ p.symbol }}</td><td>{{ p.action|side }}</td>
+        <td class="num">{{ p.volume|money }}</td>
+        <td class="small">{{ p.opened_at|dt }}</td><td class="num">{{ p.price_open|price if p.price_open is not none else "—" }}</td>
+        <td class="small">{{ p.closed_at|dt }}</td><td class="num">{{ p.price_close|price }}</td>
+        <td class="num">{{ p.commission|money }}</td><td class="num">{{ p.swap|money }}</td><td class="num">{{ pnl(p.profit) }}</td>
+      </tr>
+    {% else %}{{ empty(15, "No closed positions.") }}{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pagination(page, request) }}
+</div>
+{% endblock %}

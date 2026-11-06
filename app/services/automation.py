@@ -2,8 +2,8 @@
 payments, KYC), then acts on what matches. Nothing here is an MT5 setting: the rules live in the CRM only.
 Some actions (change group, leverage, trading on/off) still write to MT5 through the usual account services.
 
-A rule has a trigger (what to look for, with its params), filters (which accounts: MT5 group masks, live /
-demo), an action (with its params) and a cooldown: a target matched again is acted on only after
+A rule has a server (or every server), a trigger (what to look for, with its params), filters (which accounts: MT5 group
+masks, live / demo), an action (with its params) and a cooldown: a target matched again is acted on only after
 `cooldown_hours` (0 = once per target, ever). Every action, done or failed, is kept in the run log.
 New rules are disabled; **Preview** shows who matches now without doing anything.
 """
@@ -14,7 +14,7 @@ import logging
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import exists, false, func, not_, or_, select
+from sqlalchemy import and_, exists, false, func, not_, or_, select, true
 from sqlalchemy.orm import Session
 
 from app.core.audit import audit
@@ -22,7 +22,7 @@ from app.core.errors import Conflict, Forbidden, ServiceError
 from app.db import utcnow
 from app.web.labels import permission_label
 from app.models import (
-    AccountGroup, AccountStatus, AutomationRule, AutomationRun, Client, ClientNote, Deal, KycStatus, PaymentKind,
+    AccountGroup, AccountStatus, AutomationRule, AutomationRun, Client, ClientNote, Deal, KycStatus, MT5Server, PaymentKind,
     PaymentRequest, PaymentStatus, Staff, TradingAccount,
 )
 from app.mt5 import MT5Error, MT5Gateway
@@ -116,7 +116,8 @@ def _value(kind: str, raw, label: str):
     return str(n)
 
 
-def clean(trigger: str, params: dict, filters: dict, action: str, action_params: dict, db: Session) -> tuple:
+def clean(trigger: str, params: dict, filters: dict, action: str, action_params: dict, db: Session,
+          server_id: int | None = None) -> tuple:
     if trigger not in TRIGGERS:
         raise ServiceError("Choose what to look for")
     if action not in ACTIONS:
@@ -131,8 +132,14 @@ def clean(trigger: str, params: dict, filters: dict, action: str, action_params:
         raise ServiceError("Write the message")
     if action == "email_client" and not ap["subject"]:
         raise ServiceError("Write the email's subject")
-    if action == "change_group" and db.get(AccountGroup, ap["account_group_id"]) is None:
-        raise ServiceError("Choose the account group to move to")
+    if server_id is not None and db.get(MT5Server, server_id) is None:
+        raise ServiceError("Choose an MT5 server, or all servers")
+    if action == "change_group":
+        group = db.get(AccountGroup, ap["account_group_id"])
+        if group is None:
+            raise ServiceError("Choose the account group to move to")
+        if server_id is not None and group.server_id != server_id:
+            raise ServiceError(f"{group.name} is on another MT5 server than this rule")
     kind = filters.get("kind") or "live"
     if kind not in KINDS:
         raise ServiceError("Choose live, demo or both")
@@ -141,7 +148,7 @@ def clean(trigger: str, params: dict, filters: dict, action: str, action_params:
 
 def save_rule(db: Session, actor, rule: AutomationRule | None, *, name: str, trigger: str, params: dict,
               filters: dict, action: str, action_params: dict, cooldown_hours: int,
-              enabled: bool | None = None) -> AutomationRule:
+              enabled: bool | None = None, server_id: int | None = None) -> AutomationRule:
     name = name.strip()
     if not name or len(name) > 64:
         raise ServiceError("Name: 1 to 64 characters")
@@ -150,7 +157,7 @@ def save_rule(db: Session, actor, rule: AutomationRule | None, *, name: str, tri
         raise Conflict(f"A rule named {name} already exists")
     if cooldown_hours < 0:
         raise ServiceError("Cooldown can't be negative")
-    p, f, ap = clean(trigger, params, filters, action, action_params, db)
+    p, f, ap = clean(trigger, params, filters, action, action_params, db, server_id)
     check_permissions(actor, action)
     if rule is not None:
         check_permissions(actor, rule.action)  # nor rewrite a rule you couldn't have made
@@ -158,13 +165,13 @@ def save_rule(db: Session, actor, rule: AutomationRule | None, *, name: str, tri
     if new:
         rule = AutomationRule(name=name, enabled=False)  # new rules start disabled
         db.add(rule)
-    rule.name, rule.trigger, rule.params, rule.filters = name, trigger, p, f
+    rule.name, rule.server_id, rule.trigger, rule.params, rule.filters = name, server_id, trigger, p, f
     rule.action, rule.action_params, rule.cooldown_hours = action, ap, cooldown_hours
     if enabled is not None and not new:
         rule.enabled = enabled
     db.flush()
     audit(db, actor, "automation.create" if new else "automation.update", "automation_rule", rule.id,
-          {"name": name, "trigger": trigger, "params": p, "filters": f, "action": action, "action_params": ap,
+          {"name": name, "server_id": server_id, "trigger": trigger, "params": p, "filters": f, "action": action, "action_params": ap,
            "cooldown_hours": cooldown_hours, "enabled": rule.enabled})
     db.commit()
     return rule
@@ -192,6 +199,8 @@ def _accounts(rule: AutomationRule):
     from app.core import masks as mask_svc
 
     q = select(TradingAccount).where(TradingAccount.status == AccountStatus.active)
+    if rule.server_id:
+        q = q.where(TradingAccount.server_id == rule.server_id)
     kind = (rule.filters or {}).get("kind", "live")
     if kind != "any":
         q = q.where(TradingAccount.is_demo.is_(kind == "demo"))
@@ -205,7 +214,7 @@ def _accounts(rule: AutomationRule):
 
 
 def _cooling_clause(rule: AutomationRule, target):
-    """EXISTS: the target (a SQL expression giving "account:<login>" / "client:<id>") is cooling down."""
+    """EXISTS: the target (a SQL expression giving "account:<server>:<login>" / "client:<id>") is cooling down."""
     q = exists().where(AutomationRun.rule_id == rule.id, AutomationRun.target == target,
                        AutomationRun.outcome == "done")
     if rule.cooldown_hours:
@@ -219,29 +228,33 @@ def _match_query(rule: AutomationRule):
     p, now = rule.params or {}, utcnow()
     if TRIGGERS[rule.trigger][1] == "client":
         target = func.concat("client:", Client.id)
+        # a client is on a server by having an account there
+        on_server = (Client.id.in_(select(TradingAccount.client_id).where(TradingAccount.server_id == rule.server_id))
+                     if rule.server_id else true())
         if rule.trigger == "no_deposit":
             deposited = exists().where(PaymentRequest.client_id == Client.id, PaymentRequest.kind == PaymentKind.deposit,
                                        PaymentRequest.status == PaymentStatus.approved)
-            q = (select(Client).where(Client.created_at <= now - timedelta(days=p["days"]), ~deposited)
+            q = (select(Client).where(Client.created_at <= now - timedelta(days=p["days"]), ~deposited, on_server)
                  .order_by(Client.created_at, Client.id))
             return q, (lambda r: f"registered {r[0].created_at:%Y-%m-%d}, no deposit"), target
         q = (select(Client).where(Client.kyc_status == KycStatus.pending,  # kyc_pending
-                                  Client.updated_at <= now - timedelta(days=p["days"]))
+                                  Client.updated_at <= now - timedelta(days=p["days"]), on_server)
              .order_by(Client.updated_at, Client.id))
         return q, (lambda r: f"KYC pending since {r[0].updated_at:%Y-%m-%d}"), target
     if rule.trigger == "trader_style":
         return None
     q, _ = _accounts(rule)
-    target = func.concat("account:", TradingAccount.login)
+    target = func.concat("account:", TradingAccount.server_id, ":", TradingAccount.login)
     if rule.trigger == "inactive":
         last = func.coalesce(TradingAccount.last_activity_at, TradingAccount.created_at)
         return (q.where(last < now - timedelta(days=p["days"])).order_by(last, TradingAccount.login),
                 lambda r: f"last activity {(r[0].last_activity_at or r[0].created_at):%Y-%m-%d}", target)
     if rule.trigger == "many_deals":
-        counts = (select(Deal.login, func.count().label("n"))
+        counts = (select(Deal.server_id, Deal.login, func.count().label("n"))
                   .where(Deal.time >= now - timedelta(hours=p["hours"]), Deal.action.in_((0, 1)))
-                  .group_by(Deal.login).having(func.count() >= p["deals"]).subquery())
-        q = (q.add_columns(counts.c.n).join(counts, counts.c.login == TradingAccount.login)
+                  .group_by(Deal.server_id, Deal.login).having(func.count() >= p["deals"]).subquery())
+        q = (q.add_columns(counts.c.n)
+             .join(counts, and_(counts.c.server_id == TradingAccount.server_id, counts.c.login == TradingAccount.login))
              .order_by(counts.c.n.desc(), TradingAccount.login))
         return q, (lambda r: f"{r[1]} deals in {p['hours']} h"), target
     if rule.trigger == "margin_level":
@@ -261,16 +274,16 @@ def _style_matches(db: Session, rule: AutomationRule) -> list[dict]:
     kind = (rule.filters or {}).get("kind", "live")
     rows = []
     for demo in ([False, True] if kind == "any" else [kind == "demo"]):
-        rows += [r for r in trader_styles.profiles(db, None, p["days"], p["min_deals"], demo=demo)
+        rows += [r for r in trader_styles.profiles(db, rule.server, p["days"], p["min_deals"], demo=demo)
                  if r.get("style") == p["style"]]
-    return [{"target": f"account:{r['account'].login}", "login": r["account"].login,
+    return [{"target": f"account:{r['account'].ref}", "server_id": r["account"].server_id, "login": r["account"].login,
              "client_id": r["account"].client_id,
              "detail": f"{trader_styles.STYLES[p['style']]}: {r.get('placed', '?')} deals in {p['days']} days"}
             for r in rows if keep(r["account"])]
 
 
 def matches_now(db: Session, rule: AutomationRule, due_only: bool = False, limit: int | None = None) -> list[dict]:
-    """Who the rule matches now: [{target, login, client_id, detail}]. Reads only.
+    """Who the rule matches now: [{target, server_id, login, client_id, detail}]. Reads only.
 
     due_only leaves out targets cooling down (NOT EXISTS in SQL); limit caps the rows read."""
     found = _match_query(rule)
@@ -289,10 +302,11 @@ def matches_now(db: Session, rule: AutomationRule, due_only: bool = False, limit
     for r in db.execute(q):
         obj = r[0]
         if isinstance(obj, Client):
-            out.append({"target": f"client:{obj.id}", "login": None, "client_id": obj.id, "detail": detail(r)})
-        else:
-            out.append({"target": f"account:{obj.login}", "login": obj.login, "client_id": obj.client_id,
+            out.append({"target": f"client:{obj.id}", "server_id": None, "login": None, "client_id": obj.id,
                         "detail": detail(r)})
+        else:
+            out.append({"target": f"account:{obj.ref}", "server_id": obj.server_id, "login": obj.login,
+                        "client_id": obj.client_id, "detail": detail(r)})
     return out
 
 
@@ -345,7 +359,8 @@ def _act(db: Session, rule: AutomationRule, m: dict, gw: MT5Gateway | None) -> s
     from app.services import accounts, notifications
 
     ap = rule.action_params or {}
-    acc = db.scalar(select(TradingAccount).where(TradingAccount.login == m["login"])) if m["login"] else None
+    acc = db.scalar(select(TradingAccount).where(TradingAccount.server_id == m["server_id"],
+                                                 TradingAccount.login == m["login"])) if m["login"] else None
     client = db.get(Client, m["client_id"])
     if client is None:
         raise ServiceError("client not found")
@@ -354,8 +369,8 @@ def _act(db: Session, rule: AutomationRule, m: dict, gw: MT5Gateway | None) -> s
     def mt5_gw():
         if gw is not None:
             return gw
-        from app.mt5 import for_login
-        return for_login(db, acc.login)
+        from app.mt5 import for_account
+        return for_account(acc)
 
     if rule.action == "notify_staff":
         to = ap.get("to") or ""
@@ -419,7 +434,8 @@ def run_rule(db: Session, rule: AutomationRule, actor=None, gw: MT5Gateway | Non
             rule = db.get(AutomationRule, rule_id)
             message, outcome = getattr(exc, "message", None) or str(exc), "failed"
             failed += 1
-        db.add(AutomationRun(rule_id=rule_id, target=m["target"], login=m["login"], client_id=m["client_id"],
+        db.add(AutomationRun(rule_id=rule_id, target=m["target"], server_id=m["server_id"], login=m["login"],
+                             client_id=m["client_id"],
                              outcome=outcome, message=message[:255]))
         audit(db, actor, f"automation.{outcome}", "automation_rule", rule_id,
               {"rule": rule_name, "target": m["target"], "action": rule.action, "message": message[:200]})

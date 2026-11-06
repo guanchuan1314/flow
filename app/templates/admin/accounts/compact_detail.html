@@ -2,7 +2,7 @@
 {% from "macros.html" import empty, pagination %}
 {% block page_title %}{{ summary.label }}: exact deals{% endblock %}
 {% block content %}
-<p class="small text-muted">The deals in this summary of account <a href="/admin/accounts/trading-accounts/{{ summary.login }}">{{ summary.login }}</a>,
+<p class="small text-muted">The deals in this summary of account <a href="/admin/accounts/trading-accounts/{{ summary.server_id }}:{{ summary.login }}">{{ summary.login }}</a>,
   as MT5 had them. {{ summary.date_from|dt }} to {{ summary.date_to|dt }}, total {{ summary.amount|money }}.
   <a href="/admin/accounts/compact">Back to Compact</a></p>
 <div class="card">

@@ -1,9 +1,12 @@
 """Background worker threads for the CRM's MT5 server.
 
-  * deal-push  : DealSubscribe events -> ingest -> copy engine + commissions
+  * deal-push  : what MT5 pushes, in real time: deals -> ingest -> copy engine + commissions; a change to an account's
+                 positions or orders -> that account read again
   * poller     : periodic sync of deals, positions and account summaries (safety net): active accounts every
                  pass, idle ones every SYNC_IDLE_INTERVAL_SECONDS; also notices the server being edited or
-                 disabled in the admin and (re)subscribes; writes the worker heartbeat
+                 disabled in the admin and (re)subscribes; writes the worker heartbeat. When a server's link is
+                 new (the worker started, or the link dropped and came back) it first catches up on what was not
+                 pushed in between: every account, back to the last moment the server was known to be connected.
   * scheduler  : PAMM NAV snapshots, monthly PAMM / copy performance fees, server health samples,
                  account activity (last connections), the daily demo account clean-up, pricing, automation
   * sync-jobs  : background sync tasks queued in the admin
@@ -14,11 +17,13 @@ when a thread dies so the service manager restarts it) or embedded in the API pr
 """
 
 import logging
+import os
 import queue
+import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
@@ -26,12 +31,12 @@ from app import custom
 from app.config import get_settings
 from app.db import SessionLocal, utcnow
 from app.models import MT5Server, PammFund, StrategyStatus
-from app.mt5 import MT5Error, MT5Gateway, for_login, get_gateway
+from app.mt5 import MT5Error, MT5Gateway, get_gateway
 from app.mt5.gateway import MT5Deal
 from app.core.errors import ServiceError
 from app.services import (
-    activity, automation, client_sync, copy_trading, demo_cleanup, events, ip_rules, mt5_sync, pamm, pricing,
-    server_health, sync, sync_jobs, sync_runs,
+    activity, app_settings, automation, client_sync, copy_trading, demo_cleanup, events, ip_rules, mt5_sync, pamm,
+    pricing, server_health, sync, sync_jobs, sync_runs, workers,
 )
 
 log = logging.getLogger("worker")
@@ -40,6 +45,7 @@ NAV_SNAPSHOT_SECONDS = 3600
 POLL_STATS_SECONDS = 60
 FEE_PERIOD_DAYS = 30
 PUSH_QUEUE_MAX = 20000  # pushed deals waiting for ingest; beyond this they are dropped and the poller catches up
+REFRESH_SECONDS = 1.0  # accounts whose positions or orders changed are read again this often, however busy they are
 SLOW_STEP_SECONDS = 30.0  # scheduler steps slower than this are logged
 MAX_LOOP_BACKOFF = 60.0
 
@@ -52,7 +58,16 @@ class Worker:
         self.threads: list[threading.Thread] = []
         self.beats: dict[str, float] = {}  # thread name -> when its loop last went round (monotonic)
         self.dropped = 0  # pushed deals dropped because the queue was full
-        self._subs: dict[int, tuple[MT5Gateway, object]] = {}  # server_id -> (gateway, callback)
+        self._subs: dict[int, tuple[MT5Gateway, object, object]] = {}  # server_id -> (gateway, deal and trade callback)
+        self._changed: dict[int, dict[str, set[int]]] = {}  # server_id -> "position" | "order" | "account" -> logins
+        self._changed_lock = threading.Lock()
+        self._refreshed = 0.0  # when changed accounts were last read again
+        self._links: dict[int, tuple[MT5Gateway, int]] = {}  # server_id -> (gateway, its connections) last seen
+        self._good_at: dict[int, datetime] = {}  # server_id -> when it was last seen connected
+        self._behind: dict[int, datetime | None] = {}  # servers to catch up on, from when
+        self._streams: dict[int, dict] = {}  # server_id -> its link and pushed events, for the Workers page
+        self.steps: dict[str, dict] = {}  # scheduler step -> its last round, for the Workers page
+        self.started_at = utcnow()
         self._backoff: dict[int, tuple[float, float]] = {}  # server_id -> (retry_at, delay)
         self._poll_saved: dict[int, float] = {}  # server_id -> when poll_stats was last written
         self._last_nav = 0.0
@@ -90,14 +105,48 @@ class Worker:
             self._backoff[server.id] = (time.monotonic() + delay, delay)
             log.error("MT5 server '%s' unreachable (%s); retrying in %.0fs", server.name, exc, delay)
             self._mark(server.id, False, str(exc))
+            self._stream(server.id).update(connected=False, error=str(exc)[:200])
             return None
         self._backoff.pop(server.id, None)
         self._mark(server.id, True)
         self._subscribe(server.id, gw)
+        self._note_link(server, gw)
         return gw
+
+    def _stream(self, server_id: int) -> dict:
+        return self._streams.setdefault(server_id, {"connected": False, "deals": False, "trades": False, "error": "",
+                                                    "events": 0, "last_event_at": None, "last_catch_up_at": None,
+                                                    "catching_up": False})
+
+    def _note_link(self, server: MT5Server, gw: MT5Gateway) -> None:
+        """A link not seen before means pushed events may have been missed: since this worker last saw the server
+        connected, or, when it has just started, since the previous worker was last alive."""
+        link = (gw, gw.connections)
+        if self._links.get(server.id) != link:
+            self._links[server.id] = link
+            alive = (server.poll_stats or {}).get("worker_alive_at")
+            self._behind.setdefault(server.id, self._good_at.get(server.id)
+                                    or (datetime.fromisoformat(alive) if alive else None))
+        self._good_at[server.id] = utcnow()
+        self._stream(server.id).update(connected=True, error="")
+
+    def _catch_up(self, db, server: MT5Server, gw: MT5Gateway) -> None:
+        if server.id not in self._behind:
+            return
+        since, stream = self._behind[server.id], self._stream(server.id)
+        stream["catching_up"] = True
+        self._heartbeat()  # a long catch-up shows as one on the Workers page, not as a stuck poller
+        try:
+            sync_runs.record(db, "catch_up", server, lambda: sync.catch_up(db, gw, server.id, since))
+        finally:
+            stream["catching_up"] = False
+        del self._behind[server.id]  # only when it worked: otherwise the next pass tries again
+        stream["last_catch_up_at"] = utcnow().isoformat()
+        log.info("server '%s': caught up since %s", server.name, since)
 
     def _enqueue(self, server_id: int, deal: MT5Deal) -> None:
         """Push callback (runs on the MT5 thread): never blocks; a full queue drops the deal for the poller."""
+        self._event(server_id)
         try:
             self.queue.put_nowait((server_id, deal))
         except queue.Full:
@@ -105,6 +154,20 @@ class Worker:
             if self.dropped == 1 or self.dropped % 1000 == 0:
                 log.warning("push queue full (%d deals): dropped %d pushed deal(s) so far; the poller will "
                             "pick them up", PUSH_QUEUE_MAX, self.dropped)
+
+    def _event(self, server_id: int) -> None:
+        stream = self._stream(server_id)
+        stream["events"] += 1
+        stream["last_event_at"] = utcnow().isoformat()
+
+    def _note_change(self, server_id: int, kind: str, logins) -> None:
+        with self._changed_lock:
+            self._changed.setdefault(server_id, {}).setdefault(kind, set()).update(logins)
+
+    def _on_trade(self, server_id: int, kind: str, login: int) -> None:
+        """Push callback (runs on the MT5 thread): only notes the account, which _refresh_changed reads again."""
+        self._event(server_id)
+        self._note_change(server_id, kind, [login])
 
     def _subscribe(self, server_id: int, gw: MT5Gateway) -> None:
         current = self._subs.get(server_id)
@@ -116,17 +179,30 @@ class Worker:
         def on_deal(deal: MT5Deal, sid: int = server_id) -> None:
             self._enqueue(sid, deal)
 
+        def on_trade(kind: str, login: int, sid: int = server_id) -> None:
+            self._on_trade(sid, kind, login)
+
+        stream = self._stream(server_id)
         try:
             gw.subscribe_deals(on_deal)
-            self._subs[server_id] = (gw, on_deal)
+            self._subs[server_id] = (gw, on_deal, on_trade)
+            stream["deals"] = True
         except MT5Error as exc:
             log.warning("push events unavailable for server %s (%s); polling only", server_id, exc)
+            return
+        try:
+            gw.subscribe_trades(on_trade)
+            stream["trades"] = True
+        except MT5Error as exc:
+            log.warning("position and order events unavailable for server %s (%s); polling them", server_id, exc)
 
     def _unsubscribe(self, server_id: int) -> None:
-        gw, callback = self._subs.pop(server_id, (None, None))
+        gw, on_deal, on_trade = self._subs.pop(server_id, (None, None, None))
+        self._stream(server_id).update(deals=False, trades=False)
         if gw is not None:
             try:
-                gw.unsubscribe_deals(callback)
+                gw.unsubscribe_deals(on_deal)
+                gw.unsubscribe_trades(on_trade)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -148,8 +224,9 @@ class Worker:
 
     def _push_step(self) -> float:
         try:
-            batch = [self.queue.get(timeout=1)]
+            batch = [self.queue.get(timeout=0.25)]
         except queue.Empty:
+            self._refresh_changed()
             return 0
         while len(batch) < 500:
             try:
@@ -165,10 +242,37 @@ class Worker:
                     new = sync.ingest_deals(db, deals, server_id=server_id)
                     if new:
                         log.info("push: server %s ingested %d deals", server_id, len(new))
+                        self._note_change(server_id, "account", {d.login for d in deals})  # the balance moved
                 except Exception:  # noqa: BLE001 - the poller fetches these deals again
                     db.rollback()
                     log.exception("push ingest failed (server %s)", server_id)
+        self._refresh_changed()
         return 0
+
+    def _refresh_changed(self) -> None:
+        """Read again the accounts whose positions or orders changed, with their balance and equity. However many
+        events an account gets, it is read once a round; what fails here the poller reads anyway."""
+        if time.monotonic() - self._refreshed < REFRESH_SECONDS:
+            return
+        self._refreshed = time.monotonic()
+        with self._changed_lock:
+            changed, self._changed = self._changed, {}
+        for server_id, kinds in changed.items():
+            with SessionLocal() as db:
+                try:
+                    gw = self._gateway(server_id)
+                    ours = set(sync.tracked_logins(db, server_id))
+                    positions, orders = kinds.get("position", set()) & ours, kinds.get("order", set()) & ours
+                    if positions:
+                        sync.sync_positions(db, gw, sorted(positions), server_id)
+                    if orders:
+                        sync.sync_orders(db, gw, sorted(orders), server_id)
+                    touched = (positions | orders | kinds.get("account", set())) & ours
+                    if touched:
+                        sync.sync_accounts(db, gw, sorted(touched), server_id)
+                except Exception:  # noqa: BLE001 - the poller reads these accounts too
+                    db.rollback()
+                    log.exception("refreshing changed accounts failed (server %s)", server_id)
 
     def _poll_step(self) -> float:
         interval = get_settings().sync_interval_seconds
@@ -189,6 +293,7 @@ class Worker:
             return
         with SessionLocal() as db:
             try:
+                self._catch_up(db, server, gw)
                 stats = sync.poll(db, gw, server.id)
                 if stats["new_deals"]:
                     log.info("poll '%s': %s", server.name, stats)
@@ -215,7 +320,8 @@ class Worker:
 
     def _heartbeat(self) -> None:
         """Write the worker's last-alive time, and how long ago each thread went round, to the enabled server's
-        poll_stats (`worker_alive_at`, `worker_threads`), so a dead or stuck worker can be told from a quiet one."""
+        poll_stats (`worker_alive_at`, `worker_threads`), so a dead or stuck worker can be told from a quiet one;
+        and all of it, with each server's link and each scheduler step, for the Workers page."""
         now = time.monotonic()
         beat = {"worker_alive_at": utcnow().isoformat(),
                 "worker_threads": {name: round(now - at, 1) for name, at in self.beats.items()},
@@ -224,6 +330,11 @@ class Worker:
             try:
                 for server in db.scalars(select(MT5Server).where(MT5Server.enabled.is_(True))):
                     server.poll_stats = {**(server.poll_stats or {}), **beat}
+                app_settings.save(db, workers.KEY, {
+                    "at": beat["worker_alive_at"], "started_at": self.started_at.isoformat(),
+                    "process": f"{socket.gethostname()}, process {os.getpid()}", "threads": beat["worker_threads"],
+                    "servers": {str(k): v for k, v in self._streams.items()}, "steps": self.steps,
+                    "queued": self.queue.qsize(), "dropped": self.dropped})
                 db.commit()
             except Exception:  # noqa: BLE001 - a missed heartbeat is not worth stopping the poller
                 db.rollback()
@@ -273,14 +384,16 @@ class Worker:
             if self.stop.is_set():
                 break
             self.beats["scheduler"] = time.monotonic()
-            started = time.monotonic()
+            started, failed = time.monotonic(), ""
             with SessionLocal() as db:
                 try:
                     step(db)
-                except Exception:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001
                     db.rollback()
                     log.exception("scheduler step '%s' failed", name)
+                    failed = str(exc)[:200]
             took = time.monotonic() - started
+            self.steps[name] = {"at": utcnow().isoformat(), "seconds": round(took, 1), "failed": failed}
             if took > SLOW_STEP_SECONDS:
                 log.warning("scheduler step '%s' took %.1fs", name, took)
         return 60
@@ -290,7 +403,7 @@ class Worker:
         snapshot_due = time.monotonic() - self._last_nav >= NAV_SNAPSHOT_SECONDS
         for fund in funds:
             try:
-                gw = self._fixed_gw or for_login(db, fund.master_login)
+                gw = self._fixed_gw or get_gateway(fund.server_id)
                 if snapshot_due:
                     pamm.snapshot(db, gw, fund)
                 if pamm.due_for_fees(fund, FEE_PERIOD_DAYS):

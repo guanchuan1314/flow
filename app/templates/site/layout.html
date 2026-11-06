@@ -19,7 +19,7 @@
 </div>
 <header class="s-header">
   <nav class="navbar navbar-expand-lg container">
-    <a class="navbar-brand s-brand" href="/"><span class="brand-mark">{{ brand().initials }}</span>{{ brand().app_name }}</a>
+    <a class="navbar-brand s-brand" href="/">{{ brand_mark() }}{{ brand().app_name }}</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#snav" aria-controls="snav" aria-expanded="false" aria-label="Menu"><span class="navbar-toggler-icon"></span></button>
     <div class="collapse navbar-collapse" id="snav">
       <ul class="navbar-nav mx-auto">
@@ -53,7 +53,7 @@
   <div class="container">
     <div class="row g-4">
       <div class="col-lg-4 pe-lg-5">
-        <div class="s-brand s-brand-light mb-3"><span class="brand-mark">{{ brand().initials }}</span>{{ brand().app_name }}</div>
+        <div class="s-brand s-brand-light mb-3">{{ brand_mark() }}{{ brand().app_name }}</div>
         <p>{{ brand().brand_tagline }}. Forex, metals, indices and crypto CFDs on MetaTrader 5.</p>
         <a class="btn btn-accent d-inline-block" href="/portal/register">Open an account</a>
       </div>

@@ -30,7 +30,7 @@ log = logging.getLogger("sync")
 
 KINDS = {
     "account_groups": "Account groups", "trading_accounts": "Trading accounts", "trades": "Trades",
-    "positions": "Open positions", "orders": "Orders", "deals": "Deals",
+    "positions": "Open positions", "orders": "Orders", "deals": "Deals", "catch_up": "Catch-up after a break",
     "trading_setup": "Trading setup", "symbols": "Symbols", "liquidity": "Liquidity providers",
     "routing": "Routing", "pricing": "Symbols and pricing", "demo_cleanup": "Inactive demo accounts",
     "trade_cleanup": "Delete orders and deals", "compact": "Compact trading accounts",

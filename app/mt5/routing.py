@@ -1,14 +1,58 @@
-"""A gateway that forwards every call to the CRM's MT5 server.
+"""A gateway that forwards every call to the MT5 server of the account it is about.
 
-The CRM works with exactly one MT5 server, so there is nothing to route: each call goes to
-that server's gateway, looked up on every call so edits in the admin (address, password)
-and the gateway rebuilds they cause are picked up. Kept so services written against
-`routed()` work unchanged.
+A login belongs to its server, and two servers can have the same one. So code that has the account says which server:
+gw.on(account.server_id).balance_operation(...). A call with only a login goes to the one server Flow knows it on, and
+a call with several logins is split between their servers and the answers put together. A login on two servers, or one
+Flow does not know while more than one server is set up, is an error: a guess could move money on the wrong account.
+
+A call about the server itself (groups, symbols, quotes) goes to the default server, the website's price feed. To work
+on another one, use its gateway: mt5.get_gateway(server_id), or services.mt5_calls. Calls by ticket cannot be routed
+(a ticket number means something different on each server) and must use the server's gateway too.
+
+The server's gateway is looked up on every call, so edits in the back-office are picked up.
 """
 
 from __future__ import annotations
 
-from app.mt5.gateway import MT5Gateway
+from app.mt5.gateway import MT5Error, MT5Gateway
+
+
+def _servers_of(logins: list[int]) -> dict[int | None, list[int]]:
+    """server id -> those of the logins on it (None: Flow does not know them)."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import TradingAccount
+
+    with SessionLocal() as db:
+        rows = db.execute(select(TradingAccount.login, TradingAccount.server_id)
+                          .where(TradingAccount.login.in_(logins))).all()
+    known: dict[int, list[int]] = {}
+    for login, server_id in rows:
+        known.setdefault(login, []).append(server_id)
+    found: dict[int | None, list[int]] = {}
+    for login in logins:
+        servers = known.get(login, [None])
+        if len(servers) > 1:
+            raise MT5Error(f"login {login} is on more than one MT5 server, so this call has to say which")
+        found.setdefault(servers[0], []).append(login)
+    return found
+
+
+def _gateway_of(server_id: int | None, logins: list[int]) -> MT5Gateway:
+    from sqlalchemy import func, select
+
+    from app.db import SessionLocal
+    from app.models import MT5Server
+    from app.mt5 import get_gateway
+
+    if server_id is not None:
+        return get_gateway(server_id)
+    with SessionLocal() as db:  # with one server there is nothing to get wrong
+        servers = db.scalar(select(func.count()).select_from(MT5Server).where(MT5Server.enabled.is_(True)))
+    if servers and servers > 1:
+        raise MT5Error(f"trading account {logins[0]} is not known to the CRM, so its MT5 server is not known")
+    return get_gateway()
 
 
 def _server_gateway() -> MT5Gateway:
@@ -25,12 +69,43 @@ def _delegate(name: str):
     return call
 
 
+def _by_login(name: str):
+    """Calls whose first argument is a login."""
+    def call(self, login, *args, **kwargs):
+        server_id, logins = next(iter(_servers_of([login]).items()))
+        return getattr(_gateway_of(server_id, logins), name)(login, *args, **kwargs)
+
+    call.__name__ = name
+    return call
+
+
+def _by_logins(name: str):
+    """Calls whose first argument is a list of logins, answered with a list or a dict."""
+    def call(self, logins, *args, **kwargs):
+        answers = [getattr(_gateway_of(server_id, part), name)(part, *args, **kwargs)
+                   for server_id, part in _servers_of(list(logins)).items()]
+        if answers and isinstance(answers[0], dict):
+            return {key: value for answer in answers for key, value in answer.items()}
+        return [row for answer in answers for row in answer]
+
+    call.__name__ = name
+    return call
+
+
+def _no_route(name: str):
+    def call(self, *args, **kwargs):
+        raise MT5Error(f"{name} needs the gateway of a server: ticket numbers are per server")
+
+    call.__name__ = name
+    return call
+
+
 def forget_logins() -> None:
     """Kept for callers of the multi-server version; there is no per-login cache any more."""
 
 
 class RoutingGateway(MT5Gateway):
-    # -- connection: the server's gateway manages its own
+    # -- connection: each server's gateway manages its own
     def connect(self) -> None:
         pass
 
@@ -44,28 +119,33 @@ class RoutingGateway(MT5Gateway):
     def ensure_connected(self) -> None:
         pass
 
+    def on(self, server_id: int) -> MT5Gateway:
+        from app.mt5 import get_gateway
+
+        return get_gateway(server_id)
+
     create_user = _delegate("create_user")
-    get_user = _delegate("get_user")
-    update_user = _delegate("update_user")
-    delete_user = _delegate("delete_user")
+    get_user = _by_login("get_user")
+    update_user = _by_login("update_user")
+    delete_user = _by_login("delete_user")
     get_last_access = _delegate("get_last_access")
-    archive_users = _delegate("archive_users")
-    change_password = _delegate("change_password")
-    check_password = _delegate("check_password")
-    get_accounts = _delegate("get_accounts")
-    get_account = _delegate("get_account")
-    balance_operation = _delegate("balance_operation")
-    get_deals = _delegate("get_deals")
-    get_positions = _delegate("get_positions")
-    get_orders = _delegate("get_orders")
-    get_order_history = _delegate("get_order_history")
-    delete_orders = _delegate("delete_orders")
-    delete_deals = _delegate("delete_deals")
-    rewrite_deal = _delegate("rewrite_deal")
-    check_balance = _delegate("check_balance")
+    archive_users = _by_logins("archive_users")
+    change_password = _by_login("change_password")
+    check_password = _by_login("check_password")
+    get_accounts = _by_logins("get_accounts")
+    get_account = _by_login("get_account")
+    balance_operation = _by_login("balance_operation")
+    get_deals = _by_logins("get_deals")
+    get_positions = _by_logins("get_positions")
+    get_orders = _by_logins("get_orders")
+    get_order_history = _by_logins("get_order_history")
+    delete_orders = _no_route("delete_orders")
+    delete_deals = _no_route("delete_deals")
+    rewrite_deal = _no_route("rewrite_deal")
+    check_balance = _by_login("check_balance")
     server_time = _delegate("server_time")
-    open_position = _delegate("open_position")
-    close_position = _delegate("close_position")
+    open_position = _by_login("open_position")
+    close_position = _by_login("close_position")
     get_groups = _delegate("get_groups")
     get_users_in_group = _delegate("get_users_in_group")
     get_group = _delegate("get_group")

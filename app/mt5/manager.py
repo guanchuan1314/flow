@@ -142,6 +142,63 @@ class _DealSink:
                 log.exception("deal subscriber failed")
 
 
+class _TradeSink:
+    """Which account's positions or orders changed. Runs on the MT5 thread, so it only passes the login on."""
+
+    kind = ""
+
+    def __init__(self, gateway: "ManagerGateway"):
+        self.gateway = gateway
+
+    def _changed(self, item):
+        try:
+            login = int(item.Login)
+        except Exception:  # never let an exception escape into the native callback
+            log.exception("failed to read a pushed %s", self.kind)
+            return
+        for cb in list(self.gateway._trade_subscribers):
+            try:
+                cb(self.kind, login)
+            except Exception:
+                log.exception("%s subscriber failed", self.kind)
+
+
+class _PositionSink(_TradeSink):
+    kind = "position"
+
+    def OnPositionAdd(self, position):  # noqa: N802
+        self._changed(position)
+
+    def OnPositionUpdate(self, position):  # noqa: N802
+        self._changed(position)
+
+    def OnPositionDelete(self, position):  # noqa: N802
+        self._changed(position)
+
+
+class _OrderSink(_TradeSink):
+    kind = "order"
+
+    def OnOrderAdd(self, order):  # noqa: N802
+        self._changed(order)
+
+    def OnOrderUpdate(self, order):  # noqa: N802
+        self._changed(order)
+
+    def OnOrderDelete(self, order):  # noqa: N802
+        self._changed(order)
+
+
+class _ConnectionSink:
+    """Tells at once that the link dropped; ensure_connected then connects again."""
+
+    def __init__(self, gateway: "ManagerGateway"):
+        self.gateway = gateway
+
+    def OnDisconnect(self):  # noqa: N802
+        self.gateway._connected = False
+
+
 class ManagerGateway(MT5Gateway):
     def __init__(self, server: str, login: int, password: str, timeout_ms: int = 30000, work_dir: str | None = None):
         import MT5Manager  # imported lazily: Windows-only package
@@ -156,6 +213,10 @@ class ManagerGateway(MT5Gateway):
         self._connected = False
         self._subscribers: list[DealCallback] = []
         self._deal_sink: _DealSink | None = None
+        self._trade_subscribers: list = []
+        self._trade_sinks: tuple[_PositionSink, _OrderSink] | None = None
+        self._connection_sink = _ConnectionSink(self)
+        self._connections = 0
         self._selected: set[str] = set()  # symbols this connection receives ticks for (see get_quotes)
         # One call at a time per gateway: the API, the worker's threads and the copy engine share it, and
         # LastError() is only meaningful right after the call that failed. See _serialize_api_calls below.
@@ -187,18 +248,36 @@ class ManagerGateway(MT5Gateway):
     # ---------------------------------------------------------- connection
     def connect(self) -> None:
         modes = self.M.ManagerAPI.EnPumpModes
-        pump = modes.PUMP_MODE_USERS | modes.PUMP_MODE_POSITIONS | modes.PUMP_MODE_GROUPS | modes.PUMP_MODE_SYMBOLS
+        pump = (modes.PUMP_MODE_USERS | modes.PUMP_MODE_POSITIONS | modes.PUMP_MODE_ORDERS | modes.PUMP_MODE_GROUPS
+                | modes.PUMP_MODE_SYMBOLS)
         self._check(self.api.Connect(self.server, self.login, self.password, pump, self.timeout_ms), "connect")
         self._connected = True
+        self._connections += 1
         self._selected = set()  # a new connection starts with the login's own selection only
+        self.api.Unsubscribe(self._connection_sink)
+        self._check(self.api.Subscribe(self._connection_sink), "Subscribe")
         if self._deal_sink is not None:  # re-attach push events after a reconnect
+            self.api.DealUnsubscribe(self._deal_sink)
             self._check(self.api.DealSubscribe(self._deal_sink), "DealSubscribe")
+        if self._trade_sinks is not None:
+            self._attach_trades()
         log.info("connected to MT5 server %s as manager %s", self.server, self.login)
+
+    def _attach_trades(self) -> None:
+        positions, orders = self._trade_sinks
+        self.api.PositionUnsubscribe(positions)
+        self.api.OrderUnsubscribe(orders)
+        self._check(self.api.PositionSubscribe(positions), "PositionSubscribe")
+        self._check(self.api.OrderSubscribe(orders), "OrderSubscribe")
 
     def disconnect(self) -> None:
         if self._deal_sink:
             self.api.DealUnsubscribe(self._deal_sink)
             self._deal_sink = None
+        if self._trade_sinks:
+            self.api.PositionUnsubscribe(self._trade_sinks[0])
+            self.api.OrderUnsubscribe(self._trade_sinks[1])
+            self._trade_sinks = None
         self.api.Disconnect()
         self._connected = False
 
@@ -213,6 +292,10 @@ class ManagerGateway(MT5Gateway):
     @property
     def connected(self) -> bool:
         return self._connected
+
+    @property
+    def connections(self) -> int:
+        return self._connections
 
     # ---------------------------------------------------------- converters
     def _convert_user(self, u) -> MT5User:
@@ -1014,6 +1097,16 @@ class ManagerGateway(MT5Gateway):
     def unsubscribe_deals(self, callback: DealCallback) -> None:
         if callback in self._subscribers:
             self._subscribers.remove(callback)
+
+    def subscribe_trades(self, callback) -> None:
+        self._trade_subscribers.append(callback)
+        if self._trade_sinks is None:
+            self._trade_sinks = (_PositionSink(self), _OrderSink(self))
+            self._attach_trades()
+
+    def unsubscribe_trades(self, callback) -> None:
+        if callback in self._trade_subscribers:
+            self._trade_subscribers.remove(callback)
 
 
 def _priced(tick) -> bool:

@@ -36,7 +36,7 @@ from app.models.trading import DEAL_CORRECTION, TRADE_ACTIONS
 from app.mt5 import MT5Error, MT5Gateway
 from app.mt5.gateway import MT5Deal, MT5Order
 from app.services import mt5_calls
-from app.services.clients import visible_logins
+from app.services.clients import visible_client_ids
 from app.services.sync_runs import report
 
 log = logging.getLogger(__name__)
@@ -181,7 +181,7 @@ def choose(db: Session, actor, server: MT5Server, logins: str = "", group_id: in
     """The accounts to compact: the logins typed, and those of an account group; only accounts the actor may see."""
     typed = [int(n) for n in re.findall(r"\d+", logins)]
     query = select(TradingAccount.login).where(TradingAccount.server_id == server.id,
-                                               TradingAccount.login.in_(visible_logins(actor)))
+                                               TradingAccount.client_id.in_(visible_client_ids(actor)))
     found: set[int] = set()
     if typed:
         found |= set(db.scalars(query.where(TradingAccount.login.in_(typed))))
@@ -204,7 +204,7 @@ def _keep(db: Session, server: MT5Server, kind: str, ticket: int, login: int, wh
                              action=action, amount=money, comment=comment or "", data=data, compacted_at=utcnow()))
 
 
-def _saved(db: Session, work) -> None:
+def saved(db: Session, work) -> None:
     """Flow's side of what MT5 has already done: it collides with running syncs, so it is tried again."""
     for attempt in range(1, SAVE_ATTEMPTS + 1):
         try:
@@ -254,7 +254,7 @@ def _compact_line(db: Session, gw: MT5Gateway, server: MT5Server, login: int, li
             action=line.action, entry=0, symbol=line.symbol, volume=0, price=0, profit=total, commission=0, swap=0, fee=0,
             position_id=0, order=0, comment=text, time=today,
             time_msc=int(today.replace(tzinfo=timezone.utc).timestamp()) * 1000))
-    _saved(db, save)
+    saved(db, save)
     return refused
 
 
@@ -262,7 +262,7 @@ def _compact_orders(db: Session, gw: MT5Gateway, server: MT5Server, plan: Plan) 
     def copies():
         for o in plan.orders:
             _keep(db, server, "order", o.ticket, o.login, o.time_setup, o.symbol, o.type, Decimal("0"), o.comment, _plain(o))
-    _saved(db, copies)
+    saved(db, copies)
     refused = gw.delete_orders([o.ticket for o in plan.orders]) if plan.orders else {}
     gone = [o.ticket for o in plan.orders if o.ticket not in refused]
 
@@ -272,7 +272,7 @@ def _compact_orders(db: Session, gw: MT5Gateway, server: MT5Server, plan: Plan) 
                                                      CompactedRecord.ticket.in_(refused)))
         if gone:
             db.execute(delete(Order).where(Order.server_id == server.id, Order.ticket.in_(gone)))
-    _saved(db, save)
+    saved(db, save)
     return len(gone)
 
 
@@ -289,7 +289,7 @@ def _compact_positions(db: Session, server: MT5Server, plan: Plan) -> None:
             db.flush()
             db.execute(delete(Position).where(Position.server_id == server.id,
                                               Position.position_id.in_([p.position_id for p in rows])))
-    _saved(db, save)
+    saved(db, save)
 
 
 def _compact_account(db: Session, gw: MT5Gateway, actor, server: MT5Server, plan: Plan, result: dict) -> None:
@@ -297,7 +297,7 @@ def _compact_account(db: Session, gw: MT5Gateway, actor, server: MT5Server, plan
         for line in plan.lines:
             for d in line.rows:
                 _keep(db, server, "deal", d.ticket, d.login, d.time, d.symbol, d.action, amount(d), d.comment, _plain(d))
-    _saved(db, copies)
+    saved(db, copies)
     refused: dict[int, str] = {}
     positions_of = {d.ticket: d.position_id for line in plan.lines for d in line.rows}
     for line in plan.lines:
@@ -305,7 +305,7 @@ def _compact_account(db: Session, gw: MT5Gateway, actor, server: MT5Server, plan
     plan.positions -= {positions_of[t] for t in refused}
     _compact_positions(db, server, plan)
     orders = _compact_orders(db, gw, server, plan)
-    _saved(db, lambda: audit(db, actor, "compact.account", "mt5_server", server.id,
+    saved(db, lambda: audit(db, actor, "compact.account", "mt5_server", server.id,
                              {"login": plan.login, "orders": orders,
                               "summaries": [{"text": x.label, "deals": len(x.rows)} for x in plan.lines]}))
     result["accounts"] += 1
@@ -323,7 +323,7 @@ def run(db: Session, actor, server: MT5Server, logins: list[int], date_from: str
     gw = mt5_calls.gateway(server, gw)
     allowed = set(db.scalars(select(TradingAccount.login).where(TradingAccount.server_id == server.id,
                                                                 TradingAccount.login.in_(logins),
-                                                                TradingAccount.login.in_(visible_logins(actor)))))
+                                                                TradingAccount.client_id.in_(visible_client_ids(actor)))))
     wanted = [n for n in logins if n in allowed]
     result = {"accounts": 0, "lines": 0, "deals": 0, "orders": 0, "failed": 0, "skipped": 0, "errors": []}
     report(0, len(wanted))

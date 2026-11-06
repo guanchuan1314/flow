@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -29,7 +29,7 @@ from app.web.common import WebForbidden, WebRedirect, back, flash, templates
 
 log = logging.getLogger(__name__)
 LOCAL_ADDRESSES = ("127.0.0.1", "::1")
-NON_WEB_PREFIXES = ("/api", "/static", "/brand.css", "/ws/", "/quotes.json", "/docs", "/openapi.json", "/health", "/ready", "/callbacks",
+NON_WEB_PREFIXES = ("/api", "/static", "/brand.css", "/brand/logo", "/ws/", "/quotes.json", "/docs", "/openapi.json", "/health", "/ready", "/callbacks",
                     "/sandbox/provider/start")
 
 
@@ -201,6 +201,17 @@ def create_app() -> FastAPI:
         """The broker's colour (Administration > Branding) as CSS variables, loaded by every page."""
         return Response(branding.css(branding.current()), media_type="text/css",
                         headers={"Cache-Control": f"public, max-age={branding.CACHE_SECONDS}"})
+
+    @app.get("/brand/logo", include_in_schema=False)
+    def brand_logo():
+        """The broker's logo. Staff upload it and everyone sees it, so nothing in the file may run: an SVG can hold
+        scripts, which the sandbox stops when the address is opened on its own."""
+        logo = branding.logo_file()
+        if logo is None:
+            raise HTTPException(404)
+        return Response(logo[0], media_type=logo[1],
+                        headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff",
+                                 "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox"})
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon():

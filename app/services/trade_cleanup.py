@@ -22,7 +22,7 @@ from app.models import Deal, MT5Server, Order, Position
 from app.models.trading import TRADE_ACTIONS
 from app.mt5 import MT5Error, MT5Gateway
 from app.services import mt5_calls
-from app.services.clients import visible_logins
+from app.services.clients import visible_rows
 from app.services.sync_runs import report
 
 BATCH = 200
@@ -64,7 +64,7 @@ def _matching(query, model, filters: dict):
 
 
 def orders_query(server_id: int, actor, filters: dict):
-    query = select(Order).where(Order.server_id == server_id, Order.login.in_(visible_logins(actor)))
+    query = select(Order).where(Order.server_id == server_id, visible_rows(actor, Order))
     status = filters.get("status", "")
     if status == "open":
         query = query.where(Order.is_open.is_(True))
@@ -76,7 +76,7 @@ def orders_query(server_id: int, actor, filters: dict):
 
 
 def deals_query(server_id: int, actor, filters: dict):
-    query = select(Deal).where(Deal.server_id == server_id, Deal.login.in_(visible_logins(actor)))
+    query = select(Deal).where(Deal.server_id == server_id, visible_rows(actor, Deal))
     status = filters.get("status", "")
     if status == "balance":
         query = query.where(Deal.action.not_in(TRADE_ACTIONS))

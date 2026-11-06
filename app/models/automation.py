@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, TimestampMixin, utcnow
 
@@ -17,6 +17,9 @@ class AutomationRule(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # None: every server. Deleting a server deletes its rules: they must not turn into rules for every server.
+    server_id: Mapped[int | None] = mapped_column(ForeignKey("mt5_servers.id", ondelete="CASCADE"))
+    server = relationship("MT5Server")
     trigger: Mapped[str] = mapped_column(String(32))
     params: Mapped[dict] = mapped_column(JSON, default=dict)
     filters: Mapped[dict] = mapped_column(JSON, default=dict)  # {groups: MT5 group masks, kind: live | demo | any}
@@ -35,7 +38,9 @@ class AutomationRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     rule_id: Mapped[int] = mapped_column(ForeignKey("automation_rules.id", ondelete="CASCADE"), index=True)
-    target: Mapped[str] = mapped_column(String(32))  # "account:<login>" | "client:<id>"
+    target: Mapped[str] = mapped_column(String(32))  # "account:<server>:<login>" | "client:<id>"
+    server_id: Mapped[int | None] = mapped_column(ForeignKey("mt5_servers.id", ondelete="SET NULL"))
+    server = relationship("MT5Server")
     login: Mapped[int | None] = mapped_column(BigInteger)
     client_id: Mapped[int | None] = mapped_column(Integer)
     at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

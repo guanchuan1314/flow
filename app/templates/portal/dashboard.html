@@ -67,7 +67,7 @@
           {% if a.purpose.value != "trading" %}<span class="a-tag grey">{{ a.purpose|label }}</span>{% endif %}</div>
         <span class="small text-muted">1:{{ a.leverage }}</span>
       </div>
-      <div class="login">#{{ a.login }}</div>
+      <div class="login">#{{ a.login }} · {{ a.server.display_name }}</div>
       <div class="small text-muted mb-2">Equity</div>
       <div class="eq mb-2">{{ a.equity|money }} <span class="fs-6 text-muted">{{ a.currency }}</span></div>
       <div class="kv"><span>Balance</span><span>{{ a.balance|money }}</span></div>

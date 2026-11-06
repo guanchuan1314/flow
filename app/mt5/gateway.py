@@ -302,9 +302,14 @@ class TradeResult:
 
 
 DealCallback = Callable[[MT5Deal], None]
+TradeCallback = Callable[[str, int], None]  # "position" or "order", and the login whose ones changed
 
 
 class MT5Gateway(ABC):
+    def on(self, server_id: int) -> MT5Gateway:
+        """The gateway of that server. A server's gateway is its own; the routing gateway finds it."""
+        return self
+
     # -- connection
     @abstractmethod
     def connect(self) -> None: ...
@@ -315,6 +320,12 @@ class MT5Gateway(ABC):
     @property
     @abstractmethod
     def connected(self) -> bool: ...
+
+    @property
+    def connections(self) -> int:
+        """How many times this gateway has connected: a new number means the link dropped and came back, and
+        whatever happened in between was not pushed."""
+        return 1
 
     def ensure_connected(self) -> None:
         """Reconnect if the link was lost. Raises MT5Error if the server is unreachable."""
@@ -538,3 +549,11 @@ class MT5Gateway(ABC):
 
     @abstractmethod
     def unsubscribe_deals(self, callback: DealCallback) -> None: ...
+
+    def subscribe_trades(self, callback: TradeCallback) -> None:
+        """Be told when an account's open positions or pending orders change. Say nothing about what changed:
+        reading the account again cannot get the order of events wrong."""
+        raise MT5Error("this gateway does not push position and order changes")
+
+    def unsubscribe_trades(self, callback: TradeCallback) -> None:
+        pass

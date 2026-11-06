@@ -1,8 +1,9 @@
 {% extends "admin/layout.html" %}
-{% from "macros.html" import add_row_button, alert, csrf_input, post_button, remove_row_cell %}
+{% from "macros.html" import add_row_button, alert, csrf_input, post_button, remove_row_cell, server_filter %}
 {% block page_title %}Symbols &amp; pricing: {{ s.name }}{% endblock %}
 {% block content %}
 {% from "macros.html" import sync_panel %}{{ sync_panel(["pricing"]) }}
+{{ server_filter(s.id) }}
 {{ alert(mt5_warning) }}
 {% set auto = p.auto_sync %}
 {% macro spread_row(r={}) -%}
@@ -86,7 +87,7 @@
   </div></div>
 
   <button class="btn btn-primary" type="submit" data-allow-repeat>Save and apply on MT5</button>
-  <a class="btn btn-link" href="/admin/configuration">Back to Configuration</a>
+  <a class="btn btn-link" href="/admin/servers/list">Back to Servers</a>
   <p class="small text-muted mt-2">Removing a row puts MT5 back as it was: the symbol's own spread, no CRM commission, the LP's swap.
     Needs the manager login's right to configure groups and symbols.</p>
 </form>
